@@ -107,16 +107,21 @@ Your output must perfectly match this structure:
                 result = json.loads(json_str)
                 return result
             except json.decoder.JSONDecodeError as e:
-                # LLM output is likely truncated due to max_tokens or context length
                 logger.error(f"LLM JSON Decode Error (Truncated?): {e}")
-                # Try a very basic repair by appending ]} or } to make it parseable
-                try:
-                    return json.loads(json_str + ']}')
-                except:
+                
+                # Try aggressive repair strategies for truncated JSON
+                suffixes_to_try = [
+                    '"]}', '"}', ']}', '}', '"]}]}', '}]}', '"}]}'
+                ]
+                
+                for suffix in suffixes_to_try:
                     try:
-                        return json.loads(json_str + '}')
+                        return json.loads(json_str + suffix)
                     except:
-                        raise ValueError(f"LLM response was truncated and could not be parsed: {content}")
+                        pass
+                
+                # If all simple fixes fail, return what we can or raise
+                raise ValueError(f"LLM response was severely truncated and could not be parsed.")
         else:
             raise ValueError(f"Could not find JSON object in LLM response: {content}")
         

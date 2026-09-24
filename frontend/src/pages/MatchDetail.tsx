@@ -17,6 +17,7 @@ export default function MatchDetail() {
   const [aiError, setAiError] = useState('');
   const [activeTab, setActiveTab] = useState('current');
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
+  const [parseState, setParseState] = useState<'idle' | 'requesting' | 'requested' | 'error'>('idle');
 
   useEffect(() => {
     fetchMatchData();
@@ -37,6 +38,16 @@ export default function MatchDetail() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRequestParse = async () => {
+    setParseState('requesting');
+    try {
+      await api.post(`/matches/${matchId}/request-parse`);
+      setParseState('requested');
+    } catch (err) {
+      setParseState('error');
     }
   };
 
@@ -110,18 +121,13 @@ export default function MatchDetail() {
               <button 
                 className="btn btn-secondary" 
                 style={{ marginLeft: '1rem', padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
-                onClick={async (e) => {
-                  e.currentTarget.disabled = true;
-                  e.currentTarget.innerText = 'Requesting...';
-                  try {
-                    await api.post(`/matches/${matchId}/request-parse`);
-                    e.currentTarget.innerText = 'Parse Requested (Check back later)';
-                  } catch (err) {
-                    e.currentTarget.innerText = 'Failed to Request Parse';
-                  }
-                }}
+                onClick={handleRequestParse}
+                disabled={parseState === 'requesting' || parseState === 'requested'}
               >
-                Request Replay Parse
+                {parseState === 'idle' && 'Request Replay Parse'}
+                {parseState === 'requesting' && 'Requesting...'}
+                {parseState === 'requested' && 'Parse Requested (Check back later)'}
+                {parseState === 'error' && 'Failed to Request Parse'}
               </button>
             )}
           </p>
