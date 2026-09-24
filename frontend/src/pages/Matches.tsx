@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import { ITEMS } from '../lib/items';
 
 const AVAILABLE_COLUMNS = [
   { id: 'hero', label: 'Hero' },
@@ -18,7 +19,8 @@ const AVAILABLE_COLUMNS = [
   { id: 'last_hits', label: 'Last Hits' },
   { id: 'denies', label: 'Denies' },
   { id: 'level', label: 'Level' },
-  { id: 'party_size', label: 'Party Size' }
+  { id: 'party_size', label: 'Party Size' },
+  { id: 'items', label: 'Items' }
 ];
 
 export default function Matches() {
@@ -57,6 +59,14 @@ export default function Matches() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getItemName = (item: any) => {
+    if (!item || item === 'empty') return null;
+    if (typeof item === 'number' || !isNaN(Number(item))) {
+      return ITEMS[Number(item)] || String(item).replace('item_', '');
+    }
+    return String(item).replace('item_', '');
   };
 
   const toggleColumn = (colId: string) => {
@@ -161,6 +171,21 @@ export default function Matches() {
                         content = <span style={{ color: 'var(--text-secondary)' }}>{m.played_at ? new Date(m.played_at).toLocaleDateString() : 'N/A'}</span>;
                       } else if (c.id === 'party_size') {
                         content = m.party_size || 1;
+                      } else if (c.id === 'items') {
+                        content = (
+                          <div style={{ display: 'flex', gap: '2px' }}>
+                            {m.items?.map((item: any, i: number) => {
+                              const itemName = getItemName(item);
+                              return (
+                                <div key={i} style={{ width: '30px', height: '22px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
+                                  {itemName && (
+                                    <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName.replace('item_', '')}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
                       }
 
                       return <td key={c.id} style={{ padding: '1rem' }}>{content}</td>;

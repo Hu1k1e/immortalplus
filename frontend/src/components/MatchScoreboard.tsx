@@ -1,10 +1,19 @@
 import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import { ITEMS } from '../lib/items';
 
 export default function MatchScoreboard({ allPlayers, radiantWin }: { allPlayers: any[], radiantWin: boolean }) {
   if (!allPlayers || allPlayers.length === 0) return null;
 
   const radiant = allPlayers.filter(p => p.player_slot < 128);
   const dire = allPlayers.filter(p => p.player_slot >= 128);
+
+  const getItemName = (item: any) => {
+    if (!item || item === 'empty') return null;
+    if (typeof item === 'number' || !isNaN(Number(item))) {
+      return ITEMS[Number(item)] || String(item).replace('item_', '');
+    }
+    return String(item).replace('item_', '');
+  };
 
   const renderTeamTable = (team: any[], isRadiant: boolean) => {
     const isWinner = isRadiant === radiantWin;
@@ -74,30 +83,36 @@ export default function MatchScoreboard({ allPlayers, radiantWin }: { allPlayers
                   <td style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.2rem', alignItems: 'center' }}>
                     {/* Active Items */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
-                      {p.items?.map((item: string, i: number) => (
-                        <div key={`item-${i}`} style={{ width: '30px', height: '22px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
-                          {item && item !== 'empty' && (
-                            <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${item.replace('item_', '')}.png`} alt={item} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {/* Backpack */}
-                    {p.backpack && p.backpack.some((i: string) => i && i !== 'empty') && (
-                      <div style={{ display: 'flex', gap: '2px', marginLeft: '4px', opacity: 0.7 }}>
-                        {p.backpack.map((item: string, i: number) => (
-                          <div key={`bp-${i}`} style={{ width: '22px', height: '16px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
-                            {item && item !== 'empty' && (
-                              <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${item.replace('item_', '')}.png`} alt={item} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      {p.items?.map((item: any, i: number) => {
+                        const itemName = getItemName(item);
+                        return (
+                          <div key={`item-${i}`} style={{ width: '30px', height: '22px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
+                            {itemName && (
+                              <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName.replace('item_', '')}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                             )}
                           </div>
-                        ))}
+                        );
+                      })}
+                    </div>
+                    {/* Backpack */}
+                    {p.backpack && p.backpack.some((i: any) => getItemName(i)) && (
+                      <div style={{ display: 'flex', gap: '2px', marginLeft: '4px', opacity: 0.7 }}>
+                        {p.backpack.map((item: any, i: number) => {
+                          const itemName = getItemName(item);
+                          return (
+                            <div key={`bp-${i}`} style={{ width: '22px', height: '16px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
+                              {itemName && (
+                                <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName.replace('item_', '')}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                     {/* Neutral */}
-                    {p.neutral_item && p.neutral_item !== 'empty' && (
+                    {getItemName(p.neutral_item) && (
                       <div style={{ width: '24px', height: '24px', borderRadius: '50%', overflow: 'hidden', marginLeft: '6px', border: '1px solid var(--accent-gold)' }}>
-                        <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${p.neutral_item.replace('item_', '')}.png`} alt={p.neutral_item} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                        <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${getItemName(p.neutral_item)!.replace('item_', '')}.png`} alt={getItemName(p.neutral_item) || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                       </div>
                     )}
                   </td>

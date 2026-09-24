@@ -21,13 +21,15 @@ export default function MatchTimeline({ matchData, aiCoaching }: { matchData: an
     // Kills
     if (matchData.kills_log && Array.isArray(matchData.kills_log)) {
       matchData.kills_log.forEach((k: any) => {
-        evts.push({
-          time: k.time,
-          type: 'kill',
-          label: `Killed ${k.key.replace('npc_dota_hero_', '')}`,
-          color: 'var(--radiant-green)',
-          icon: Crosshair
-        });
+        if (k && k.key) {
+          evts.push({
+            time: k.time,
+            type: 'kill',
+            label: `Killed ${String(k.key).replace('npc_dota_hero_', '')}`,
+            color: 'var(--radiant-green)',
+            icon: Crosshair
+          });
+        }
       });
     }
 
@@ -35,7 +37,7 @@ export default function MatchTimeline({ matchData, aiCoaching }: { matchData: an
     if (matchData.purchase_log && Array.isArray(matchData.purchase_log)) {
       matchData.purchase_log.forEach((i: any) => {
         // Filter out cheap items to avoid cluttering the timeline
-        if (!['tpscroll', 'ward_observer', 'ward_sentry', 'clarity', 'flask', 'tango', 'branch'].includes(i.key)) {
+        if (i && i.key && !['tpscroll', 'ward_observer', 'ward_sentry', 'clarity', 'flask', 'tango', 'branch'].includes(i.key)) {
           evts.push({
             time: i.time,
             type: 'item',
