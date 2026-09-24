@@ -42,34 +42,38 @@ The player played {analysis_result['hero_name']} in the {analysis_result['role']
 
 Match Stats:
 Duration: {match_data.get('duration', 0) // 60} minutes
-K/D/A: {analysis_result['lategame_analysis']['final_kda']}
-CS at 10m: {analysis_result['cs_at_10']}
-GPM: {analysis_result['midgame_analysis']['gpm']}
-XPM: {analysis_result['midgame_analysis']['xpm']}
-Hero Damage: {analysis_result['midgame_analysis']['hero_damage']}
-Tower Damage: {analysis_result['midgame_analysis']['tower_damage']}
+K/D/A: {analysis_result['lategame_analysis'].get('final_kda', '0/0/0')}
+CS at 10m: {analysis_result.get('cs_at_10', 0)}
+GPM: {analysis_result['midgame_analysis'].get('gpm', 0)}
+XPM: {analysis_result['midgame_analysis'].get('xpm', 0)}
+Hero Damage: {analysis_result['midgame_analysis'].get('hero_damage', 0)}
+Tower Damage: {analysis_result['midgame_analysis'].get('tower_damage', 0)}
 
 Rank Benchmarks for this role:
-{json.dumps(analysis_result['rank_comparison'], indent=2)}
+{json.dumps(analysis_result.get('rank_comparison', {}), indent=2)}
 
-Your task is to return a JSON object with exactly the following structure. Do not include markdown code block formatting (```json), just the raw JSON:
+CRITICAL INSTRUCTIONS:
+1. DO NOT include any conversational text, thought processes, or reasoning.
+2. DO NOT use markdown backticks (e.g. ```json).
+3. YOU MUST RETURN ONLY THE RAW JSON OBJECT.
+
+Your output must perfectly match this structure:
 {{
     "mistakes_current_rank": [
         "Mistake 1 related to their current rank benchmarks",
         "Mistake 2..."
     ],
     "mistakes_target_rank": [
-        "Mistake 1 related to the next rank up benchmarks",
-        "Mistake 2..."
+        "Mistake 1 related to the next rank up benchmarks"
     ],
     "mistakes_pro_level": [
-        "Mistake 1 related to pro level benchmarks (e.g. low CS compared to pros)"
+        "Mistake 1 related to pro level benchmarks"
     ],
     "action_items": [
         {{
-            "text": "Specific, actionable advice (e.g. 'Practice pulling the easy camp at x:xx')",
-            "category": "farming|fighting|vision|objectives|positioning",
-            "difficulty": "easy|medium|hard",
+            "text": "Specific, actionable advice",
+            "category": "farming",
+            "difficulty": "medium",
             "priority": 1
         }}
     ],
@@ -80,11 +84,11 @@ Your task is to return a JSON object with exactly the following structure. Do no
         response = await client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "You are an expert Dota 2 coach. Always output valid raw JSON matching the requested schema. Do not use markdown backticks."},
+                {"role": "system", "content": "You are a Dota 2 coach API. You output ONLY raw JSON. No conversational text whatsoever."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
-            max_tokens=1000
+            temperature=0.3,
+            max_tokens=2500
         )
         
         content = response.choices[0].message.content.strip() if response.choices and response.choices[0].message.content else ""
