@@ -11,7 +11,7 @@ class StratzClient:
         self.api_token = api_token
         self.headers = {
             "Authorization": f"Bearer {api_token}",
-            "User-Agent": "ImmortalPlus/1.0"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
         # Configure client without HTTP/2 to prevent framing errors
         self.client = httpx.AsyncClient(headers=self.headers, http2=False)
@@ -28,7 +28,8 @@ class StratzClient:
               gameMode
               lobbyType
               startDateTime
-              players(steamAccountId: $accountId) {
+              players {
+                steamAccountId
                 heroId
                 isRadiant
                 kills
@@ -54,6 +55,8 @@ class StratzClient:
         
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
+            if response.status_code != 200:
+                logger.error(f"Stratz get_player_matches 400 body: {response.text}")
             response.raise_for_status()
             data = response.json()
             matches = data.get("data", {}).get("player", {}).get("matches", [])
@@ -61,7 +64,10 @@ class StratzClient:
             # Format to match OpenDota style for our sync engine
             formatted_matches = []
             for m in matches:
-                p = m.get("players", [])[0] if m.get("players") else {}
+                # Find the target player
+                p_list = m.get("players", [])
+                p = next((player for player in p_list if player.get("steamAccountId") == account_id), {})
+                
                 formatted_matches.append({
                     "match_id": m.get("id"),
                     "hero_id": p.get("heroId"),
@@ -158,6 +164,8 @@ class StratzClient:
         
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
+            if response.status_code != 200:
+                logger.error(f"Stratz get_match 400 body: {response.text}")
             response.raise_for_status()
             data = response.json()
             match_data = data.get("data", {}).get("match")

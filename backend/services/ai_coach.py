@@ -3,6 +3,7 @@ import logging
 from typing import Optional
 from openai import AsyncOpenAI
 import httpx
+import re
 
 from models import UserSettings
 
@@ -98,16 +99,28 @@ Your output must perfectly match this structure:
         if not content:
             raise ValueError("LLM returned an empty response")
             
-        # Use regex to find the first { and last } to extract JSON
-        import re
-        match = re.search(r'\{.*\}', content, re.DOTALL)
+        # Extract everything from the first { to the end
+        match = re.search(r'\{.*', content, re.DOTALL)
         if match:
             json_str = match.group(0)
-            result = json.loads(json_str)
-            return result
+            try:
+                result = json.loads(json_str)
+                return result
+            except json.decoder.JSONDecodeError as e:
+                # LLM output is likely truncated due to max_tokens or context length
+                logger.error(f"LLM JSON Decode Error (Truncated?): {e}")
+                # Try a very basic repair by appending ]} or } to make it parseable
+                try:
+                    return json.loads(json_str + ']}')
+                except:
+                    try:
+                        return json.loads(json_str + '}')
+                    except:
+                        raise ValueError(f"LLM response was truncated and could not be parsed: {content}")
         else:
             raise ValueError(f"Could not find JSON object in LLM response: {content}")
         
     except Exception as e:
         logger.error(f"Failed to generate AI coaching: {e}", exc_info=True)
-        return None
+        # Raise so the frontend gets a 500 with a clean message
+        raise ValueError(f"AI Error: {str(e)}")
