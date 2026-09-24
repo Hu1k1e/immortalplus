@@ -23,7 +23,10 @@ async def generate_ai_coaching(
 
     client_args = {"api_key": settings.openai_api_key}
     if settings.openai_api_base:
-        client_args["base_url"] = settings.openai_api_base
+        base_url = settings.openai_api_base.strip()
+        if not base_url.startswith("http://") and not base_url.startswith("https://"):
+            base_url = "https://" + base_url
+        client_args["base_url"] = base_url
         # Bypass SSL verification for custom/self-hosted endpoints
         client_args["http_client"] = httpx.AsyncClient(verify=False)
         
