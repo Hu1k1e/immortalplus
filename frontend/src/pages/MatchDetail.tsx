@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../lib/api';
 import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import MatchTimeline from '../components/MatchTimeline';
+import MatchScoreboard from '../components/MatchScoreboard';
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -156,8 +158,10 @@ export default function MatchDetail() {
         </div>
       )}
 
+      <MatchTimeline matchData={matchData} aiCoaching={aiCoaching} />
+
       {analysis && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginTop: '2rem' }}>
           <div className="glass-surface" style={{ padding: '1.5rem' }}>
             <h3>Laning Score</h3>
             <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: analysis.laning_score > 70 ? 'var(--radiant-green)' : 'var(--accent-gold)' }}>
@@ -185,6 +189,8 @@ export default function MatchDetail() {
           </div>
         </div>
       )}
+
+      <MatchScoreboard allPlayers={matchData.all_players} radiantWin={matchData.radiant_win} />
     </div>
   );
 }

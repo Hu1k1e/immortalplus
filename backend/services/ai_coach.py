@@ -42,12 +42,12 @@ The player played {analysis_result['hero_name']} in the {analysis_result['role']
 
 Match Stats:
 Duration: {match_data.get('duration', 0) // 60} minutes
-K/D/A: {analysis_result['lategame_analysis'].get('final_kda', '0/0/0')}
+K/D/A: {match_data.get('kills', 0)}/{match_data.get('deaths', 0)}/{match_data.get('assists', 0)}
 CS at 10m: {analysis_result.get('cs_at_10', 0)}
-GPM: {analysis_result['midgame_analysis'].get('gpm', 0)}
-XPM: {analysis_result['midgame_analysis'].get('xpm', 0)}
-Hero Damage: {analysis_result['midgame_analysis'].get('hero_damage', 0)}
-Tower Damage: {analysis_result['midgame_analysis'].get('tower_damage', 0)}
+
+Event Logs:
+Item Purchases (seconds): {json.dumps(match_data.get('purchase_log', [])[:10])} ...
+Kills (seconds): {json.dumps(match_data.get('kills_log', [])[:10])} ...
 
 Rank Benchmarks for this role:
 {json.dumps(analysis_result.get('rank_comparison', {}), indent=2)}
@@ -71,10 +71,11 @@ Your output must perfectly match this structure:
     ],
     "action_items": [
         {{
-            "text": "Specific, actionable advice",
+            "text": "Specific, actionable advice. Example: Died out of position here at 14:22 - Missing vision",
             "category": "farming",
             "difficulty": "medium",
-            "priority": 1
+            "priority": 1,
+            "timestamp": 862  // integer seconds if it relates to a specific event on the timeline, or null if general
         }}
     ],
     "overall_summary": "A 2-3 sentence encouraging summary of their performance."

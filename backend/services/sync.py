@@ -172,11 +172,17 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "xpm": p.get("xp_per_min"),
             "hero_damage": p.get("hero_damage"),
             "tower_damage": p.get("tower_damage"),
+            "hero_healing": p.get("hero_healing"),
             "last_hits": p.get("last_hits"),
+            "denies": p.get("denies"),
             "level": p.get("level"),
             "items": [p.get(f"item_{i}") for i in range(6)],
+            "backpack": [p.get(f"backpack_{i}") for i in range(3)],
             "neutral_item": p.get("item_neutral"),
             "persona": p.get("personaname", ""),
+            "obs_placed": p.get("obs_placed", 0),
+            "sen_placed": p.get("sen_placed", 0),
+            "net_worth": p.get("net_worth", 0)
         })
     match.all_players = json.dumps(all_players)
 

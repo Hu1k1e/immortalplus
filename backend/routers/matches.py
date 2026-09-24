@@ -306,7 +306,14 @@ async def get_ai_coaching(match_id: int, session: Session = Depends(get_session)
         return _parse_json_field(analysis.ai_coaching)
 
     # Get match data
-    match_data = {"duration": match.duration}
+    match_data = {
+        "duration": match.duration,
+        "kills": match.kills,
+        "deaths": match.deaths,
+        "assists": match.assists,
+        "purchase_log": _parse_json_field(match.purchase_log),
+        "kills_log": _parse_json_field(match.kills_log)
+    }
     
     # Get analysis result dict
     analysis_result = {
