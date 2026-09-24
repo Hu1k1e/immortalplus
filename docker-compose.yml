@@ -13,7 +13,7 @@ services:
     environment:
       - DATA_DIR=/app/data
       - REPLAYS_DIR=/app/replays
-      - FRONTEND_URL=http://localhost:3000
+      - FRONTEND_URL=http://localhost:9485
       - REPLAY_PARSER_URL=http://replay_parser:8001
     restart: unless-stopped
 
@@ -21,7 +21,7 @@ services:
     image: ghcr.io/hu1k1e/immortalplus-frontend:main
     container_name: immortalplus_frontend
     ports:
-      - "3000:80"
+      - "9485:80"
     depends_on:
       - backend
     restart: unless-stopped
