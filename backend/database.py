@@ -6,7 +6,7 @@ Uses SQLite with NullPool for Docker-friendly concurrency.
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, Session
 
 from config import DATABASE_URL
 
@@ -30,7 +30,7 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.close()
 
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(class_=Session, autocommit=False, autoflush=False, bind=engine)
 
 
 def get_session():
