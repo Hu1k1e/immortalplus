@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../lib/api';
 import { HEROES, getHeroImgUrl } from '../lib/heroes';
 import { ITEMS } from '../lib/items';
-import MatchTimeline from '../components/MatchTimeline';
+
 import MatchScoreboard from '../components/MatchScoreboard';
 import MatchMap from '../components/MatchMap';
 
@@ -15,18 +15,36 @@ export default function MatchDetail() {
   const [loading, setLoading] = useState(true);
   const [analyzingAi, setAnalyzingAi] = useState(false);
   const [aiError, setAiError] = useState('');
-  const [activeTab, setActiveTab] = useState('current');
+  const [activeMistakeTab, setActiveMistakeTab] = useState('current');
+  const [mainTab, setMainTab] = useState('Overview');
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
   const [parseState, setParseState] = useState<'idle' | 'requesting' | 'requested' | 'error'>('idle');
 
   useEffect(() => {
-    fetchMatchData();
-  }, [matchId]);
+    let interval: any;
+    
+    const load = async () => {
+      const data = await fetchMatchData();
+      if (data && !data.is_parsed && parseState !== 'idle') {
+        // Poll every 5 seconds if we know it's being parsed
+        interval = setInterval(fetchMatchData, 5000);
+      }
+    };
+    
+    load();
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [matchId, parseState]);
 
   const fetchMatchData = async () => {
     try {
       const res = await api.get(`/matches/${matchId}`);
       setMatchData(res.data);
+      if (res.data.is_parsed && parseState !== 'idle') {
+        setParseState('idle'); // Clear parsing state once it finishes
+      }
       if (res.data.is_analyzed) {
         const analysisRes = await api.get(`/matches/${matchId}/analysis`);
         setAnalysis(analysisRes.data);
@@ -34,8 +52,10 @@ export default function MatchDetail() {
           setAiCoaching(analysisRes.data.ai_coaching);
         }
       }
+      return res.data;
     } catch (err) {
       console.error(err);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -134,6 +154,27 @@ export default function MatchDetail() {
         </div>
       </header>
 
+      {/* Main Tabs Navigation */}
+      <div className="glass-surface" style={{ display: 'flex', gap: '0.5rem', padding: '0.5rem 1rem', marginBottom: '2rem', overflowX: 'auto', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border-color)' }}>
+        {['Overview', 'Benchmarks', 'Performances', 'Laning', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Fantasy', 'Chat', 'Story', 'Log', 'Cosmetics', 'Playback'].map((tab) => (
+          <button
+            key={tab}
+            className={`btn ${mainTab === tab ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setMainTab(tab)}
+            style={{ 
+              padding: '0.5rem 1rem', 
+              fontSize: '0.9rem', 
+              background: mainTab === tab ? 'var(--bg-secondary)' : 'transparent',
+              color: mainTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
+              borderBottom: mainTab === tab ? '2px solid var(--accent-gold)' : '2px solid transparent',
+              borderRadius: '0'
+            }}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
       {/* Hero Selector Bar */}
       <div className="glass-surface" style={{ display: 'flex', gap: '1rem', padding: '1rem', marginBottom: '2rem', alignItems: 'center', overflowX: 'auto' }}>
         <button 
@@ -154,36 +195,29 @@ export default function MatchDetail() {
         </div>
       </div>
 
-      {!selectedPlayer ? (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
-            <div>
-              <MatchTimeline matchData={matchData} aiCoaching={aiCoaching} />
-            </div>
-            <div>
-              <MatchMap matchData={matchData} selectedPlayer={null} />
-            </div>
-          </div>
-          <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} onPlayerClick={setSelectedPlayer} />
-        </>
-      ) : (
-        <div className="animation-fade-in">
-          <div className="glass-surface" style={{ padding: '2rem', display: 'flex', gap: '3rem', alignItems: 'flex-start' }}>
-            {/* Hero Detailed Stats */}
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
-                <img 
-                  src={getHeroImgUrl(HEROES[selectedPlayer.hero_id]?.img_name || '')} 
-                  alt="Hero"
-                  style={{ width: '150px', height: '84px', objectFit: 'cover', borderRadius: '8px', border: '2px solid var(--border-color)' }}
-                />
-                <div>
-                  <h2 style={{ margin: 0, fontSize: '2rem' }}>{selectedPlayer.persona || 'Anonymous'}</h2>
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>{HEROES[selectedPlayer.hero_id]?.name}</div>
+      {mainTab === 'Overview' && (
+        !selectedPlayer ? (
+          <>
+            <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} onPlayerClick={setSelectedPlayer} />
+          </>
+        ) : (
+          <div className="animation-fade-in">
+            <div className="glass-surface" style={{ padding: '2rem', display: 'flex', gap: '3rem', alignItems: 'flex-start' }}>
+              {/* Hero Detailed Stats */}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
+                  <img 
+                    src={getHeroImgUrl(HEROES[selectedPlayer.hero_id]?.img_name || '')} 
+                    alt="Hero"
+                    style={{ width: '150px', height: '84px', objectFit: 'cover', borderRadius: '8px', border: '2px solid var(--border-color)' }}
+                  />
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '2rem' }}>{selectedPlayer.persona || 'Anonymous'}</h2>
+                    <div style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>{HEROES[selectedPlayer.hero_id]?.name}</div>
+                  </div>
                 </div>
-              </div>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
                 <div>
                   <h3 className="gold-text-gradient">Performance</h3>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -289,6 +323,21 @@ export default function MatchDetail() {
             </div>
           </div>
         </div>
+        )
+      )}
+
+      {mainTab === 'Playback' && (
+        <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
+          <h2 className="gold-text-gradient" style={{ marginBottom: '2rem' }}>Interactive Match Playback</h2>
+          <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} />
+        </div>
+      )}
+
+      {mainTab !== 'Overview' && mainTab !== 'Playback' && (
+        <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <h3>{mainTab} Data</h3>
+          <p>This tab is currently under construction and will be available in a future update.</p>
+        </div>
       )}
 
       {/* Render Analysis and AI Coaching at the bottom always for the primary player */}
@@ -354,22 +403,22 @@ export default function MatchDetail() {
                 <h4 style={{ marginBottom: '1rem' }}>Mistakes Identified</h4>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   <button 
-                    className={`btn ${activeTab === 'current' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('current')}
+                    className={`btn ${activeMistakeTab === 'current' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setActiveMistakeTab('current')}
                     style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                   >
                     Your Rank
                   </button>
                   <button 
-                    className={`btn ${activeTab === 'target' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('target')}
+                    className={`btn ${activeMistakeTab === 'target' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setActiveMistakeTab('target')}
                     style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                   >
                     Target Rank
                   </button>
                   <button 
-                    className={`btn ${activeTab === 'pro' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setActiveTab('pro')}
+                    className={`btn ${activeMistakeTab === 'pro' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setActiveMistakeTab('pro')}
                     style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                   >
                     Pro Level
@@ -378,9 +427,9 @@ export default function MatchDetail() {
 
                 <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1.5rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
                   <ul style={{ paddingLeft: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-                    {activeTab === 'current' && aiCoaching.mistakes_current_rank?.map((m: string, i: number) => <li key={i}>{m}</li>)}
-                    {activeTab === 'target' && aiCoaching.mistakes_target_rank?.map((m: string, i: number) => <li key={i}>{m}</li>)}
-                    {activeTab === 'pro' && aiCoaching.mistakes_pro_level?.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                    {activeMistakeTab === 'current' && aiCoaching.mistakes_current_rank?.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                    {activeMistakeTab === 'target' && aiCoaching.mistakes_target_rank?.map((m: string, i: number) => <li key={i}>{m}</li>)}
+                    {activeMistakeTab === 'pro' && aiCoaching.mistakes_pro_level?.map((m: string, i: number) => <li key={i}>{m}</li>)}
                   </ul>
                 </div>
               </div>

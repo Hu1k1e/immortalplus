@@ -56,30 +56,24 @@ Rank Benchmarks for this role:
 CRITICAL INSTRUCTIONS:
 1. DO NOT include any conversational text, thought processes, or reasoning.
 2. DO NOT use markdown backticks (e.g. ```json).
-3. YOU MUST RETURN ONLY THE RAW JSON OBJECT.
+3. KEEP YOUR INSIGHTS EXTREMELY CONCISE. No long paragraphs! Use short bullet points of 1 sentence each.
+4. YOU MUST RETURN ONLY THE RAW JSON OBJECT.
 
-Your output must perfectly match this structure:
+Your output must perfectly match this structure (very concise):
 {{
-    "mistakes_current_rank": [
-        "Mistake 1 related to their current rank benchmarks",
-        "Mistake 2..."
-    ],
-    "mistakes_target_rank": [
-        "Mistake 1 related to the next rank up benchmarks"
-    ],
-    "mistakes_pro_level": [
-        "Mistake 1 related to pro level benchmarks"
-    ],
+    "mistakes_current_rank": ["Short point 1", "Short point 2"],
+    "mistakes_target_rank": ["Short point 1"],
+    "mistakes_pro_level": ["Short point 1"],
     "action_items": [
         {{
-            "text": "Specific, actionable advice. Example: Died out of position here at 14:22 - Missing vision",
+            "text": "Short actionable advice.",
             "category": "farming",
             "difficulty": "medium",
             "priority": 1,
-            "timestamp": 862  // integer seconds if it relates to a specific event on the timeline, or null if general
+            "timestamp": null
         }}
     ],
-    "overall_summary": "A 2-3 sentence encouraging summary of their performance."
+    "overall_summary": "One sentence summary."
 }}
 """
 
