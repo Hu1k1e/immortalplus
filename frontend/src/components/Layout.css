@@ -1,0 +1,24 @@
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  background-color: var(--bg-base);
+}
+
+.main-content {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  /* Add a subtle gradient overlay to the background */
+  background: radial-gradient(
+    circle at top right,
+    rgba(226, 183, 66, 0.03),
+    transparent 40%
+  );
+}
+
+.content-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 2.5rem;
+  min-height: 100%;
+}

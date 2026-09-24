@@ -1,0 +1,28 @@
+# Python / Backend
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+
+# Database and Replays
+backend/data/
+backend/replays/
+*.db
+*.sqlite3
+
+# Node / Frontend
+node_modules/
+dist/
+.DS_Store
+
+# IDEs and Tools
+.vscode/
+.idea/
+*.swp
+
+# Documentation Docs
+instructions.md
+project_specs.md

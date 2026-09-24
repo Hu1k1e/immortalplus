@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    image: ghcr.io/hu1k1e/immortalplus-backend:main
+    container_name: immortalplus_backend
+    ports:
+      - "8000:8000"
+      - "3001:3001" # GSI port
+    volumes:
+      - immortalplus_data:/app/data
+      - immortalplus_replays:/app/replays
+    environment:
+      - DATA_DIR=/app/data
+      - REPLAYS_DIR=/app/replays
+      - FRONTEND_URL=http://localhost:3000
+      - REPLAY_PARSER_URL=http://replay_parser:8001
+    restart: unless-stopped
+
+  frontend:
+    image: ghcr.io/hu1k1e/immortalplus-frontend:main
+    container_name: immortalplus_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Replay Parser (Placeholder for Java Clarity Service)
+  replay_parser:
+    image: eclipse-temurin:21-jre-alpine
+    container_name: immortalplus_parser
+    volumes:
+      - immortalplus_replays:/app/replays
+    # We will build the jar later. For now, just keep it alive
+    command: ["sh", "-c", "echo 'Parser placeholder' && tail -f /dev/null"]
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+volumes:
+  immortalplus_data:
+    name: immortalplus_data
+  immortalplus_replays:
+    name: immortalplus_replays
