@@ -204,6 +204,10 @@ async def get_match_detail(match_id: int, session: Session = Depends(get_session
     response["teamfights"] = _parse_json_field(match.teamfights)
     response["objectives"] = _parse_json_field(match.objectives)
     response["all_players"] = _parse_json_field(match.all_players)
+    response["radiant_gold_adv"] = _parse_json_field(match.radiant_gold_adv)
+    response["radiant_xp_adv"] = _parse_json_field(match.radiant_xp_adv)
+    response["chat"] = _parse_json_field(match.chat)
+    response["draft_timings"] = _parse_json_field(match.draft_timings)
 
     return response
 
@@ -258,6 +262,24 @@ async def get_match_analysis(match_id: int, session: Session = Depends(get_sessi
         "ai_coaching": _parse_json_field(analysis.ai_coaching),
         "analyzed_at": analysis.analyzed_at.isoformat() if analysis.analyzed_at else None,
     }
+
+@router.get("/test_stratz/{match_id}")
+async def test_stratz(match_id: int, session: Session = Depends(get_session)):
+    settings = session.exec(select(UserSettings)).first()
+    if not settings or not settings.stratz_api_token:
+        return {"error": "No token"}
+    
+    import httpx
+    query = """
+    query($matchId: Long!) {
+      match(id: $matchId) {
+        id
+      }
+    }
+    """
+    client = httpx.AsyncClient(headers={"Authorization": f"Bearer {settings.stratz_api_token}"}, http2=False)
+    res = await client.post("https://api.stratz.com/graphql", json={"query": query, "variables": {"matchId": match_id}})
+    return {"status": res.status_code, "text": res.text}
 
 
 @router.post("/{match_id}/request-parse")

@@ -24,7 +24,7 @@ class StratzClient:
             matches(request: {take: $limit}) {
               id
               durationSeconds
-              radiantWin
+              didRadiantWin
               gameMode
               lobbyType
               startDateTime
@@ -71,7 +71,7 @@ class StratzClient:
                 formatted_matches.append({
                     "match_id": m.get("id"),
                     "hero_id": p.get("heroId"),
-                    "radiant_win": m.get("radiantWin"),
+                    "radiant_win": m.get("didRadiantWin"),
                     "player_slot": 0 if p.get("isRadiant") else 128, # Approximation
                     "duration": m.get("durationSeconds"),
                     "game_mode": m.get("gameMode"),
@@ -101,7 +101,7 @@ class StratzClient:
           match(id: $matchId) {
             id
             durationSeconds
-            radiantWin
+            didRadiantWin
             gameMode
             lobbyType
             startDateTime
@@ -119,7 +119,7 @@ class StratzClient:
               level
               heroDamage
               towerDamage
-              heal
+              heroHealing
               networth
               item0Id
               item1Id
@@ -136,8 +136,6 @@ class StratzClient:
                 experiencePerMinute
                 lastHitsPerMinute
                 deniesPerMinute
-                wardObserver
-                wardSentry
               }
               playbackData {
                 killEvents {
@@ -145,15 +143,23 @@ class StratzClient:
                   positionX
                   positionY
                 }
-                wardEvents {
+                deathEvents {
                   time
                   positionX
                   positionY
-                  wardType
                 }
                 purchaseEvents {
                   time
                   itemId
+                }
+                goldEvents {
+                  time
+                  gold
+                }
+                csEvents {
+                  time
+                  lastHits
+                  denies
                 }
               }
             }
@@ -176,7 +182,7 @@ class StratzClient:
             formatted = {
                 "match_id": match_data.get("id"),
                 "duration": match_data.get("durationSeconds"),
-                "radiant_win": match_data.get("radiantWin"),
+                "radiant_win": match_data.get("didRadiantWin"),
                 "game_mode": match_data.get("gameMode"),
                 "lobby_type": match_data.get("lobbyType"),
                 "start_time": match_data.get("startDateTime"),
@@ -190,16 +196,9 @@ class StratzClient:
                 stats = p.get("stats") or {}
                 
                 # Items: Stratz might return item IDs as integers
-                # Wards
+                # Ward data not available via Stratz playbackData, will rely on OpenDota
                 obs_log = []
                 sen_log = []
-                for w in playback.get("wardEvents", []):
-                    # OpenDota coords are 64-192. Stratz coords are 0-256 usually, need to check, but we map directly
-                    evt = {"time": w.get("time"), "x": w.get("positionX", 0), "y": w.get("positionY", 0)}
-                    if w.get("wardType") == "OBSERVER":
-                        obs_log.append(evt)
-                    else:
-                        sen_log.append(evt)
                         
                 # Kills
                 kills_log = []
@@ -223,13 +222,13 @@ class StratzClient:
                     "xp_per_min": p.get("experiencePerMinute"),
                     "hero_damage": p.get("heroDamage"),
                     "tower_damage": p.get("towerDamage"),
-                    "hero_healing": p.get("heal"),
+                    "hero_healing": p.get("heroHealing"),
                     "last_hits": p.get("numLastHits"),
                     "denies": p.get("numDenies"),
                     "level": p.get("level"),
                     "net_worth": p.get("networth"),
-                    "obs_placed": sum(1 for w in playback.get("wardEvents", []) if w.get("wardType") == "OBSERVER") if playback.get("wardEvents") else 0,
-                    "sen_placed": sum(1 for w in playback.get("wardEvents", []) if w.get("wardType") != "OBSERVER") if playback.get("wardEvents") else 0,
+                    "obs_placed": 0,
+                    "sen_placed": 0,
                     "item_0": p.get("item0Id"),
                     "item_1": p.get("item1Id"),
                     "item_2": p.get("item2Id"),

@@ -197,6 +197,10 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
     match.sen_log = json.dumps(player_data.get("sen_log")) if player_data.get("sen_log") else None
     match.teamfights = json.dumps(data.get("teamfights")) if data.get("teamfights") else None
     match.objectives = json.dumps(data.get("objectives")) if data.get("objectives") else None
+    match.radiant_gold_adv = json.dumps(data.get("radiant_gold_adv")) if data.get("radiant_gold_adv") else None
+    match.radiant_xp_adv = json.dumps(data.get("radiant_xp_adv")) if data.get("radiant_xp_adv") else None
+    match.chat = json.dumps(data.get("chat")) if data.get("chat") else None
+    match.draft_timings = json.dumps(data.get("draft_timings")) if data.get("draft_timings") else None
 
     # Item slots
     items = [player_data.get(f"item_{i}") for i in range(6)]
@@ -205,12 +209,13 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
     match.backpack = json.dumps(backpack)
     match.neutral_item = player_data.get("item_neutral")
 
-    # All 10 players summary
+    # All 10 players - comprehensive data for all tabs
     all_players = []
     for p in data.get("players", []):
         all_players.append({
             "hero_id": p.get("hero_id"),
             "player_slot": p.get("player_slot"),
+            "account_id": p.get("account_id"),
             "kills": p.get("kills"),
             "deaths": p.get("deaths"),
             "assists": p.get("assists"),
@@ -229,9 +234,60 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "obs_placed": p.get("obs_placed", 0),
             "sen_placed": p.get("sen_placed", 0),
             "net_worth": p.get("net_worth", 0),
+            "rank_tier": p.get("rank_tier"),
+            # Time series for graphs
+            "gold_t": p.get("gold_t"),
+            "xp_t": p.get("xp_t"),
+            "lh_t": p.get("lh_t"),
+            "dn_t": p.get("dn_t"),
+            # Logs for detailed tabs
             "obs_log": p.get("obs_log", []),
             "sen_log": p.get("sen_log", []),
-            "kills_log": p.get("kills_log", [])
+            "kills_log": p.get("kills_log", []),
+            "purchase_log": p.get("purchase_log", []),
+            "runes_log": p.get("runes_log", []),
+            # Laning tab data
+            "lane": p.get("lane"),
+            "lane_role": p.get("lane_role"),
+            "is_roaming": p.get("is_roaming"),
+            "lane_efficiency": p.get("lane_efficiency"),
+            "lane_efficiency_pct": p.get("lane_efficiency_pct"),
+            # Benchmarks tab
+            "benchmarks": p.get("benchmarks"),
+            # Performance tab
+            "multi_kills": p.get("multi_kills"),
+            "kill_streaks": p.get("kill_streaks"),
+            "stuns": p.get("stuns"),
+            "creeps_stacked": p.get("creeps_stacked"),
+            "camps_stacked": p.get("camps_stacked"),
+            "rune_pickups": p.get("rune_pickups"),
+            "firstblood_claimed": p.get("firstblood_claimed"),
+            "teamfight_participation": p.get("teamfight_participation"),
+            "towers_killed": p.get("towers_killed"),
+            "roshans_killed": p.get("roshans_killed"),
+            "max_hero_hit": p.get("max_hero_hit"),
+            "buyback_count": p.get("buyback_count"),
+            "pings": p.get("pings"),
+            "actions_per_min": p.get("actions_per_min"),
+            # Combat tab data
+            "damage_targets": p.get("damage_targets"),
+            "damage_inflictor": p.get("damage_inflictor"),
+            "damage_inflictor_received": p.get("damage_inflictor_received"),
+            # Farm tab
+            "gold_reasons": p.get("gold_reasons"),
+            "xp_reasons": p.get("xp_reasons"),
+            # Casts tab
+            "ability_uses": p.get("ability_uses"),
+            "ability_targets": p.get("ability_targets"),
+            "item_uses": p.get("item_uses"),
+            # Vision tab
+            "obs_left_log": p.get("obs_left_log", []),
+            "sen_left_log": p.get("sen_left_log", []),
+            # Actions tab
+            "life_state": p.get("life_state"),
+            "life_state_dead": p.get("life_state_dead"),
+            # Cosmetics
+            "cosmetics": p.get("cosmetics"),
         })
     match.all_players = json.dumps(all_players)
 

@@ -6,6 +6,7 @@ import { ITEMS } from '../lib/items';
 
 import MatchScoreboard from '../components/MatchScoreboard';
 import MatchMap from '../components/MatchMap';
+import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab } from '../components/MatchTabs';
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -333,10 +334,24 @@ export default function MatchDetail() {
         </div>
       )}
 
-      {mainTab !== 'Overview' && mainTab !== 'Playback' && (
+      {mainTab === 'Benchmarks' && <BenchmarksTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Performances' && <PerformancesTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Laning' && <LaningTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Combat' && <CombatTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Farm' && <FarmTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Items' && <ItemsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Casts' && <CastsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Objectives' && <ObjectivesTab objectives={matchData.objectives || []} allPlayers={allPlayers} />}
+      {mainTab === 'Vision' && <VisionTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Actions' && <ActionsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Teamfights' && <TeamfightsTab teamfights={matchData.teamfights || []} allPlayers={allPlayers} />}
+      {mainTab === 'Chat' && <ChatTab chat={matchData.chat || []} allPlayers={allPlayers} />}
+      {mainTab === 'Log' && <LogTab allPlayers={allPlayers} matchData={matchData} />}
+
+      {['Graphs', 'Fantasy', 'Story', 'Cosmetics'].includes(mainTab) && (
         <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <h3>{mainTab} Data</h3>
-          <p>This tab is currently under construction and will be available in a future update.</p>
+          <p>This tab will be available in a future update.</p>
         </div>
       )}
 

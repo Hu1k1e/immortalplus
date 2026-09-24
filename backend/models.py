@@ -69,6 +69,10 @@ class Match(SQLModel, table=True):
     player_slot: Optional[int] = None
     radiant_win: Optional[bool] = None
     all_players: Optional[str] = None   # JSON: all 10 players summary
+    radiant_gold_adv: Optional[str] = None  # JSON array: team gold advantage per minute
+    radiant_xp_adv: Optional[str] = None    # JSON array: team xp advantage per minute  
+    chat: Optional[str] = None              # JSON array: match chat log
+    draft_timings: Optional[str] = None     # JSON array: draft pick/ban order
     played_at: Optional[datetime] = None
     synced_at: datetime = Field(default_factory=datetime.utcnow)
 
