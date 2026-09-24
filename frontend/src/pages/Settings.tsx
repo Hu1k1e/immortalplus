@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import api from '../lib/api';
 
 export default function Settings() {
+  const [steamAccountId, setSteamAccountId] = useState('');
   const [steamApiKey, setSteamApiKey] = useState('');
   const [opendotaApiKey, setOpendotaApiKey] = useState('');
   const [stratzApiToken, setStratzApiToken] = useState('');
@@ -11,6 +12,7 @@ export default function Settings() {
 
   useEffect(() => {
     api.get('/settings').then((res) => {
+      setSteamAccountId(res.data.steam_account_id ? res.data.steam_account_id.toString() : '');
       setSteamApiKey(res.data.steam_api_key || '');
       setOpendotaApiKey(res.data.opendota_api_key || '');
       setStratzApiToken(res.data.stratz_api_token || '');
@@ -27,6 +29,7 @@ export default function Settings() {
     setMessage('');
     try {
       await api.put('/settings', {
+        steam_account_id: steamAccountId ? parseInt(steamAccountId, 10) : null,
         steam_api_key: steamApiKey,
         opendota_api_key: opendotaApiKey,
         stratz_api_token: stratzApiToken,
@@ -74,10 +77,20 @@ export default function Settings() {
 
         <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)', margin: '2rem 0' }} />
 
-        <h3 style={{ marginBottom: '1.5rem' }}>API Configuration</h3>
+        <h3 style={{ marginBottom: '1.5rem' }}>API & Account Configuration</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '400px', marginBottom: '2rem' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            Steam API Key
+            Steam Account ID (32-bit ID) <span style={{ color: 'var(--dire-red)', fontSize: '0.8rem' }}>*Required to sync matches</span>
+            <input 
+              type="text" 
+              value={steamAccountId}
+              onChange={(e) => setSteamAccountId(e.target.value)}
+              placeholder="e.g. 86745912" 
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
+            />
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            Steam API Key (Optional)
             <input 
               type="text" 
               value={steamApiKey}

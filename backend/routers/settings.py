@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
 class SettingsUpdate(BaseModel):
+    steam_account_id: Optional[int] = None
     steam_api_key: Optional[str] = None
     opendota_api_key: Optional[str] = None
     stratz_api_token: Optional[str] = None
@@ -57,9 +58,10 @@ class SettingsUpdate(BaseModel):
 async def get_settings(session: Session = Depends(get_session)):
     """Get current settings."""
     settings = session.exec(select(UserSettings).limit(1)).first()
+    player = session.exec(select(Player).limit(1)).first()
+
     if not settings:
         # Create defaults
-        player = session.exec(select(Player).limit(1)).first()
         settings = UserSettings(player_id=player.id if player else None)
         session.add(settings)
         session.commit()
@@ -67,6 +69,7 @@ async def get_settings(session: Session = Depends(get_session)):
 
     return {
         "id": settings.id,
+        "steam_account_id": player.account_id if player else None,
         "steam_api_key": settings.steam_api_key or "",
         "opendota_api_key": settings.opendota_api_key or "",
         "stratz_api_token": settings.stratz_api_token or "",
@@ -107,13 +110,34 @@ async def update_settings(
     session: Session = Depends(get_session),
 ):
     """Update settings. Only non-null fields are updated."""
+    player = session.exec(select(Player).limit(1)).first()
+    
+    # Create or update player if steam_account_id is provided
+    if update.steam_account_id is not None:
+        if not player:
+            player = Player(steam_id=str(update.steam_account_id), account_id=update.steam_account_id)
+            session.add(player)
+            session.commit()
+            session.refresh(player)
+        else:
+            player.account_id = update.steam_account_id
+            player.steam_id = str(update.steam_account_id)
+            session.add(player)
+
     settings = session.exec(select(UserSettings).limit(1)).first()
     if not settings:
-        player = session.exec(select(Player).limit(1)).first()
         settings = UserSettings(player_id=player.id if player else None)
+        session.add(settings)
+    elif player and settings.player_id is None:
+        settings.player_id = player.id
         session.add(settings)
 
     update_data = update.model_dump(exclude_unset=True, exclude_none=True)
+    
+    # Remove steam_account_id from settings update dict as it belongs to Player
+    if 'steam_account_id' in update_data:
+        del update_data['steam_account_id']
+
     for key, value in update_data.items():
         if hasattr(settings, key):
             setattr(settings, key, value)
