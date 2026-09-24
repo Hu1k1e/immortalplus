@@ -24,6 +24,9 @@ class SettingsUpdate(BaseModel):
     steam_api_key: Optional[str] = None
     opendota_api_key: Optional[str] = None
     stratz_api_token: Optional[str] = None
+    openai_api_key: Optional[str] = None
+    openai_api_base: Optional[str] = None
+    openai_model: Optional[str] = None
     theme: Optional[str] = None
     primary_role: Optional[str] = None
     preferred_heroes: Optional[str] = None
@@ -73,6 +76,9 @@ async def get_settings(session: Session = Depends(get_session)):
         "steam_api_key": settings.steam_api_key or "",
         "opendota_api_key": settings.opendota_api_key or "",
         "stratz_api_token": settings.stratz_api_token or "",
+        "openai_api_key": settings.openai_api_key or "",
+        "openai_api_base": settings.openai_api_base or "",
+        "openai_model": settings.openai_model or "",
         "theme": settings.theme,
         "primary_role": settings.primary_role,
         "preferred_heroes": settings.preferred_heroes,

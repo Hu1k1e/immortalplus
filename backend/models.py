@@ -228,6 +228,11 @@ class UserSettings(SQLModel, table=True):
     steam_api_key: Optional[str] = None
     opendota_api_key: Optional[str] = None
     stratz_api_token: Optional[str] = None
+    
+    # LLM Settings
+    openai_api_key: Optional[str] = None
+    openai_api_base: Optional[str] = None
+    openai_model: Optional[str] = None
 
     # Player preferences
     theme: str = "default"
