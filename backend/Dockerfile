@@ -40,7 +40,7 @@ ENV PORT=8000
 
 # Expose ports (API and GSI)
 EXPOSE 8000
-EXPOSE 3001
+EXPOSE 9487
 
 # Run the application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

@@ -23,7 +23,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 REPLAY_PARSER_URL = os.getenv("REPLAY_PARSER_URL", "http://replay-parser:8001")
 
 # GSI
-GSI_PORT = int(os.getenv("GSI_PORT", "3001"))
+GSI_PORT = int(os.getenv("GSI_PORT", "9487"))
 
 # API defaults (overridden by user settings in DB)
 OPENDOTA_BASE_URL = "https://api.opendota.com/api"

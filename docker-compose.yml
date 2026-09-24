@@ -6,7 +6,7 @@ services:
     container_name: immortalplus_backend
     ports:
       - "8000:8000"
-      - "3001:3001" # GSI port
+      - "9487:8000" # GSI port
     volumes:
       - immortalplus_data:/app/data
       - immortalplus_replays:/app/replays

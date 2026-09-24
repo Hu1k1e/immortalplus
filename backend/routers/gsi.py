@@ -65,7 +65,7 @@ async def get_gsi_config():
     """
     config = '''"Immortal+ Coach"
 {
-    "uri"           "http://localhost:8000/api/gsi"
+    "uri"           "http://localhost:9487/api/gsi"
     "timeout"       "5.0"
     "buffer"        "0.1"
     "throttle"      "0.5"

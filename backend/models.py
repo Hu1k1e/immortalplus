@@ -251,7 +251,7 @@ class UserSettings(SQLModel, table=True):
 
     # Draft helper
     gsi_enabled: bool = False
-    gsi_port: int = 3001
+    gsi_port: int = 9487
     draft_min_comfort_games: int = 10
     draft_show_meta_tier: bool = True
     draft_priority: str = "balanced"        # counterpick, comfort, meta, balanced
