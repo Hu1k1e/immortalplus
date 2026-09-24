@@ -159,8 +159,8 @@ export default function DraftHelper() {
                   />
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontWeight: 'bold' }}>{hero.name}</span>
-                    <span style={{ fontSize: '0.8rem', color: s.score > 70 ? 'var(--radiant-green)' : 'var(--accent-gold)' }}>Score: {s.score.toFixed(1)}</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.reasoning[0]}</span>
+                    <span style={{ fontSize: '0.8rem', color: s.composite_score > 70 ? 'var(--radiant-green)' : 'var(--accent-gold)' }}>Score: {s.composite_score.toFixed(1)}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{s.reasons && s.reasons.length > 0 ? s.reasons[0] : 'Solid pick'}</span>
                   </div>
                 </div>
               );
