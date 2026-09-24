@@ -5,7 +5,7 @@ services:
     image: ghcr.io/hu1k1e/immortalplus-backend:main
     container_name: immortalplus_backend
     ports:
-      - "8000:8000"
+      - "9486:8000"
       - "9487:8000" # GSI port
     volumes:
       - immortalplus_data:/app/data
