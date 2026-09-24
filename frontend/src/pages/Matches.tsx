@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../lib/api';
-import { HEROES } from '../lib/heroes';
+import { HEROES, getHeroImgUrl } from '../lib/heroes';
 
 export default function Matches() {
   const [matches, setMatches] = useState<any[]>([]);
@@ -36,10 +36,6 @@ export default function Matches() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getHeroImgUrl = (imgName: string) => {
-    return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${imgName}.png`;
   };
 
   return (

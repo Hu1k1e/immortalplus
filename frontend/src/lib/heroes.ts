@@ -635,3 +635,7 @@ export const HEROES: Record<number, { id: number; name: string; img_name: string
     "img_name": "largo"
   }
 };
+
+export const getHeroImgUrl = (imgName: string) => {
+  return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${imgName}.png`;
+};

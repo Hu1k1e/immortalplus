@@ -147,7 +147,7 @@ export default function DraftHelper() {
           </div>
         ) : suggestions.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
-            {suggestions.slice(0, 8).map((s, idx) => {
+            {suggestions.slice(0, 8).map((s) => {
               const hero = HEROES[s.hero_id];
               if (!hero) return null;
               return (
