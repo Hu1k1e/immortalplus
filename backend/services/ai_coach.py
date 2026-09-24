@@ -87,18 +87,21 @@ Your task is to return a JSON object with exactly the following structure. Do no
             max_tokens=1000
         )
         
-        content = response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip() if response.choices and response.choices[0].message.content else ""
+        logger.info(f"Raw LLM output: {content}")
         
-        # Strip potential markdown formatting if the LLM ignores instructions
-        if content.startswith("```json"):
-            content = content[7:]
-        if content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
+        if not content:
+            raise ValueError("LLM returned an empty response")
             
-        result = json.loads(content.strip())
-        return result
+        # Use regex to find the first { and last } to extract JSON
+        import re
+        match = re.search(r'\{.*\}', content, re.DOTALL)
+        if match:
+            json_str = match.group(0)
+            result = json.loads(json_str)
+            return result
+        else:
+            raise ValueError(f"Could not find JSON object in LLM response: {content}")
         
     except Exception as e:
         logger.error(f"Failed to generate AI coaching: {e}", exc_info=True)
