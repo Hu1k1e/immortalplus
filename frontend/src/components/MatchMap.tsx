@@ -96,11 +96,11 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
       {/* Map Container */}
       <div style={{ position: 'relative', width: mapSize, maxWidth: '600px', aspectRatio: '1/1', background: '#0a0a0a', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', margin: compact ? '0' : '0 auto' }}>
         <img 
-          src="https://cdn.stratz.com/images/dota2/map/map_7.33.png" 
+          src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/minimap.png" 
           alt="Dota 2 Map"
           style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
           onError={(e) => {
-            e.currentTarget.src = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/minimap.png';
+            e.currentTarget.src = 'https://cdn.stratz.com/images/dota2/map/map_7.33.png';
           }}
         />
 

@@ -151,8 +151,18 @@ export default function MatchDetail() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {!aiCoaching && (
+            <button 
+              className="btn btn-primary" 
+              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+              onClick={handleAiAnalysis}
+              disabled={analyzingAi}
+            >
+              {analyzingAi ? 'Analyzing...' : 'Analyze with AI Coach'}
+            </button>
+          )}
           <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleRefetch}>
-            🔄 Re-parse
+            🔄 Sync Data
           </button>
           {!matchData.is_parsed && (
             <button 
@@ -161,7 +171,7 @@ export default function MatchDetail() {
               onClick={handleRequestParse}
               disabled={parseState === 'requesting' || parseState === 'requested'}
             >
-              {parseState === 'idle' && '⬇ Replay'}
+              {parseState === 'idle' && '⬇ Parse Replay'}
               {parseState === 'requesting' && 'Requesting...'}
               {parseState === 'requested' && '✓ Requested'}
               {parseState === 'error' && '✗ Failed'}
@@ -217,8 +227,8 @@ export default function MatchDetail() {
             <div style={{ flex: '0 0 35%', minWidth: '350px' }}>
               <MatchMap matchData={matchData} selectedPlayer={null} compact={false} />
             </div>
-            <div style={{ flex: '1 1 auto', overflowX: 'auto' }}>
-              <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} onPlayerClick={setSelectedPlayer} />
+            <div style={{ flex: '1 1 auto' }}>
+              <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} onPlayerClick={setSelectedPlayer} compact={true} />
             </div>
           </div>
         ) : (
@@ -377,19 +387,6 @@ export default function MatchDetail() {
 
       {/* Render Analysis and AI Coaching at the bottom always for the primary player */}
       <div style={{ marginTop: '3rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 className="gold-text-gradient" style={{ margin: 0 }}>Your Analysis</h2>
-          {!aiCoaching && (
-            <button 
-              className="btn btn-primary" 
-              onClick={handleAiAnalysis}
-              disabled={analyzingAi}
-            >
-              {analyzingAi ? 'AI is analyzing...' : 'Analyze with AI Coach'}
-            </button>
-          )}
-        </div>
-
         {aiError && (
           <div style={{ padding: '1rem', background: 'rgba(255, 60, 60, 0.1)', border: '1px solid var(--dire-red)', borderRadius: '8px', color: 'var(--dire-red)', marginBottom: '2rem' }}>
             {aiError}

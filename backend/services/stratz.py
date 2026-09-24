@@ -152,15 +152,6 @@ class StratzClient:
                   time
                   itemId
                 }
-                goldEvents {
-                  time
-                  gold
-                }
-                csEvents {
-                  time
-                  lastHits
-                  denies
-                }
               }
             }
           }
