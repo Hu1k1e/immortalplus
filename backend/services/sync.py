@@ -31,7 +31,9 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
         logger.warning(f"Player {player.steam_id} has no account_id — skipping sync")
         return 0
 
-    client = get_opendota_client(settings.opendota_api_key if settings else None)
+    # Fetch recent matches
+    source = settings.data_source if settings else "both"
+    matches = None
 
     # Find the most recent match we have
     stmt = (
@@ -43,15 +45,30 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
     latest = session.exec(stmt).first()
     last_match_id = latest.match_id if latest else 0
 
-    # Fetch recent matches from OpenDota
-    try:
-        matches = await client.get_player_matches(
-            player.account_id,
-            limit=50,
-            significant=0,  # Include all matches
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch matches for {player.account_id}: {e}")
+    if source in ["stratz", "both"]:
+        from services.stratz import get_stratz_client
+        stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
+        if stratz_client:
+            try:
+                matches = await stratz_client.get_player_matches(player.account_id, limit=50)
+            except Exception as e:
+                logger.error(f"Failed to fetch matches from Stratz for {player.account_id}: {e}")
+                if source == "stratz":
+                    return 0
+
+    if not matches and source in ["opendota", "both"]:
+        client = get_opendota_client(settings.opendota_api_key if settings else None)
+        try:
+            matches = await client.get_player_matches(
+                player.account_id,
+                limit=50,
+                significant=0,  # Include all matches
+            )
+        except Exception as e:
+            logger.error(f"Failed to fetch matches from OpenDota for {player.account_id}: {e}")
+            return 0
+
+    if not matches:
         return 0
 
     new_count = 0
@@ -113,15 +130,31 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
 
 async def fetch_match_details(session: Session, match: Match, settings: UserSettings):
     """
-    Fetch full match details from OpenDota and enrich the stored match.
-    This gets parsed data if available (gold_t, xp_t, obs_log, etc.)
+    Fetch full match details from chosen data source and enrich the stored match.
     """
-    client = get_opendota_client(settings.opendota_api_key if settings else None)
+    source = settings.data_source if settings else "both"
+    
+    data = None
+    if source in ["stratz", "both"]:
+        from services.stratz import get_stratz_client
+        stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
+        if stratz_client:
+            try:
+                data = await stratz_client.get_match(match.match_id)
+            except Exception as e:
+                logger.error(f"Stratz failed for match {match.match_id}: {e}")
+                if source == "stratz":
+                    return False
+        
+    if not data and source in ["opendota", "both"]:
+        client = get_opendota_client(settings.opendota_api_key if settings else None)
+        try:
+            data = await client.get_match(match.match_id)
+        except Exception as e:
+            logger.error(f"OpenDota failed for match {match.match_id}: {e}")
+            return False
 
-    try:
-        data = await client.get_match(match.match_id)
-    except Exception as e:
-        logger.error(f"Failed to fetch details for match {match.match_id}: {e}")
+    if not data:
         return False
 
     # Find our player in the match
@@ -182,7 +215,10 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "persona": p.get("personaname", ""),
             "obs_placed": p.get("obs_placed", 0),
             "sen_placed": p.get("sen_placed", 0),
-            "net_worth": p.get("net_worth", 0)
+            "net_worth": p.get("net_worth", 0),
+            "obs_log": p.get("obs_log", []),
+            "sen_log": p.get("sen_log", []),
+            "kills_log": p.get("kills_log", [])
         })
     match.all_players = json.dumps(all_players)
 

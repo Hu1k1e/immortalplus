@@ -36,6 +36,7 @@ class SettingsUpdate(BaseModel):
     sync_interval_minutes: Optional[int] = None
     auto_parse_replays: Optional[bool] = None
     replay_storage_limit_gb: Optional[int] = None
+    data_source: Optional[str] = None
     analysis_depth: Optional[str] = None
     benchmark_target: Optional[str] = None
     include_turbo: Optional[bool] = None
@@ -88,6 +89,7 @@ async def get_settings(session: Session = Depends(get_session)):
         "sync_interval_minutes": settings.sync_interval_minutes,
         "auto_parse_replays": settings.auto_parse_replays,
         "replay_storage_limit_gb": settings.replay_storage_limit_gb,
+        "data_source": settings.data_source,
         "analysis_depth": settings.analysis_depth,
         "benchmark_target": settings.benchmark_target,
         "include_turbo": settings.include_turbo,

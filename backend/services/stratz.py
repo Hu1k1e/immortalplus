@@ -1,277 +1,258 @@
-"""
-Stratz GraphQL API client.
-Provides rank-bracket-specific hero stats, matchups, synergies, and meta trends.
-
-API: https://api.stratz.com/graphql
-Playground: https://api.stratz.com/graphiql/
-Auth: Bearer token from Stratz website (Steam login)
-"""
-
-import logging
-from typing import Any, Optional
-
 import httpx
-
-from config import STRATZ_BASE_URL
-from utils.cache import get_cached, set_cached
-from utils.rate_limiter import get_limiter
+import logging
+from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
 
-_limiter = get_limiter("stratz", rpm=100, monthly=500000)
-
+STRATZ_API_URL = "https://api.stratz.com/graphql"
 
 class StratzClient:
-    """Async client for the Stratz GraphQL API."""
-
-    def __init__(self, api_token: Optional[str] = None):
-        self.api_url = STRATZ_BASE_URL
+    def __init__(self, api_token: str):
         self.api_token = api_token
-        self._client: Optional[httpx.AsyncClient] = None
+        self.headers = {
+            "Authorization": f"Bearer {api_token}",
+            "User-Agent": "ImmortalPlus/1.0"
+        }
+        # Configure client without HTTP/2 to prevent framing errors
+        self.client = httpx.AsyncClient(headers=self.headers, http2=False)
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            headers = {"Content-Type": "application/json"}
-            if self.api_token:
-                headers["Authorization"] = f"Bearer {self.api_token}"
-            self._client = httpx.AsyncClient(
-                timeout=30.0,
-                headers=headers,
-            )
-        return self._client
-
-    async def _query(self, query: str, variables: Optional[dict] = None) -> dict:
-        """Execute a GraphQL query against the Stratz API."""
-        await _limiter.acquire()
-        client = await self._get_client()
-
-        payload = {"query": query}
-        if variables:
-            payload["variables"] = variables
-
-        try:
-            resp = await client.post(self.api_url, json=payload)
-            resp.raise_for_status()
-            result = resp.json()
-
-            if "errors" in result:
-                logger.warning(f"Stratz GraphQL errors: {result['errors']}")
-
-            return result.get("data", {})
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Stratz API error: {e.response.status_code}")
-            raise
-        except httpx.RequestError as e:
-            logger.error(f"Stratz request failed: {e}")
-            raise
-
-    async def close(self):
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-
-    # ── Hero meta by rank bracket ─────────────────────────────────
-
-    async def get_hero_stats_by_bracket(
-        self, bracket: Optional[int] = None, take: int = 20
-    ) -> list:
-        """
-        Get hero stats (winrate, pick count, ban count) filtered by rank bracket.
-        Bracket: 1=Herald, 2=Guardian, ..., 7=Divine, 8=Immortal
-        """
-        cache_key = f"stratz_hero_stats_{bracket}"
-        cached = get_cached("meta", cache_key)
-        if cached:
-            return cached
-
-        bracket_filter = f"bracketBasicIds: [{bracket}]" if bracket else ""
-        query = f"""
-        {{
-            heroStats {{
-                winDay(take: {take} {bracket_filter}) {{
-                    heroId
-                    winCount
-                    matchCount
-                    day
-                }}
-            }}
-        }}
-        """
-        data = await self._query(query)
-        result = data.get("heroStats", {}).get("winDay", [])
-        set_cached("meta", cache_key, value=result)
-        return result
-
-    async def get_hero_meta_trends(self, bracket: Optional[int] = None) -> list:
-        """Get hero pick/win/ban rates for current patch by rank bracket."""
-        cache_key = f"stratz_meta_trends_{bracket}"
-        cached = get_cached("meta", cache_key)
-        if cached:
-            return cached
-
-        bracket_filter = (
-            f"positionIds: null, bracketBasicIds: [{bracket}]" if bracket else ""
-        )
-        query = f"""
-        {{
-            heroStats {{
-                stats({bracket_filter}) {{
-                    heroId
-                    matchCount
-                    winCount
-                    banCount
-                }}
-            }}
-        }}
-        """
-        data = await self._query(query)
-        result = data.get("heroStats", {}).get("stats", [])
-        set_cached("meta", cache_key, value=result)
-        return result
-
-    # ── Hero matchups ─────────────────────────────────────────────
-
-    async def get_hero_matchups(
-        self, hero_id: int, bracket: Optional[int] = None
-    ) -> list:
-        """Get matchup data for a specific hero against all opponents."""
-        cache_key = f"stratz_matchup_{hero_id}_{bracket}"
-        cached = get_cached("matchups", cache_key)
-        if cached:
-            return cached
-
-        bracket_filter = f"bracketBasicIds: [{bracket}]" if bracket else ""
-        query = f"""
-        {{
-            heroStats {{
-                heroVsHeroMatchup(heroId: {hero_id} {bracket_filter}) {{
-                    advantage {{
-                        heroId
-                        with {{
-                            heroId2
-                            matchCount
-                            winCount
-                        }}
-                        vs {{
-                            heroId2
-                            matchCount
-                            winCount
-                        }}
-                    }}
-                }}
-            }}
-        }}
-        """
-        data = await self._query(query)
-        result = (
-            data.get("heroStats", {}).get("heroVsHeroMatchup", {}).get("advantage", [])
-        )
-        set_cached("matchups", cache_key, value=result)
-        return result
-
-    # ── Player data ───────────────────────────────────────────────
-
-    async def get_player_hero_performance(
-        self, steam_id: int, hero_id: Optional[int] = None
-    ) -> dict:
-        """Get a player's hero-specific performance."""
-        hero_filter = f"heroId: {hero_id}" if hero_id else ""
-        query = f"""
-        {{
-            player(steamAccountId: {steam_id}) {{
-                heroesPerformance({hero_filter}) {{
-                    heroId
-                    matchCount
-                    winCount
-                    avgKills
-                    avgDeaths
-                    avgAssists
-                    avgGpm
-                    avgXpm
-                    lastPlayedDateTime
-                }}
-            }}
-        }}
-        """
-        data = await self._query(query)
-        return data.get("player", {}).get("heroesPerformance", [])
-
-    # ── Match details ─────────────────────────────────────────────
-
-    async def get_match_details(self, match_id: int) -> dict:
-        """Get detailed match data from Stratz."""
-        query = f"""
-        {{
-            match(id: {match_id}) {{
-                id
-                didRadiantWin
-                durationSeconds
-                gameMode
-                lobbyType
-                rank
-                players {{
-                    heroId
-                    isRadiant
-                    kills
-                    deaths
-                    assists
-                    goldPerMinute
-                    experiencePerMinute
-                    heroDamage
-                    towerDamage
-                    heroHealing
-                    numLastHits
-                    numDenies
-                    level
-                    lane
-                    role
-                    imp
-                    award
-                    item0Id
-                    item1Id
-                    item2Id
-                    item3Id
-                    item4Id
-                    item5Id
-                    backpack0Id
-                    backpack1Id
-                    backpack2Id
-                    neutral0Id
-                }}
-            }}
-        }}
-        """
-        data = await self._query(query)
-        return data.get("match", {})
-
-    # ── Constants ─────────────────────────────────────────────────
-
-    async def get_game_version(self) -> dict:
-        """Get current game version/patch info."""
+    async def get_player_matches(self, account_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch recent matches for a player using Stratz GraphQL."""
         query = """
-        {
-            constants {
-                gameVersions {
-                    id
-                    name
-                    date
-                }
+        query($accountId: Long!, $limit: Int) {
+          player(steamAccountId: $accountId) {
+            matches(request: {take: $limit}) {
+              id
+              durationSeconds
+              radiantWin
+              gameMode
+              lobbyType
+              startDateTime
+              players(steamAccountId: $accountId) {
+                heroId
+                isRadiant
+                kills
+                deaths
+                assists
+                numLastHits
+                numDenies
+                goldPerMinute
+                experiencePerMinute
+                level
+                heroDamage
+                towerDamage
+                partyId
+              }
             }
+          }
         }
         """
-        data = await self._query(query)
-        versions = data.get("constants", {}).get("gameVersions", [])
-        return versions[-1] if versions else {}
+        variables = {
+            "accountId": account_id,
+            "limit": limit
+        }
+        
+        try:
+            response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
+            response.raise_for_status()
+            data = response.json()
+            matches = data.get("data", {}).get("player", {}).get("matches", [])
+            
+            # Format to match OpenDota style for our sync engine
+            formatted_matches = []
+            for m in matches:
+                p = m.get("players", [])[0] if m.get("players") else {}
+                formatted_matches.append({
+                    "match_id": m.get("id"),
+                    "hero_id": p.get("heroId"),
+                    "radiant_win": m.get("radiantWin"),
+                    "player_slot": 0 if p.get("isRadiant") else 128, # Approximation
+                    "duration": m.get("durationSeconds"),
+                    "game_mode": m.get("gameMode"),
+                    "lobby_type": m.get("lobbyType"),
+                    "start_time": m.get("startDateTime"),
+                    "kills": p.get("kills"),
+                    "deaths": p.get("deaths"),
+                    "assists": p.get("assists"),
+                    "gold_per_min": p.get("goldPerMinute"),
+                    "xp_per_min": p.get("experiencePerMinute"),
+                    "hero_damage": p.get("heroDamage"),
+                    "tower_damage": p.get("towerDamage"),
+                    "last_hits": p.get("numLastHits"),
+                    "denies": p.get("numDenies"),
+                    "level": p.get("level"),
+                    "party_size": 1 if not p.get("partyId") else 2, # Approximation
+                })
+            return formatted_matches
+        except Exception as e:
+            logger.error(f"Stratz get_player_matches error: {e}")
+            raise
 
+    async def get_match(self, match_id: int) -> Dict[str, Any]:
+        """Fetch deep match data including playback events from Stratz."""
+        query = """
+        query($matchId: Long!) {
+          match(id: $matchId) {
+            id
+            durationSeconds
+            radiantWin
+            gameMode
+            lobbyType
+            startDateTime
+            players {
+              steamAccountId
+              heroId
+              isRadiant
+              kills
+              deaths
+              assists
+              numLastHits
+              numDenies
+              goldPerMinute
+              experiencePerMinute
+              level
+              heroDamage
+              towerDamage
+              heal
+              networth
+              item0Id
+              item1Id
+              item2Id
+              item3Id
+              item4Id
+              item5Id
+              backpack0Id
+              backpack1Id
+              backpack2Id
+              neutral0Id
+              stats {
+                goldPerMinute
+                experiencePerMinute
+                lastHitsPerMinute
+                deniesPerMinute
+                wardObserver
+                wardSentry
+              }
+              playbackData {
+                killEvents {
+                  time
+                  positionX
+                  positionY
+                }
+                wardEvents {
+                  time
+                  positionX
+                  positionY
+                  wardType
+                }
+                purchaseEvents {
+                  time
+                  itemId
+                }
+              }
+            }
+          }
+        }
+        """
+        variables = {"matchId": match_id}
+        
+        try:
+            response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
+            response.raise_for_status()
+            data = response.json()
+            match_data = data.get("data", {}).get("match")
+            if not match_data:
+                raise ValueError("Match not found on Stratz")
+                
+            # Format to mimic OpenDota for downstream parsing
+            formatted = {
+                "match_id": match_data.get("id"),
+                "duration": match_data.get("durationSeconds"),
+                "radiant_win": match_data.get("radiantWin"),
+                "game_mode": match_data.get("gameMode"),
+                "lobby_type": match_data.get("lobbyType"),
+                "start_time": match_data.get("startDateTime"),
+                "version": 21, # indicate parsed
+                "players": []
+            }
+            
+            for p in match_data.get("players", []):
+                # Format Stratz playback logs into OpenDota style logs
+                playback = p.get("playbackData") or {}
+                stats = p.get("stats") or {}
+                
+                # Items: Stratz might return item IDs as integers
+                # Wards
+                obs_log = []
+                sen_log = []
+                for w in playback.get("wardEvents", []):
+                    # OpenDota coords are 64-192. Stratz coords are 0-256 usually, need to check, but we map directly
+                    evt = {"time": w.get("time"), "x": w.get("positionX", 0), "y": w.get("positionY", 0)}
+                    if w.get("wardType") == "OBSERVER":
+                        obs_log.append(evt)
+                    else:
+                        sen_log.append(evt)
+                        
+                # Kills
+                kills_log = []
+                for k in playback.get("killEvents", []):
+                    kills_log.append({"time": k.get("time"), "x": k.get("positionX", 0), "y": k.get("positionY", 0)})
+                    
+                # Purchases
+                purchase_log = []
+                for b in playback.get("purchaseEvents", []):
+                    # We just need the time and key (itemId)
+                    purchase_log.append({"time": b.get("time"), "key": str(b.get("itemId"))})
+                
+                formatted_player = {
+                    "account_id": p.get("steamAccountId"),
+                    "hero_id": p.get("heroId"),
+                    "player_slot": 0 if p.get("isRadiant") else 128,
+                    "kills": p.get("kills"),
+                    "deaths": p.get("deaths"),
+                    "assists": p.get("assists"),
+                    "gold_per_min": p.get("goldPerMinute"),
+                    "xp_per_min": p.get("experiencePerMinute"),
+                    "hero_damage": p.get("heroDamage"),
+                    "tower_damage": p.get("towerDamage"),
+                    "hero_healing": p.get("heal"),
+                    "last_hits": p.get("numLastHits"),
+                    "denies": p.get("numDenies"),
+                    "level": p.get("level"),
+                    "net_worth": p.get("networth"),
+                    "obs_placed": sum(1 for w in playback.get("wardEvents", []) if w.get("wardType") == "OBSERVER") if playback.get("wardEvents") else 0,
+                    "sen_placed": sum(1 for w in playback.get("wardEvents", []) if w.get("wardType") != "OBSERVER") if playback.get("wardEvents") else 0,
+                    "item_0": p.get("item0Id"),
+                    "item_1": p.get("item1Id"),
+                    "item_2": p.get("item2Id"),
+                    "item_3": p.get("item3Id"),
+                    "item_4": p.get("item4Id"),
+                    "item_5": p.get("item5Id"),
+                    "backpack_0": p.get("backpack0Id"),
+                    "backpack_1": p.get("backpack1Id"),
+                    "backpack_2": p.get("backpack2Id"),
+                    "item_neutral": p.get("neutral0Id"),
+                    
+                    # Timelines
+                    "gold_t": stats.get("goldPerMinute", []),
+                    "xp_t": stats.get("experiencePerMinute", []),
+                    "lh_t": stats.get("lastHitsPerMinute", []),
+                    "dn_t": stats.get("deniesPerMinute", []),
+                    
+                    # Logs
+                    "obs_log": obs_log,
+                    "sen_log": sen_log,
+                    "kills_log": kills_log,
+                    "purchase_log": purchase_log
+                }
+                formatted["players"].append(formatted_player)
+                
+            return formatted
+        except Exception as e:
+            logger.error(f"Stratz get_match error: {e}")
+            raise
 
-# Module-level singleton
-_client: Optional[StratzClient] = None
-
-
-def get_stratz_client(api_token: Optional[str] = None) -> StratzClient:
-    """Get or create the Stratz client singleton."""
-    global _client
-    if _client is None:
-        _client = StratzClient(api_token)
-    elif api_token and _client.api_token != api_token:
-        _client.api_token = api_token
-    return _client
+def get_stratz_client(api_token: Optional[str]) -> Optional[StratzClient]:
+    if not api_token:
+        return None
+    return StratzClient(api_token)

@@ -249,6 +249,7 @@ class UserSettings(SQLModel, table=True):
     sync_interval_minutes: int = 30
     auto_parse_replays: bool = False
     replay_storage_limit_gb: int = 50
+    data_source: str = "both"               # opendota, stratz, both
 
     # Analysis
     analysis_depth: str = "standard"        # basic, standard, deep

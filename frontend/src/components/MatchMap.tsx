@@ -39,16 +39,25 @@ export default function MatchMap({ matchData, selectedPlayer }: MatchMapProps) {
     if (selectedPlayer) {
       // Show ONLY the selected player's events
       const p = selectedPlayer;
-      addEvent(p.obs_log, 'Observer Ward', '#3b82f6', Eye, true);
-      addEvent(p.sen_log, 'Sentry Ward', '#eab308', Eye, true);
-      addEvent(p.kills_log, 'Kill', 'var(--radiant-green)', Crosshair, true);
+      const isPrimary = p.player_slot === matchData.player_slot;
+      const obs = p.obs_log || (isPrimary ? matchData.obs_log : []);
+      const sen = p.sen_log || (isPrimary ? matchData.sen_log : []);
+      const kills = p.kills_log || (isPrimary ? matchData.kills_log : []);
+      
+      addEvent(obs, 'Observer Ward', '#3b82f6', Eye, true);
+      addEvent(sen, 'Sentry Ward', '#eab308', Eye, true);
+      addEvent(kills, 'Kill', 'var(--radiant-green)', Crosshair, true);
     } else {
       // Show events for ALL players
       if (matchData.all_players) {
         matchData.all_players.forEach((p: any) => {
+          const isPrimary = p.player_slot === matchData.player_slot;
           const isRadiant = p.player_slot < 128;
-          addEvent(p.obs_log, 'Observer Ward', isRadiant ? '#3b82f6' : '#60a5fa', Eye, false);
-          addEvent(p.kills_log, 'Kill', isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)', Crosshair, false);
+          const obs = p.obs_log || (isPrimary ? matchData.obs_log : []);
+          const kills = p.kills_log || (isPrimary ? matchData.kills_log : []);
+
+          addEvent(obs, 'Observer Ward', isRadiant ? '#3b82f6' : '#60a5fa', Eye, false);
+          addEvent(kills, 'Kill', isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)', Crosshair, false);
         });
       }
     }
@@ -56,10 +65,10 @@ export default function MatchMap({ matchData, selectedPlayer }: MatchMapProps) {
     return evts;
   }, [matchData, selectedPlayer]);
 
-  if (!matchData || (!matchData.all_players?.[0]?.obs_log && !matchData.all_players?.[0]?.kills_log)) {
+  if (!matchData || events.length === 0) {
     return (
       <div className="glass-surface" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-        <p>Map data is not available. The match might not be fully parsed by OpenDota yet.</p>
+        <p>Map data is not available. The match might not be fully parsed yet.</p>
       </div>
     );
   }

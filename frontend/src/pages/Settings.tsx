@@ -9,6 +9,7 @@ export default function Settings() {
   const [openaiApiKey, setOpenaiApiKey] = useState('');
   const [openaiApiBase, setOpenaiApiBase] = useState('');
   const [openaiModel, setOpenaiModel] = useState('');
+  const [dataSource, setDataSource] = useState('both');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -22,6 +23,7 @@ export default function Settings() {
       setOpenaiApiKey(res.data.openai_api_key || '');
       setOpenaiApiBase(res.data.openai_api_base || '');
       setOpenaiModel(res.data.openai_model || '');
+      setDataSource(res.data.data_source || 'both');
       setLoading(false);
     }).catch((err) => {
       console.error(err);
@@ -42,6 +44,7 @@ export default function Settings() {
         openai_api_key: openaiApiKey,
         openai_api_base: openaiApiBase,
         openai_model: openaiModel,
+        data_source: dataSource,
       });
       setMessage('Settings saved successfully!');
     } catch (err) {
@@ -161,6 +164,24 @@ export default function Settings() {
               />
             </label>
           </div>
+        </div>
+      </div>
+
+      <div className="glass-surface" style={{ padding: '2rem', marginTop: '2rem' }}>
+        <h3 style={{ marginBottom: '1.5rem' }}>Data Sources & Sync</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            Primary Match Data Source
+            <select 
+              value={dataSource}
+              onChange={(e) => setDataSource(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+            >
+              <option value="both">Both (Prefer Stratz, Fallback OpenDota)</option>
+              <option value="stratz">Stratz Only</option>
+              <option value="opendota">OpenDota Only</option>
+            </select>
+          </label>
         </div>
       </div>
 
