@@ -72,6 +72,16 @@ export default function MatchDetail() {
     }
   };
 
+  const handleRefetch = async () => {
+    try {
+      await api.post(`/matches/${matchId}/refetch`);
+      // Re-load the page data
+      await fetchMatchData();
+    } catch (err) {
+      console.error('Failed to refetch:', err);
+    }
+  };
+
   const handleAiAnalysis = async () => {
     setAnalyzingAi(true);
     setAiError('');
@@ -138,20 +148,25 @@ export default function MatchDetail() {
           </div>
           <p className="text-secondary" style={{ marginTop: '0.5rem' }}>
             {matchData.kills} / {matchData.deaths} / {matchData.assists} • {Math.floor(matchData.duration / 60)}:{(matchData.duration % 60).toString().padStart(2, '0')}
-            {!matchData.is_parsed && (
-              <button 
-                className="btn btn-secondary" 
-                style={{ marginLeft: '1rem', padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
-                onClick={handleRequestParse}
-                disabled={parseState === 'requesting' || parseState === 'requested'}
-              >
-                {parseState === 'idle' && 'Request Replay Parse'}
-                {parseState === 'requesting' && 'Requesting...'}
-                {parseState === 'requested' && 'Parse Requested (Check back later)'}
-                {parseState === 'error' && 'Failed to Request Parse'}
-              </button>
-            )}
           </p>
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleRefetch}>
+            🔄 Re-parse
+          </button>
+          {!matchData.is_parsed && (
+            <button 
+              className="btn btn-secondary" 
+              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+              onClick={handleRequestParse}
+              disabled={parseState === 'requesting' || parseState === 'requested'}
+            >
+              {parseState === 'idle' && '⬇ Replay'}
+              {parseState === 'requesting' && 'Requesting...'}
+              {parseState === 'requested' && '✓ Requested'}
+              {parseState === 'error' && '✗ Failed'}
+            </button>
+          )}
         </div>
       </header>
 

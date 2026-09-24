@@ -294,6 +294,28 @@ async def request_parse(match_id: int, session: Session = Depends(get_session)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+
+@router.post("/{match_id}/refetch")
+async def refetch_match(match_id: int, session: Session = Depends(get_session)):
+    """Force re-fetch full match data from APIs, replacing stored data."""
+    match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    settings = session.exec(select(UserSettings)).first()
+    
+    # Clear cached data to force re-fetch
+    match.gold_t = None
+    match.all_players = None
+    session.commit()
+    
+    result = await fetch_match_details(session, match, settings)
+    if not result:
+        raise HTTPException(status_code=502, detail="Failed to re-fetch match data")
+    
+    session.refresh(match)
+    return {"status": "refetched", "is_parsed": match.is_parsed}
+
 @router.post("/{match_id}/coach")
 async def get_ai_coaching(match_id: int, session: Session = Depends(get_session)):
     """Generate AI coaching feedback for a specific match using configured LLM."""
