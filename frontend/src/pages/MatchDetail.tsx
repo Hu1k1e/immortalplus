@@ -213,9 +213,14 @@ export default function MatchDetail() {
 
       {mainTab === 'Overview' && (
         !selectedPlayer ? (
-          <>
-            <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} onPlayerClick={setSelectedPlayer} />
-          </>
+          <div className="animation-fade-in" style={{ display: 'flex', gap: '2rem', alignItems: 'flex-start' }}>
+            <div style={{ flex: '0 0 35%', minWidth: '350px' }}>
+              <MatchMap matchData={matchData} selectedPlayer={null} compact={false} />
+            </div>
+            <div style={{ flex: '1 1 auto', overflowX: 'auto' }}>
+              <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} onPlayerClick={setSelectedPlayer} />
+            </div>
+          </div>
         ) : (
           <div className="animation-fade-in">
             <div className="glass-surface" style={{ padding: '2rem', display: 'flex', gap: '3rem', alignItems: 'flex-start' }}>
