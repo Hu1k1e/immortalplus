@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Optional
 from openai import AsyncOpenAI
+import httpx
 
 from models import UserSettings
 
@@ -23,6 +24,8 @@ async def generate_ai_coaching(
     client_args = {"api_key": settings.openai_api_key}
     if settings.openai_api_base:
         client_args["base_url"] = settings.openai_api_base
+        # Bypass SSL verification for custom/self-hosted endpoints
+        client_args["http_client"] = httpx.AsyncClient(verify=False)
         
     model_name = settings.openai_model or "gpt-4o"
 
@@ -95,5 +98,5 @@ Your task is to return a JSON object with exactly the following structure. Do no
         return result
         
     except Exception as e:
-        logger.error(f"Failed to generate AI coaching: {e}")
+        logger.error(f"Failed to generate AI coaching: {e}", exc_info=True)
         return None
