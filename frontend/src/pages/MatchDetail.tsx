@@ -21,25 +21,10 @@ export default function MatchDetail() {
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
   const [parseState, setParseState] = useState<'idle' | 'requesting' | 'requested' | 'error'>('idle');
 
-  useEffect(() => {
-    let interval: any;
-    
-    const load = async () => {
-      const data = await fetchMatchData();
-      if (data && !data.is_parsed && parseState !== 'idle') {
-        // Poll every 5 seconds if we know it's being parsed
-        interval = setInterval(fetchMatchData, 5000);
-      }
-    };
-    
-    load();
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [matchId, parseState]);
+  const [refetching, setRefetching] = useState(false);
 
-  const fetchMatchData = async () => {
+  const fetchMatchData = async (isPolling = false) => {
+    if (!matchId || matchId === 'undefined') return null;
     try {
       const res = await api.get(`/matches/${matchId}`);
       setMatchData(res.data);
@@ -58,11 +43,31 @@ export default function MatchDetail() {
       console.error(err);
       return null;
     } finally {
-      setLoading(false);
+      if (!isPolling) setLoading(false);
     }
   };
 
+  useEffect(() => {
+    let interval: any;
+    
+    if (!matchId || matchId === 'undefined') return;
+
+    const load = async () => {
+      const data = await fetchMatchData();
+      if (data && !data.is_parsed && (parseState === 'requested' || parseState === 'requesting')) {
+        interval = setInterval(() => fetchMatchData(true), 5000);
+      }
+    };
+    
+    load();
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [matchId, parseState]);
+
   const handleRequestParse = async () => {
+    if (!matchId || matchId === 'undefined') return;
     setParseState('requesting');
     try {
       await api.post(`/matches/${matchId}/request-parse`);
@@ -73,12 +78,19 @@ export default function MatchDetail() {
   };
 
   const handleRefetch = async () => {
+    if (!matchId || matchId === 'undefined') return;
+    setRefetching(true);
+    setParseState('requesting'); // Reuse the polling logic
     try {
       await api.post(`/matches/${matchId}/refetch`);
+      setParseState('requested');
       // Re-load the page data
-      await fetchMatchData();
+      await fetchMatchData(true);
     } catch (err) {
       console.error('Failed to refetch:', err);
+      setParseState('error');
+    } finally {
+      setRefetching(false);
     }
   };
 
@@ -148,6 +160,9 @@ export default function MatchDetail() {
           </div>
           <p className="text-secondary" style={{ marginTop: '0.5rem' }}>
             {matchData.kills} / {matchData.deaths} / {matchData.assists} • {Math.floor(matchData.duration / 60)}:{(matchData.duration % 60).toString().padStart(2, '0')}
+            <span style={{ marginLeft: '1rem', color: matchData.is_parsed ? 'var(--radiant-green)' : 'var(--text-muted)' }}>
+              {matchData.is_parsed ? '✓ Replay Parsed' : '⚠️ Basic Data Only (Parse to unlock maps & timelines)'}
+            </span>
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -161,8 +176,13 @@ export default function MatchDetail() {
               {analyzingAi ? 'Analyzing...' : 'Analyze with AI Coach'}
             </button>
           )}
-          <button className="btn btn-secondary" style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} onClick={handleRefetch}>
-            🔄 Sync Data
+          <button 
+            className="btn btn-secondary" 
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }} 
+            onClick={handleRefetch}
+            disabled={refetching}
+          >
+            {refetching ? '🔄 Syncing...' : '🔄 Sync Data'}
           </button>
           {!matchData.is_parsed && (
             <button 

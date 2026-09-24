@@ -284,13 +284,23 @@ async def test_stratz(match_id: int, session: Session = Depends(get_session)):
 
 @router.post("/{match_id}/request-parse")
 async def request_parse(match_id: int, session: Session = Depends(get_session)):
-    """Request OpenDota to parse a match replay."""
+    """Request OpenDota and Stratz to parse a match replay."""
     settings = session.exec(select(UserSettings)).first()
-    client = get_opendota_client(settings.opendota_api_key if settings else None)
+    od_client = get_opendota_client(settings.opendota_api_key if settings else None)
+    
+    from services.stratz import get_stratz_client
+    stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
 
     try:
-        result = await client.request_parse(match_id)
-        return {"status": "parse_requested", "job": result}
+        od_job = None
+        if od_client:
+            od_job = await od_client.request_parse(match_id)
+            
+        stratz_job = False
+        if stratz_client:
+            stratz_job = await stratz_client.request_parse(match_id)
+            
+        return {"status": "parse_requested", "opendota_job": od_job, "stratz_requested": stratz_job}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 

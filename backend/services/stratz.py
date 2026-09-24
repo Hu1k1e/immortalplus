@@ -245,10 +245,28 @@ class StratzClient:
                 }
                 formatted["players"].append(formatted_player)
                 
+                
             return formatted
         except Exception as e:
             logger.error(f"Stratz get_match error: {e}")
             raise
+
+    async def request_parse(self, match_id: int) -> bool:
+        """Request Stratz to parse a match."""
+        mutation = """
+        mutation($matchId: Long!) {
+          retryMatchParse(matchId: $matchId)
+        }
+        """
+        variables = {"matchId": match_id}
+        try:
+            response = await self.client.post(STRATZ_API_URL, json={"query": mutation, "variables": variables})
+            response.raise_for_status()
+            data = response.json()
+            return data.get("data", {}).get("retryMatchParse") is True
+        except Exception as e:
+            logger.error(f"Stratz request_parse error: {e}")
+            return False
 
 def get_stratz_client(api_token: Optional[str]) -> Optional[StratzClient]:
     if not api_token:
