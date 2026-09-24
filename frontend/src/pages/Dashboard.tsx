@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import './Dashboard.css';
-import { TrendingUp, TrendingDown, Activity, Crosshair, Award } from 'lucide-react';
+import { TrendingUp, Activity, Crosshair, Award } from 'lucide-react';
 import api from '../lib/api';
 import { Link } from 'react-router-dom';
 
