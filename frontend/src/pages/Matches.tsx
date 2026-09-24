@@ -1,11 +1,32 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { HEROES, getHeroImgUrl } from '../lib/heroes';
 
+const AVAILABLE_COLUMNS = [
+  { id: 'hero', label: 'Hero' },
+  { id: 'match_id', label: 'Match ID' },
+  { id: 'result', label: 'Result' },
+  { id: 'kda', label: 'K/D/A' },
+  { id: 'duration', label: 'Duration' },
+  { id: 'date', label: 'Date' },
+  { id: 'gpm', label: 'GPM' },
+  { id: 'xpm', label: 'XPM' },
+  { id: 'hero_damage', label: 'Hero Damage' },
+  { id: 'tower_damage', label: 'Tower Damage' },
+  { id: 'hero_healing', label: 'Hero Healing' },
+  { id: 'last_hits', label: 'Last Hits' },
+  { id: 'denies', label: 'Denies' },
+  { id: 'level', label: 'Level' },
+  { id: 'party_size', label: 'Party Size' }
+];
+
 export default function Matches() {
+  const navigate = useNavigate();
   const [matches, setMatches] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showColumnsMenu, setShowColumnsMenu] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['hero', 'match_id', 'result', 'kda', 'duration', 'date']));
 
   useEffect(() => {
     api.get('/matches').then((res) => {
@@ -38,6 +59,18 @@ export default function Matches() {
     }
   };
 
+  const toggleColumn = (colId: string) => {
+    setVisibleColumns(prev => {
+      const newCols = new Set(prev);
+      if (newCols.has(colId)) {
+        newCols.delete(colId);
+      } else {
+        newCols.add(colId);
+      }
+      return newCols;
+    });
+  };
+
   return (
     <div>
       <header className="page-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -45,9 +78,32 @@ export default function Matches() {
           <h1 className="gold-text-gradient">Match History</h1>
           <p className="text-secondary">Review and analyze your recent games.</p>
         </div>
-        <button className="btn btn-primary" onClick={syncMatches} disabled={loading}>
-          {loading ? 'Syncing...' : 'Sync Recent Matches'}
-        </button>
+        <div style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => setShowColumnsMenu(!showColumnsMenu)}
+          >
+            Columns
+          </button>
+          {showColumnsMenu && (
+            <div className="glass-surface" style={{ position: 'absolute', top: '100%', right: '150px', marginTop: '0.5rem', zIndex: 10, padding: '1rem', minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Visible Columns</div>
+              {AVAILABLE_COLUMNS.map(c => (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={visibleColumns.has(c.id)} 
+                    onChange={() => toggleColumn(c.id)} 
+                  />
+                  {c.label}
+                </label>
+              ))}
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={syncMatches} disabled={loading}>
+            {loading ? 'Syncing...' : 'Sync Recent Matches'}
+          </button>
+        </div>
       </header>
       
       <div className="glass-surface p-4" style={{ padding: '1.5rem', overflowX: 'auto' }}>
@@ -59,43 +115,56 @@ export default function Matches() {
           <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
             <thead>
               <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Hero</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Match ID</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Result</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>K/D/A</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Duration</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Date</th>
-                <th style={{ padding: '1rem', fontWeight: '500' }}>Action</th>
+                {AVAILABLE_COLUMNS.map(c => visibleColumns.has(c.id) && (
+                  <th key={c.id} style={{ padding: '1rem', fontWeight: '500' }}>{c.label}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {matches.map((m) => {
                 const hero = HEROES[m.hero_id] || { name: `Unknown (${m.hero_id})`, img_name: 'unknown' };
                 return (
-                  <tr key={m.match_id} className="card-interactive" style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.2s' }}>
-                    <td style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                      <img 
-                        src={getHeroImgUrl(hero.img_name)} 
-                        alt={hero.name}
-                        style={{ width: '60px', height: '34px', objectFit: 'cover', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                      <span style={{ fontWeight: '500' }}>{hero.name}</span>
-                    </td>
-                    <td style={{ padding: '1rem' }}>{m.match_id}</td>
-                    <td style={{ padding: '1rem', color: m.result === 'win' ? 'var(--radiant-green)' : m.result === 'loss' ? 'var(--dire-red)' : 'var(--text-primary)', fontWeight: 'bold' }}>
-                      {m.result === 'win' ? 'Win' : m.result === 'loss' ? 'Loss' : 'Unknown'}
-                    </td>
-                    <td style={{ padding: '1rem' }}>{m.kills}/{m.deaths}/{m.assists}</td>
-                    <td style={{ padding: '1rem' }}>{formatDuration(m.duration)}</td>
-                    <td style={{ padding: '1rem', color: 'var(--text-secondary)' }}>
-                      {m.played_at ? new Date(m.played_at).toLocaleDateString() : 'N/A'}
-                    </td>
-                    <td style={{ padding: '1rem' }}>
-                      <Link to={`/matches/${m.match_id}`} className="btn btn-secondary" style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem', textDecoration: 'none' }}>
-                        Analyze
-                      </Link>
-                    </td>
+                  <tr 
+                    key={m.match_id} 
+                    className="card-interactive" 
+                    style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.2s', cursor: 'pointer' }}
+                    onClick={() => navigate(`/matches/${m.match_id}`)}
+                  >
+                    {AVAILABLE_COLUMNS.map(c => {
+                      if (!visibleColumns.has(c.id)) return null;
+
+                      let content: React.ReactNode = m[c.id];
+
+                      if (c.id === 'hero') {
+                        content = (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            <img 
+                              src={getHeroImgUrl(hero.img_name)} 
+                              alt={hero.name}
+                              style={{ width: '60px', height: '34px', objectFit: 'cover', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                            <span style={{ fontWeight: '500' }}>{hero.name}</span>
+                          </div>
+                        );
+                      } else if (c.id === 'result') {
+                        content = (
+                          <span style={{ color: m.result === 'win' ? 'var(--radiant-green)' : m.result === 'loss' ? 'var(--dire-red)' : 'var(--text-primary)', fontWeight: 'bold' }}>
+                            {m.result === 'win' ? 'Win' : m.result === 'loss' ? 'Loss' : 'Unknown'}
+                          </span>
+                        );
+                      } else if (c.id === 'kda') {
+                        content = `${m.kills}/${m.deaths}/${m.assists}`;
+                      } else if (c.id === 'duration') {
+                        content = formatDuration(m.duration);
+                      } else if (c.id === 'date') {
+                        content = <span style={{ color: 'var(--text-secondary)' }}>{m.played_at ? new Date(m.played_at).toLocaleDateString() : 'N/A'}</span>;
+                      } else if (c.id === 'party_size') {
+                        content = m.party_size || 1;
+                      }
+
+                      return <td key={c.id} style={{ padding: '1rem' }}>{content}</td>;
+                    })}
                   </tr>
                 );
               })}

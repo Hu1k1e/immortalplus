@@ -24,6 +24,9 @@ export default function MatchDetail() {
       if (res.data.is_analyzed) {
         const analysisRes = await api.get(`/matches/${matchId}/analysis`);
         setAnalysis(analysisRes.data);
+        if (analysisRes.data.ai_coaching) {
+          setAiCoaching(analysisRes.data.ai_coaching);
+        }
       }
     } catch (err) {
       console.error(err);

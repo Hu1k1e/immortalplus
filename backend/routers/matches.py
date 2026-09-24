@@ -255,6 +255,7 @@ async def get_match_analysis(match_id: int, session: Session = Depends(get_sessi
         "laning_analysis": _parse_json_field(analysis.laning_analysis),
         "midgame_analysis": _parse_json_field(analysis.midgame_analysis),
         "lategame_analysis": _parse_json_field(analysis.lategame_analysis),
+        "ai_coaching": _parse_json_field(analysis.ai_coaching),
         "analyzed_at": analysis.analyzed_at.isoformat() if analysis.analyzed_at else None,
     }
 
@@ -300,6 +301,10 @@ async def get_ai_coaching(match_id: int, session: Session = Depends(get_session)
     if not analysis:
         raise HTTPException(status_code=500, detail="Failed to generate match analysis.")
 
+    # Return cached coaching if exists
+    if analysis.ai_coaching:
+        return _parse_json_field(analysis.ai_coaching)
+
     # Get match data
     match_data = {"duration": match.duration}
     
@@ -319,6 +324,11 @@ async def get_ai_coaching(match_id: int, session: Session = Depends(get_session)
 
     if not coaching_feedback:
         raise HTTPException(status_code=500, detail="Failed to generate AI coaching feedback.")
+
+    # Save to database
+    analysis.ai_coaching = json.dumps(coaching_feedback)
+    session.add(analysis)
+    session.commit()
 
     return coaching_feedback
 

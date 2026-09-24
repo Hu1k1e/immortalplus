@@ -127,6 +127,9 @@ class MatchAnalysis(SQLModel, table=True):
     laning_analysis: Optional[str] = None   # JSON
     midgame_analysis: Optional[str] = None  # JSON
     lategame_analysis: Optional[str] = None # JSON
+    
+    # AI Coaching Results
+    ai_coaching: Optional[str] = None       # JSON
 
     analyzed_at: datetime = Field(default_factory=datetime.utcnow)
 
