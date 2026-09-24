@@ -87,12 +87,14 @@ The application runs entirely locally via Docker Compose, composed of three main
 - [ ] Build a dedicated frontend "Pro Meta" page to browse highest win-rate heroes by role (Pos 1-5).
 - [ ] Integrate ProTracker data into the Live Draft Helper suggestions.
 
-### ✅ Phase 7: Advanced Deep Dive Analytics UI (Dotabuff Data x Stratz Aesthetics) (Completed)
+### ✅ Phase 7: Advanced Deep Dive Analytics UI (Completed)
 - [x] **Data Density (Dotabuff Style)**: Replicate the tabular layout for all 10 heroes in a match showing Hero, Level, K/D/A, Net Worth, LH/DN, GPM/XPM, Hero Damage, Tower Damage, Healing, Wards Placed/Destroyed, and 6 slotted Items + Backpack/Neutral.
 - [x] **Modern Aesthetic (Stratz Style)**: Wrap the tables in dark mode glassmorphic containers, smooth hover states, gradients for Victory/Defeat, and interactive hero portraits.
+- [x] **Individual Hero View**: Created an in-game style post-match tab selector to view a specific hero's inventory, stats, and AI coaching.
 - [x] **Interactive Match Timeline**: A scrollable horizontal timeline representing the match duration.
 - [x] **Timeline Overlays**: Plot Kills, Deaths, Assists, and critical Item Timings (e.g. BKB at 21:00) on the timeline for every hero.
 - [x] **AI Suggestions on Timeline**: Plot the AI Coach's generated "Action Items" and "Mistakes" directly onto the timeline (e.g. "Died out of position here at 14:22 - Missing vision").
+- [x] **2D Interactive Map**: Plot wards and kills on a 2D Dota map overlay using extracted X/Y coordinates. *Note: Moving forward, the backend should be integrated with STRATZ GraphQL API to guarantee high-fidelity X/Y coordinates, as OpenDota parsing is unreliable for unrequested matches.*
 
 ## 8. Implementation History Log
 - **2026-09-24**: Scaffolded core architecture. Configured custom design system. Built backend routers for matches, draft, and settings. Setup GitHub Actions. Mapped correct host ports. Wired basic API endpoints for Settings, Dashboard, and Matches. Fixed SQLModel session bugs.
