@@ -5,6 +5,7 @@ import { HEROES, getHeroImgUrl } from '../lib/heroes';
 import { ITEMS } from '../lib/items';
 import MatchTimeline from '../components/MatchTimeline';
 import MatchScoreboard from '../components/MatchScoreboard';
+import MatchMap from '../components/MatchMap';
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -131,7 +132,14 @@ export default function MatchDetail() {
 
       {!selectedPlayer ? (
         <>
-          <MatchTimeline matchData={matchData} aiCoaching={aiCoaching} />
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '2rem', marginBottom: '2rem' }}>
+            <div>
+              <MatchTimeline matchData={matchData} aiCoaching={aiCoaching} />
+            </div>
+            <div>
+              <MatchMap matchData={matchData} selectedPlayer={null} />
+            </div>
+          </div>
           <MatchScoreboard allPlayers={allPlayers} radiantWin={matchData.radiant_win} />
         </>
       ) : (
@@ -249,6 +257,10 @@ export default function MatchDetail() {
                     )}
                   </div>
                 </div>
+              </div>
+              
+              <div style={{ marginTop: '1rem' }}>
+                <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} />
               </div>
             </div>
           </div>
