@@ -80,6 +80,7 @@ The application runs entirely locally via Docker Compose, composed of three main
 - [x] Wire background Python task to trigger OpenDota parses to extract ward logs, combat events, and item timings.
 - [x] Create a "Live Playback" timeline UI to visually point out mistakes extracted from the replay.
 - [x] Pass parsed `purchase_log` and `kills_log` into the AI Coach to map Action Items to specific timestamps.
+- [x] Full Stratz/OpenDota tab implementation (Benchmarks, Performances, Laning, Combat, Farm, Items, Casts, Objectives, Vision, Actions, Teamfights, Chat, Log) with interactive Map Playback alongside the scoreboard.
 
 ### ❌ Phase 6: Dota2ProTracker Hub (Pending)
 - [ ] Build Python backend scheduled scraper to fetch live meta data from Dota2ProTracker.
