@@ -1,7 +1,7 @@
 import { HEROES, getHeroImgUrl } from '../lib/heroes';
 import { ITEMS } from '../lib/items';
 
-export default function MatchScoreboard({ allPlayers, radiantWin }: { allPlayers: any[], radiantWin: boolean }) {
+export default function MatchScoreboard({ allPlayers, radiantWin, onPlayerClick }: { allPlayers: any[], radiantWin: boolean, onPlayerClick?: (player: any) => void }) {
   if (!allPlayers || allPlayers.length === 0) return null;
 
   const radiant = allPlayers.filter(p => p.player_slot < 128);
@@ -46,7 +46,12 @@ export default function MatchScoreboard({ allPlayers, radiantWin }: { allPlayers
             {team.map((p, idx) => {
               const hero = HEROES[p.hero_id];
               return (
-                <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s' }} className="table-row-hover">
+                <tr 
+                  key={idx} 
+                  onClick={() => onPlayerClick && onPlayerClick(p)}
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background 0.2s', cursor: onPlayerClick ? 'pointer' : 'default' }} 
+                  className="table-row-hover"
+                >
                   <td style={{ padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
                     {hero ? (
                       <img 

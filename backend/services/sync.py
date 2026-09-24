@@ -125,6 +125,19 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
         session.commit()
         logger.info(f"Synced {new_count} new matches for player {player.account_id}")
 
+        # Auto-parse replays if enabled
+        if getattr(settings, 'auto_parse_replays', False):
+            # Just do OpenDota parse requests. Stratz parses everything automatically.
+            od_client = get_opendota_client(settings.opendota_api_key if settings else None)
+            for m in matches:
+                mid = m.get("match_id") or m.get("id")
+                if mid and mid > last_match_id:
+                    try:
+                        await od_client.request_parse(mid)
+                        logger.info(f"Auto-requested parse for new match {mid}")
+                    except Exception as e:
+                        logger.error(f"Failed to auto-request parse for {mid}: {e}")
+
     return new_count
 
 

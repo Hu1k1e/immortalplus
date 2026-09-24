@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Eye, Crosshair } from 'lucide-react';
 
 interface MatchMapProps {
@@ -65,6 +65,16 @@ export default function MatchMap({ matchData, selectedPlayer }: MatchMapProps) {
     return evts;
   }, [matchData, selectedPlayer]);
 
+  const duration = matchData?.duration || 0;
+  const [maxTime, setMaxTime] = useState<number>(duration);
+
+  // Keep slider synced if matchData changes
+  useEffect(() => {
+    if (duration > 0 && maxTime === 0) {
+      setMaxTime(duration);
+    }
+  }, [duration]);
+
   if (!matchData || events.length === 0) {
     return (
       <div className="glass-surface" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -72,6 +82,8 @@ export default function MatchMap({ matchData, selectedPlayer }: MatchMapProps) {
       </div>
     );
   }
+
+  const visibleEvents = events.filter(evt => evt.time <= maxTime);
 
   return (
     <div className="glass-surface" style={{ padding: '1rem', width: '100%', maxWidth: '400px', margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
@@ -88,7 +100,7 @@ export default function MatchMap({ matchData, selectedPlayer }: MatchMapProps) {
         />
 
         {/* Overlays */}
-        {events.map((evt, i) => (
+        {visibleEvents.map((evt, i) => (
           <div 
             key={i}
             className="map-event"
@@ -115,7 +127,25 @@ export default function MatchMap({ matchData, selectedPlayer }: MatchMapProps) {
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+      <div style={{ marginTop: '1.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+          <span>0:00</span>
+          <span style={{ color: 'var(--accent-gold)', fontWeight: 'bold' }}>
+            {Math.floor(maxTime / 60)}:{(maxTime % 60).toString().padStart(2, '0')}
+          </span>
+          <span>{Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}</span>
+        </div>
+        <input 
+          type="range" 
+          min="0" 
+          max={duration} 
+          value={maxTime} 
+          onChange={(e) => setMaxTime(Number(e.target.value))}
+          style={{ width: '100%', accentColor: 'var(--accent-gold)' }}
+        />
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '1.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#3b82f6' }}></div>
           Observer
