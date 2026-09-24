@@ -92,16 +92,16 @@ def analyze_match(match_data: dict, player_data: dict, rank_tier: int = 0) -> di
     )
 
     # ── Extract raw stats ────────────────────────────────────────
-    kills = player_data.get("kills", 0)
-    deaths = player_data.get("deaths", 0)
-    assists = player_data.get("assists", 0)
-    gpm = player_data.get("gold_per_min", 0) or player_data.get("gpm", 0) or 0
-    xpm = player_data.get("xp_per_min", 0) or player_data.get("xpm", 0) or 0
-    last_hits = player_data.get("last_hits", 0)
-    denies = player_data.get("denies", 0)
-    hero_damage = player_data.get("hero_damage", 0)
-    tower_damage = player_data.get("tower_damage", 0)
-    hero_healing = player_data.get("hero_healing", 0)
+    kills = player_data.get("kills") or 0
+    deaths = player_data.get("deaths") or 0
+    assists = player_data.get("assists") or 0
+    gpm = player_data.get("gold_per_min") or player_data.get("gpm") or 0
+    xpm = player_data.get("xp_per_min") or player_data.get("xpm") or 0
+    last_hits = player_data.get("last_hits") or 0
+    denies = player_data.get("denies") or 0
+    hero_damage = player_data.get("hero_damage") or 0
+    tower_damage = player_data.get("tower_damage") or 0
+    hero_healing = player_data.get("hero_healing") or 0
 
     cs_min = last_hits / max(duration_min, 1)
     hero_dmg_min = hero_damage / max(duration_min, 1)
