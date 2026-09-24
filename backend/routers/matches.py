@@ -13,6 +13,7 @@ from database import get_session
 from models import Match, Player, UserSettings, MatchAnalysis
 from services.opendota import get_opendota_client
 from services.sync import sync_player_matches, fetch_match_details, analyze_and_store
+from services.analysis_engine import get_hero_name, _classify_role
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/matches", tags=["matches"])
@@ -269,3 +270,55 @@ async def request_parse(match_id: int, session: Session = Depends(get_session)):
         return {"status": "parse_requested", "job": result}
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+@router.post("/{match_id}/coach")
+async def get_ai_coaching(match_id: int, session: Session = Depends(get_session)):
+    """Generate AI coaching feedback for a specific match using configured LLM."""
+    match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    settings = session.exec(select(UserSettings)).first()
+    if not settings or not settings.openai_api_key:
+        raise HTTPException(status_code=400, detail="OpenAI API key not configured in Settings.")
+
+    analysis = session.exec(
+        select(MatchAnalysis).where(MatchAnalysis.match_id == match_id)
+    ).first()
+
+    if not analysis:
+        # Generate analysis first if not exists
+        player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+        if not match.gold_t:
+            await fetch_match_details(session, match, settings)
+            session.refresh(match)
+        await analyze_and_store(session, match, player)
+        analysis = session.exec(
+            select(MatchAnalysis).where(MatchAnalysis.match_id == match_id)
+        ).first()
+
+    if not analysis:
+        raise HTTPException(status_code=500, detail="Failed to generate match analysis.")
+
+    # Get match data
+    match_data = {"duration": match.duration}
+    
+    # Get analysis result dict
+    analysis_result = {
+        "hero_name": get_hero_name(match.hero_id),
+        "role": _classify_role(match.lane, match.lane_role, match.hero_id),
+        "cs_at_10": analysis.cs_at_10,
+        "rank_comparison": _parse_json_field(analysis.rank_comparison),
+        "laning_analysis": _parse_json_field(analysis.laning_analysis),
+        "midgame_analysis": _parse_json_field(analysis.midgame_analysis),
+        "lategame_analysis": _parse_json_field(analysis.lategame_analysis),
+    }
+
+    from services.ai_coach import generate_ai_coaching
+    coaching_feedback = await generate_ai_coaching(match_data, analysis_result, settings)
+
+    if not coaching_feedback:
+        raise HTTPException(status_code=500, detail="Failed to generate AI coaching feedback.")
+
+    return coaching_feedback
+
