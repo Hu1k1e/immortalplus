@@ -391,53 +391,112 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     return rp.damage ? (rp.damage[cpHeroKey] || 0) : 0;
   };
 
-  const HeroMatrix = ({ title, allPlayers, getValue, isDamage = false }: any) => {
+  const getKilledBy = (rp: any, cp: any) => {
+    const cpImgName = HEROES[cp.hero_id as keyof typeof HEROES]?.img_name;
+    const cpHeroKey = cpImgName ? `npc_dota_hero_${cpImgName}` : '';
+    return rp.killed_by ? (rp.killed_by[cpHeroKey] || 0) : 0;
+  };
+  const getDmgTaken = (rp: any, cp: any) => {
+    const cpImgName = HEROES[cp.hero_id as keyof typeof HEROES]?.img_name;
+    const cpHeroKey = cpImgName ? `npc_dota_hero_${cpImgName}` : '';
+    return rp.damage_taken ? (rp.damage_taken[cpHeroKey] || 0) : 0;
+  };
+
+  const CrossTable = ({ title, radiant, dire, getField1, getField2, isDamage = false }: any) => {
     return (
-      <div style={{ flex: '1 1 45%', overflowX: 'auto', background: 'var(--bg-surface)', borderRadius: '4px', padding: '1rem' }}>
-        <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)', textAlign: 'center' }}>{title}</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.8rem' }}>
+      <div style={{ flex: '1 1 45%', overflowX: 'auto', background: 'transparent', borderRadius: '4px' }}>
+        <h3 style={{ fontSize: '1rem', marginBottom: '0.5rem', color: 'var(--text-primary)', textAlign: 'left', fontWeight: 'bold' }}>{title}</h3>
+        <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0', textAlign: 'center', fontSize: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '3px' }}>
           <thead>
-            <tr>
-              <th style={{ padding: '0.2rem' }}></th>
-              {allPlayers.map((cp: any) => (
-                <th key={cp.hero_id} style={{ padding: '0.2rem', minWidth: '24px' }}>
-                  <img src={getHeroImage(HEROES[cp.hero_id as keyof typeof HEROES]?.img_name || '')} alt={cp.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px' }} />
+            <tr style={{ height: '32px', background: 'rgba(0,0,0,0.27)' }}>
+              <th style={{ padding: '0 4px' }}></th>
+              {dire.map((cp: any) => (
+                <th key={cp.hero_id} style={{ padding: '0 4px', background: 'linear-gradient(to bottom, rgba(255,255,255,0.05) 15%, rgba(35,0,0,0.3) 100%)' }}>
+                  <img src={getHeroImage(HEROES[cp.hero_id as keyof typeof HEROES]?.img_name || '')} alt={cp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px', objectFit: 'cover' }} />
                 </th>
               ))}
-              <th style={{ padding: '0.2rem', color: 'var(--text-muted)' }}>SUM</th>
+              <th style={{ padding: '0 4px', background: 'linear-gradient(to bottom, rgba(255,255,255,0.05) 15%, rgba(35,0,0,0.3) 100%)' }}>
+                <span style={{ color: 'var(--dire-red)', fontWeight: 'bold' }}>DIRE</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {allPlayers.map((rp: any) => {
-              let sum = 0;
+            {radiant.map((rp: any, i: number) => {
+              let rowTotal1 = 0;
+              let rowTotal2 = 0;
               const rpName = HEROES[rp.hero_id as keyof typeof HEROES]?.name || rp.hero_name;
+
               return (
-                <tr key={rp.hero_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '0.2rem' }}>
-                     <img src={getHeroImage(HEROES[rp.hero_id as keyof typeof HEROES]?.img_name || '')} alt={rpName} style={{ width: '28px', height: '16px', borderRadius: '2px', borderLeft: `3px solid ${rp.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+                <tr key={rp.hero_id} style={{ background: 'rgba(0,0,0,0.02)' }}>
+                  <td style={{ padding: '0', height: '48px', borderRight: '1px solid rgba(102,187,106,0.3)', background: 'linear-gradient(to right, rgba(255,255,255,0.05) 15%, rgba(0,35,0,0.3) 100%)' }}>
+                    <img src={getHeroImage(HEROES[rp.hero_id as keyof typeof HEROES]?.img_name || '')} alt={rpName} style={{ width: '32px', height: '18px', borderRadius: '2px', objectFit: 'cover' }} />
                   </td>
-                  {allPlayers.map((cp: any) => {
+                  {dire.map((cp: any) => {
                     const cpName = HEROES[cp.hero_id as keyof typeof HEROES]?.name || cp.hero_name;
-                    const val = getValue(rp, cp);
-                    sum += val;
-                    const isSelf = rp.player_slot === cp.player_slot;
+                    const v1 = getField1(rp, cp); // Radiant -> Dire
+                    const v2 = getField2(rp, cp); // Dire -> Radiant
+                    rowTotal1 += v1;
+                    rowTotal2 += v2;
                     
                     return (
-                      <td key={cp.hero_id} 
-                        title={val > 0 ? `${rpName} → ${cpName}: ${isDamage ? fmtK(val) : val}` : undefined}
-                        style={{ 
-                          padding: '0.2rem', 
-                          background: isSelf ? 'rgba(255,255,255,0.02)' : (val > 0 ? (isDamage ? 'rgba(255,152,0,0.1)' : 'rgba(102,187,106,0.1)') : 'transparent'), 
-                          color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)' 
-                        }}>
-                        {isSelf ? '' : (val > 0 ? (isDamage ? fmtK(val) : val) : '-')}
+                      <td key={cp.hero_id} style={{ padding: '0', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(239,83,80,0.3)' }} title={`${rpName} → ${cpName}: ${v1}\n${cpName} → ${rpName}: ${v2}`}>
+                        <div style={{ display: 'inline-flex', gap: '2px', padding: '0 2px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(102,187,106,0.3)', background: 'rgba(0,3,0,0.3)', color: v1 > v2 ? '#fff' : 'var(--text-muted)' }}>
+                            {v1 > 0 ? (isDamage ? fmtK(v1) : v1) : '-'}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(239,83,80,0.3)', background: 'rgba(0,3,0,0.3)', color: v2 > v1 ? '#fff' : 'var(--text-muted)' }}>
+                            {v2 > 0 ? (isDamage ? fmtK(v2) : v2) : '-'}
+                          </div>
+                        </div>
                       </td>
                     );
                   })}
-                  <td style={{ padding: '0.2rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{isDamage ? fmtK(sum) : sum}</td>
+                  <td style={{ padding: '0', borderTop: i > 0 ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(239,83,80,0.3)' }} title={`${rpName} → Dire: ${rowTotal1}\nDire → ${rpName}: ${rowTotal2}`}>
+                     <div style={{ display: 'inline-flex', gap: '2px', padding: '0 2px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(102,187,106,0.3)', background: 'rgba(0,3,0,0.3)', color: rowTotal1 > rowTotal2 ? '#fff' : 'var(--text-muted)' }}>{rowTotal1 > 0 ? (isDamage ? fmtK(rowTotal1) : rowTotal1) : '-'}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(239,83,80,0.3)', background: 'rgba(0,3,0,0.3)', color: rowTotal2 > rowTotal1 ? '#fff' : 'var(--text-muted)' }}>{rowTotal2 > 0 ? (isDamage ? fmtK(rowTotal2) : rowTotal2) : '-'}</div>
+                     </div>
+                  </td>
                 </tr>
               );
             })}
+            <tr style={{ background: 'rgba(0,0,0,0.02)' }}>
+              <td style={{ padding: '0', height: '48px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <span style={{ color: 'var(--radiant-green)', fontWeight: 'bold' }}>RAD</span>
+              </td>
+              {dire.map((cp: any) => {
+                const cpName = HEROES[cp.hero_id as keyof typeof HEROES]?.name || cp.hero_name;
+                let colTotal1 = 0;
+                let colTotal2 = 0;
+                radiant.forEach((rp: any) => {
+                  colTotal1 += getField1(rp, cp);
+                  colTotal2 += getField2(rp, cp);
+                });
+                return (
+                  <td key={`${cp.hero_id}_totals`} style={{ padding: '0', borderTop: '1px solid rgba(255,255,255,0.06)' }} title={`Radiant → ${cpName}: ${colTotal1}\n${cpName} → Radiant: ${colTotal2}`}>
+                    <div style={{ display: 'inline-flex', gap: '2px', padding: '0 2px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(239,83,80,0.3)', background: 'rgba(0,3,0,0.3)', color: colTotal2 > colTotal1 ? '#fff' : 'var(--text-muted)' }}>{colTotal2 > 0 ? (isDamage ? fmtK(colTotal2) : colTotal2) : '-'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(102,187,106,0.3)', background: 'rgba(0,3,0,0.3)', color: colTotal1 > colTotal2 ? '#fff' : 'var(--text-muted)' }}>{colTotal1 > 0 ? (isDamage ? fmtK(colTotal1) : colTotal1) : '-'}</div>
+                    </div>
+                  </td>
+                );
+              })}
+              {(() => {
+                let grand1 = 0, grand2 = 0;
+                radiant.forEach((rp: any) => dire.forEach((cp: any) => {
+                  grand1 += getField1(rp, cp);
+                  grand2 += getField2(rp, cp);
+                }));
+                return (
+                  <td style={{ padding: '0', borderTop: '1px solid rgba(255,255,255,0.06)' }} title={`Radiant → Dire: ${grand1}\nDire → Radiant: ${grand2}`}>
+                    <div style={{ display: 'inline-flex', gap: '2px', padding: '0 2px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(102,187,106,0.3)', background: 'rgba(0,3,0,0.3)', color: grand1 > grand2 ? '#fff' : 'var(--text-muted)' }}>{grand1 > 0 ? (isDamage ? fmtK(grand1) : grand1) : '-'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '38px', height: '21px', border: '1px solid rgba(239,83,80,0.3)', background: 'rgba(0,3,0,0.3)', color: grand2 > grand1 ? '#fff' : 'var(--text-muted)' }}>{grand2 > 0 ? (isDamage ? fmtK(grand2) : grand2) : '-'}</div>
+                    </div>
+                  </td>
+                );
+              })()}
+            </tr>
           </tbody>
         </table>
       </div>
@@ -613,10 +672,10 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
 
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      {/* 10x10 Matrices */}
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
-        <HeroMatrix title="Kills" allPlayers={allPlayers} getValue={getKills} />
-        <HeroMatrix title="Damage" allPlayers={allPlayers} getValue={getDmg} isDamage />
+      {/* CrossTables */}
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-start', alignItems: 'flex-start' }}>
+        <CrossTable title="Kills" radiant={radiant} dire={dire} getField1={getKills} getField2={getKilledBy} />
+        <CrossTable title="Damage" radiant={radiant} dire={dire} getField1={getDmg} getField2={getDmgTaken} isDamage />
       </div>
 
       {/* Radiant Tables */}
