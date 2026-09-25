@@ -348,7 +348,7 @@ export function LaningTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
                 <Legend formatter={(value) => {
                    const slot = parseInt(value.split('_')[1]);
                    const p = allPlayers.find(x => x.player_slot === slot);
-                   return <span style={{ color: selectedPlayer?.player_slot === slot ? '#fff' : 'inherit', fontWeight: selectedPlayer?.player_slot === slot ? 'bold' : 'normal' }}>{p ? HEROES[p.hero_id]?.name || `Player ${slot}` : value}</span>;
+                   return <span style={{ color: selectedPlayer?.player_slot === slot ? '#fff' : 'inherit', fontWeight: selectedPlayer?.player_slot === slot ? 'bold' : 'normal' }}>{p ? HEROES[p.hero_id as keyof typeof HEROES]?.name || `Player ${slot}` : value}</span>;
                 }} />
                 {allPlayers.map((p) => {
                   const isSelected = selectedPlayer?.player_slot === p.player_slot;
@@ -379,42 +379,52 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
   const getKills = (rp: any, cp: any) => rp.killed ? (rp.killed[cp.hero_name] || 0) : 0;
-  const getDmg = (rp: any, cp: any) => rp.damage_targets ? (rp.damage_targets[cp.hero_name] || 0) : 0;
+  const getDmg = (rp: any, cp: any) => rp.damage ? (rp.damage[cp.hero_name] || 0) : 0;
 
-  const HeroMatrix = ({ title, rowPlayers, colPlayers, getValue, isDamage = false }: any) => {
+  const HeroMatrix = ({ title, allPlayers, getValue, isDamage = false }: any) => {
     return (
-      <div style={{ flex: 1, overflowX: 'auto', background: 'var(--surface-color)', borderRadius: '4px', padding: '1rem' }}>
-        <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>{title}</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.85rem' }}>
+      <div style={{ flex: '1 1 45%', overflowX: 'auto', background: 'var(--bg-surface)', borderRadius: '4px', padding: '1rem' }}>
+        <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)', textAlign: 'center' }}>{title}</h3>
+        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.8rem' }}>
           <thead>
             <tr>
-              <th style={{ padding: '0.5rem' }}></th>
-              {colPlayers.map((cp: any) => (
-                <th key={cp.hero_id} style={{ padding: '0.5rem' }}>
-                  <img src={getHeroImage(cp.hero_name?.replace('npc_dota_hero_', ''))} alt={cp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px' }} />
+              <th style={{ padding: '0.2rem' }}></th>
+              {allPlayers.map((cp: any) => (
+                <th key={cp.hero_id} style={{ padding: '0.2rem', minWidth: '24px' }}>
+                  <img src={getHeroImage(cp.hero_name?.replace('npc_dota_hero_', ''))} alt={cp.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px' }} />
                 </th>
               ))}
-              <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>SUM</th>
+              <th style={{ padding: '0.2rem', color: 'var(--text-muted)' }}>SUM</th>
             </tr>
           </thead>
           <tbody>
-            {rowPlayers.map((rp: any) => {
+            {allPlayers.map((rp: any) => {
               let sum = 0;
+              const rpName = HEROES[rp.hero_id as keyof typeof HEROES]?.name || rp.hero_name;
               return (
                 <tr key={rp.hero_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <td style={{ padding: '0.5rem' }}>
-                     <img src={getHeroImage(rp.hero_name?.replace('npc_dota_hero_', ''))} alt={rp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px' }} />
+                  <td style={{ padding: '0.2rem' }}>
+                     <img src={getHeroImage(rp.hero_name?.replace('npc_dota_hero_', ''))} alt={rp.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px', borderLeft: `3px solid ${rp.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
                   </td>
-                  {colPlayers.map((cp: any) => {
+                  {allPlayers.map((cp: any) => {
+                    const cpName = HEROES[cp.hero_id as keyof typeof HEROES]?.name || cp.hero_name;
                     const val = getValue(rp, cp);
                     sum += val;
+                    const isSelf = rp.player_slot === cp.player_slot;
+                    
                     return (
-                      <td key={cp.hero_id} style={{ padding: '0.5rem', background: val > 0 ? (isDamage ? 'rgba(255,152,0,0.1)' : 'rgba(102,187,106,0.1)') : 'transparent', color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                        {val > 0 ? (isDamage ? fmtK(val) : val) : '-'}
+                      <td key={cp.hero_id} 
+                        title={val > 0 ? `${rpName} → ${cpName}: ${isDamage ? fmtK(val) : val}` : undefined}
+                        style={{ 
+                          padding: '0.2rem', 
+                          background: isSelf ? 'rgba(255,255,255,0.02)' : (val > 0 ? (isDamage ? 'rgba(255,152,0,0.1)' : 'rgba(102,187,106,0.1)') : 'transparent'), 
+                          color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)' 
+                        }}>
+                        {isSelf ? '' : (val > 0 ? (isDamage ? fmtK(val) : val) : '-')}
                       </td>
                     );
                   })}
-                  <td style={{ padding: '0.5rem', color: 'var(--accent-gold)' }}>{isDamage ? fmtK(sum) : sum}</td>
+                  <td style={{ padding: '0.2rem', color: 'var(--text-primary)', fontWeight: 'bold' }}>{isDamage ? fmtK(sum) : sum}</td>
                 </tr>
               );
             })}
@@ -471,19 +481,41 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     }}
   ];
 
+  const renderAbilityDamage = (dmgDict: any) => {
+    if (!dmgDict) return null;
+    const sorted = Object.entries(dmgDict).sort((a: any, b: any) => b[1] - a[1]);
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '300px' }}>
+        {sorted.map(([name, amount]: any, i: number) => (
+          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '2px', borderRadius: '2px' }} title={`${name}: ${amount}`}>
+            <img src={name.includes('item_') ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+            <span style={{ fontSize: '0.65rem', marginTop: '2px', color: 'var(--text-muted)' }}>{fmtK(amount)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const getDamageCols = () => [
+    { key: 'dealt', label: 'DEALT', render: (p: any) => renderAbilityDamage(p.damage_inflictor) },
+    { key: 'received', label: 'RECEIVED', render: (p: any) => renderAbilityDamage(p.damage_inflictor_received) }
+  ];
+
   return (
     <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        <HeroMatrix title="Kills" rowPlayers={radiant} colPlayers={dire} getValue={getKills} />
-        <HeroMatrix title="Damage" rowPlayers={radiant} colPlayers={dire} getValue={getDmg} isDamage />
+      {/* 10x10 Matrices */}
+      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+        <HeroMatrix title="Kills" allPlayers={allPlayers} getValue={getKills} />
+        <HeroMatrix title="Damage" allPlayers={allPlayers} getValue={getDmg} isDamage />
       </div>
+
+      {/* Radiant Tables */}
       <TeamTable title="Radiant - Deaths" players={radiant} columns={getDeathsCols()} winner={_radiantWin} />
+      <TeamTable title="Radiant - Damage" players={radiant} columns={getDamageCols()} winner={_radiantWin} />
       
-      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: '2rem' }}>
-        <HeroMatrix title="Kills" rowPlayers={dire} colPlayers={radiant} getValue={getKills} />
-        <HeroMatrix title="Damage" rowPlayers={dire} colPlayers={radiant} getValue={getDmg} isDamage />
-      </div>
+      {/* Dire Tables */}
       <TeamTable title="Dire - Deaths" players={dire} columns={getDeathsCols()} winner={!_radiantWin} />
+      <TeamTable title="Dire - Damage" players={dire} columns={getDamageCols()} winner={!_radiantWin} />
     </div>
   );
 }

@@ -294,6 +294,8 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "pings": p.get("pings"),
             "actions_per_min": p.get("actions_per_min"),
             # Combat tab data
+            "damage": p.get("damage"),
+            "damage_taken": p.get("damage_taken"),
             "damage_targets": p.get("damage_targets"),
             "damage_inflictor": p.get("damage_inflictor"),
             "damage_inflictor_received": p.get("damage_inflictor_received"),
