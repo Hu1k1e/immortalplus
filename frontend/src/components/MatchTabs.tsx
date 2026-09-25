@@ -3,7 +3,7 @@ import { HEROES } from '../lib/heroes';
 import abilitiesData from '../lib/constants/abilities.json';
 import itemsData from '../lib/constants/items.json';
 import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import { Trophy } from 'lucide-react';
 
 // ================ SHARED HELPERS ================
@@ -750,6 +750,53 @@ export function FarmTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiant
     }
   }));
 
+  // Reasons Graph Data Setup
+  const goldReasonsData = allPlayers.map(p => {
+    const reasons = p.gold_reasons || {};
+    return {
+      name: HEROES[p.hero_id]?.name || p.hero_name,
+      img: getHeroImage(HEROES[p.hero_id]?.img_name || ''),
+      isRadiant: p.player_slot < 128,
+      'Other': reasons['0'] || 0,
+      'Death': reasons['1'] || 0,
+      'Buyback': reasons['2'] || 0,
+      'Abandon': reasons['3'] || 0,
+      'Sell': reasons['4'] || 0,
+      'Destroying Structure': reasons['11'] || 0,
+      'Hero Kill': reasons['12'] || 0,
+      'Creep Kill': reasons['13'] || 0,
+      'Roshan Kill': reasons['14'] || 0,
+      'Courier Kill': reasons['15'] || 0,
+      'Bounty Rune': reasons['16'] || 0,
+    };
+  });
+
+  const xpReasonsData = allPlayers.map(p => {
+    const reasons = p.xp_reasons || {};
+    return {
+      name: HEROES[p.hero_id]?.name || p.hero_name,
+      img: getHeroImage(HEROES[p.hero_id]?.img_name || ''),
+      isRadiant: p.player_slot < 128,
+      'Other': reasons['0'] || 0,
+      'Hero Kill': reasons['1'] || 0,
+      'Creep Kill': reasons['2'] || 0,
+      'Roshan Kill': reasons['3'] || 0,
+    };
+  });
+
+  const goldColors = { 'Other': '#9e9e9e', 'Death': '#ef5350', 'Buyback': '#ab47bc', 'Sell': '#78909c', 'Destroying Structure': '#8d6e63', 'Hero Kill': '#ffca28', 'Creep Kill': '#66bb6a', 'Roshan Kill': '#ff7043', 'Courier Kill': '#29b6f6', 'Bounty Rune': '#ffee58' };
+  const xpColors = { 'Other': '#9e9e9e', 'Hero Kill': '#ffca28', 'Creep Kill': '#66bb6a', 'Roshan Kill': '#ff7043' };
+
+  const CustomXAxisTick = ({ x, y, payload }: any) => {
+    const p = goldReasonsData.find(d => d.name === payload.value);
+    if (!p) return null;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <image href={p.img} x={-16} y={4} width="32" height="18" clipPath="inset(0% round 2px)" style={{ borderBottom: `2px solid ${p.isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+      </g>
+    );
+  };
+
   return (
     <div className="animation-fade-in">
       <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '1rem' }}>Unit Kills</h2>
@@ -759,6 +806,38 @@ export function FarmTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiant
       <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '3rem' }}>Last Hits</h2>
       <TeamTable title="Radiant - Last Hits" players={radiant} columns={lhCols} winner={radiantWin} />
       <TeamTable title="Dire - Last Hits" players={dire} columns={lhCols} winner={!radiantWin} />
+
+      <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '3rem' }}>Gold Reasons</h2>
+      <div style={{ width: '100%', height: '400px', background: 'var(--bg-surface)', padding: '1rem', borderRadius: '4px' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={goldReasonsData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <XAxis dataKey="name" interval={0} tick={<CustomXAxisTick />} />
+            <YAxis tickFormatter={(val) => fmtK(val)} stroke="rgba(255,255,255,0.5)" />
+            <Tooltip contentStyle={{ background: '#1a1f26', border: '1px solid var(--border-color)', borderRadius: '4px' }} formatter={(val) => fmtK(val)} />
+            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+            {Object.keys(goldColors).map(key => (
+              <Bar key={key} dataKey={key} stackId="a" fill={goldColors[key as keyof typeof goldColors]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '3rem' }}>XP Reasons</h2>
+      <div style={{ width: '100%', height: '400px', background: 'var(--bg-surface)', padding: '1rem', borderRadius: '4px' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={xpReasonsData} margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <XAxis dataKey="name" interval={0} tick={<CustomXAxisTick />} />
+            <YAxis tickFormatter={(val) => fmtK(val)} stroke="rgba(255,255,255,0.5)" />
+            <Tooltip contentStyle={{ background: '#1a1f26', border: '1px solid var(--border-color)', borderRadius: '4px' }} formatter={(val) => fmtK(val)} />
+            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+            {Object.keys(xpColors).map(key => (
+              <Bar key={key} dataKey={key} stackId="a" fill={xpColors[key as keyof typeof xpColors]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -767,6 +846,59 @@ export function FarmTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiant
 export function ItemsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
+
+  const RichItemTooltip = ({ itemName, children }: any) => {
+    const [show, setShow] = useState(false);
+    const data = (itemsData as any)[itemName];
+
+    return (
+      <div 
+        style={{ position: 'relative', display: 'inline-block' }}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+      >
+        {children}
+        {show && data && (
+          <div style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
+            borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
+            textAlign: 'left', marginBottom: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+               <img src={getItemImage(itemName)} style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
+               <div>
+                 <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
+                 <div style={{ color: 'var(--accent-gold)', fontSize: '0.8rem', fontWeight: 'bold' }}>💰 {data.cost}</div>
+               </div>
+            </div>
+            {data.desc && <p style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4' }}>{data.desc}</p>}
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {data.attrib && data.attrib.map((a: any, i: number) => (
+                 <div key={i} style={{ fontSize: '0.8rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
+                    <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
+                 </div>
+              ))}
+            </div>
+            
+            {(data.mc || data.cd) && (
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
+                </div>}
+                {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                  ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
+                </div>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const renderItemPhase = (p: any, startMin: number, endMin: number | null) => {
     const log = p.purchase_log || [];
@@ -789,13 +921,15 @@ export function ItemsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
           const prefix = (item.time || 0) < 0 ? '-' : '';
           
           return (
-            <div key={i} title={itemName} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              <div style={{ width: '32px', height: '23px', background: 'rgba(0,0,0,0.5)', borderRadius: '2px', overflow: 'hidden' }}>
-                <img src={getItemImage(itemName)} alt={itemName}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            <RichItemTooltip key={i} itemName={itemName}>
+              <div title={itemName} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', cursor: 'help' }}>
+                <div style={{ width: '36px', height: '26px', background: 'rgba(0,0,0,0.5)', borderRadius: '2px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  <img src={getItemImage(itemName)} alt={itemName}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                </div>
+                <span style={{ marginTop: '2px', fontSize: '0.65rem' }}>{prefix}{m}:{s}</span>
               </div>
-              <span style={{ marginTop: '2px' }}>{prefix}{m}:{s}</span>
-            </div>
+            </RichItemTooltip>
           );
         })}
       </div>

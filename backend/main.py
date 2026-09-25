@@ -28,10 +28,10 @@ async def background_sync_loop():
     """
     from sqlmodel import select
     from database import SessionLocal
-    from models import Player, UserSettings
+    from models import Player, UserSettings, Match
     from services.sync import (
         sync_player_matches, create_progress_snapshot,
-        sync_hero_meta, sync_hero_matchups,
+        sync_hero_meta, sync_hero_matchups, fetch_match_details
     )
 
     # Wait for app to fully start
@@ -48,7 +48,23 @@ async def background_sync_loop():
 
             if player and settings and settings.auto_sync_matches:
                 # Sync matches
-                await sync_player_matches(session, player, settings)
+                new_count = await sync_player_matches(session, player, settings)
+                
+                # Fetch detailed parsed data for matches that don't have it yet
+                unparsed = session.exec(
+                    select(Match)
+                    .where(Match.player_id == player.id)
+                    .where(Match.opendota_raw == None)
+                    .order_by(Match.match_id.desc())
+                    .limit(10)
+                ).all()
+
+                for m in unparsed:
+                    logger.info(f"Background fetching parsed details for {m.match_id}")
+                    success = await fetch_match_details(session, m, settings)
+                    if success:
+                        session.commit()
+
                 # Create daily snapshot
                 await create_progress_snapshot(session, player)
 
