@@ -1,3 +1,4 @@
+import { getHeroImage } from '../lib/dota';
 import { useState, useEffect, useRef } from 'react';
 import api from '../lib/api';
 import { HEROES } from '../lib/heroes';
@@ -84,11 +85,7 @@ export default function DraftHelper() {
     };
   }, []);
 
-  const getHeroImgUrl = (imgName: string) => {
-    return `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${imgName}.png`;
-  };
-
-  const renderHeroList = (heroIds: number[]) => {
+    const renderHeroList = (heroIds: number[]) => {
     if (!heroIds || heroIds.length === 0) return <p className="text-muted">No heroes selected yet.</p>;
     
     return (
@@ -99,7 +96,7 @@ export default function DraftHelper() {
           return (
             <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
               <img 
-                src={getHeroImgUrl(hero.img_name)} 
+                src={getHeroImage(hero.img_name)} 
                 alt={hero.name}
                 style={{ width: '80px', height: '45px', objectFit: 'cover', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -153,7 +150,7 @@ export default function DraftHelper() {
               return (
                 <div key={s.hero_id} className="card-interactive" style={{ padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <img 
-                    src={getHeroImgUrl(hero.img_name)} 
+                    src={getHeroImage(hero.img_name)} 
                     alt={hero.name}
                     style={{ width: '60px', height: '34px', objectFit: 'cover', borderRadius: '4px' }}
                   />

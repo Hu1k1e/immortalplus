@@ -1,4 +1,5 @@
-import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import { HEROES } from '../lib/heroes';
+import { getHeroImage, getItemImage } from '../lib/dota';
 import { ITEMS } from '../lib/items';
 
 export default function MatchScoreboard({ allPlayers, radiantWin, onPlayerClick, compact }: { allPlayers: any[], radiantWin: boolean, onPlayerClick?: (player: any) => void, compact?: boolean }) {
@@ -59,7 +60,7 @@ export default function MatchScoreboard({ allPlayers, radiantWin, onPlayerClick,
                     <div style={{ display: 'flex', alignItems: 'center', gap: compact ? '0.4rem' : '0.8rem' }}>
                       {hero ? (
                         <img 
-                          src={getHeroImgUrl(hero.img_name)} 
+                          src={getHeroImage(hero.img_name)} 
                           alt={hero.name} 
                           style={{ width: compact ? '35px' : '50px', height: compact ? '20px' : '28px', objectFit: 'cover', borderRadius: '2px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }} 
                         />
@@ -93,7 +94,7 @@ export default function MatchScoreboard({ allPlayers, radiantWin, onPlayerClick,
                           return (
                             <div key={`item-${i}`} style={{ width: compact ? '20px' : '30px', height: compact ? '14px' : '22px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
                               {itemName && (
-                                <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName.replace('item_', '')}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                <img src={getItemImage(itemName.replace('item_', ''))} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                               )}
                             </div>
                           );
@@ -107,7 +108,7 @@ export default function MatchScoreboard({ allPlayers, radiantWin, onPlayerClick,
                             return (
                               <div key={`bp-${i}`} style={{ width: '22px', height: '16px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
                                 {itemName && (
-                                  <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName.replace('item_', '')}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                  <img src={getItemImage(itemName.replace('item_', ''))} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                                 )}
                               </div>
                             );
@@ -117,7 +118,7 @@ export default function MatchScoreboard({ allPlayers, radiantWin, onPlayerClick,
                       {/* Neutral */}
                       {getItemName(p.neutral_item) && (
                         <div style={{ width: compact ? '16px' : '24px', height: compact ? '16px' : '24px', borderRadius: '50%', overflow: 'hidden', marginLeft: compact ? '2px' : '6px', border: '1px solid var(--accent-gold)' }}>
-                          <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${getItemName(p.neutral_item)!.replace('item_', '')}.png`} alt={getItemName(p.neutral_item) || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                          <img src={getItemImage(getItemName(p.neutral_item)!.replace('item_', ''))} alt={getItemName(p.neutral_item) || ''} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                         </div>
                       )}
                     </div>

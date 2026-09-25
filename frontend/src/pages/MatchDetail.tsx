@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../lib/api';
-import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import { HEROES } from '../lib/heroes';
+import { getHeroImage, getItemImage } from '../lib/dota';
 import { ITEMS } from '../lib/items';
 
 import MatchScoreboard from '../components/MatchScoreboard';
@@ -125,7 +126,7 @@ export default function MatchDetail() {
     return (
       <img
         key={p.player_slot}
-        src={getHeroImgUrl(hero.img_name)}
+        src={getHeroImage(hero.img_name)}
         alt={hero.name}
         onClick={() => setSelectedPlayer(p)}
         style={{ 
@@ -149,7 +150,7 @@ export default function MatchDetail() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {userHero && (
               <img 
-                src={getHeroImgUrl(userHero.img_name)} 
+                src={getHeroImage(userHero.img_name)} 
                 alt={userHero.name}
                 style={{ width: '80px', height: '45px', objectFit: 'cover', borderRadius: '4px' }}
               />
@@ -258,7 +259,7 @@ export default function MatchDetail() {
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
                   <img 
-                    src={getHeroImgUrl(HEROES[selectedPlayer.hero_id]?.img_name || '')} 
+                    src={getHeroImage(HEROES[selectedPlayer.hero_id]?.img_name || '')} 
                     alt="Hero"
                     style={{ width: '150px', height: '84px', objectFit: 'cover', borderRadius: '8px', border: '2px solid var(--border-color)' }}
                   />
@@ -323,7 +324,7 @@ export default function MatchDetail() {
                   return (
                     <div key={`inv-${i}`} style={{ width: '60px', height: '44px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
                       {itemName && itemName !== 'empty' && itemName !== 'null' && (
-                        <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                        <img src={getItemImage(itemName)} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                       )}
                     </div>
                   );
@@ -341,7 +342,7 @@ export default function MatchDetail() {
                       return (
                         <div key={`bp-${i}`} style={{ width: '45px', height: '33px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden', opacity: 0.7 }}>
                           {itemName && itemName !== 'empty' && itemName !== 'null' && (
-                            <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                            <img src={getItemImage(itemName)} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                           )}
                         </div>
                       );
@@ -354,11 +355,11 @@ export default function MatchDetail() {
                   <div style={{ width: '45px', height: '45px', borderRadius: '50%', overflow: 'hidden', border: '2px solid var(--accent-gold)' }}>
                     {selectedPlayer.neutral_item && selectedPlayer.neutral_item !== 'empty' && (
                       <img 
-                        src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${
+                        src={getItemImage(
                           (typeof selectedPlayer.neutral_item === 'number' || !isNaN(Number(selectedPlayer.neutral_item)))
                             ? ITEMS[Number(selectedPlayer.neutral_item)] || String(selectedPlayer.neutral_item).replace('item_', '')
                             : String(selectedPlayer.neutral_item).replace('item_', '')
-                        }.png`} 
+                        )} 
                         alt="Neutral" 
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         onError={(e) => { e.currentTarget.style.display = 'none'; }} 

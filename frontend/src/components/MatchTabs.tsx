@@ -1,4 +1,8 @@
-import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import React, { useState } from 'react';
+import { HEROES } from '../lib/heroes';
+import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { Trophy } from 'lucide-react';
 
 // ================ SHARED HELPERS ================
 const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
@@ -9,7 +13,7 @@ const PlayerCell = ({ p }: { p: any }) => {
   const hero = HEROES[p.hero_id];
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      {hero && <img src={getHeroImgUrl(hero.img_name)} alt={hero.name} style={{ width: '36px', height: '20px', objectFit: 'cover', borderRadius: '2px' }} />}
+      {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '36px', height: '20px', objectFit: 'cover', borderRadius: '2px' }} />}
       <span style={{ fontSize: '0.85rem' }}>{p.persona || 'Anonymous'}</span>
     </div>
   );
@@ -140,7 +144,7 @@ export function PerformancesTab({ allPlayers, radiantWin }: { allPlayers: any[];
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', maxWidth: '90px', margin: '0 auto' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{val}</span>
-          {targetHero && <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/heroes/${targetHero}.png`} alt={targetHero} style={{ width: '32px', height: '18px', objectFit: 'cover', borderRadius: '2px' }} />}
+          {targetHero && <img src={getHeroImage(targetHero)} alt={targetHero} style={{ width: '32px', height: '18px', objectFit: 'cover', borderRadius: '2px' }} />}
         </div>
         <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.1)', marginTop: '4px', borderRadius: '2px' }}>
           <div style={{ width: `${pct}%`, height: '100%', background: hitColor, borderRadius: '2px' }} />
@@ -170,13 +174,32 @@ export function PerformancesTab({ allPlayers, radiantWin }: { allPlayers: any[];
 
 // ================ LANING TAB ================
 export function LaningTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
+  const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
+
   const getLaneName = (lane: number | null) => {
     switch (lane) { case 1: return 'Safe'; case 2: return 'Mid'; case 3: return 'Off'; default: return '-'; }
   };
 
   const laningCols = [
+    { key: 'select', label: '', render: (p: any) => (
+      <input 
+        type="radio" 
+        name="laning-select" 
+        checked={selectedPlayer?.player_slot === p.player_slot} 
+        onChange={() => setSelectedPlayer(p)} 
+        style={{ cursor: 'pointer', accentColor: 'var(--accent-gold)' }} 
+      />
+    )},
     { key: 'side', label: 'SIDE', render: (p: any) => <span style={{ color: p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)' }}>{p.player_slot < 128 ? 'Radiant' : 'Dire'}</span> },
     { key: 'lane', label: 'LANE', render: (p: any) => getLaneName(p.lane) },
+    { key: 'win', label: 'WIN', render: (p: any) => {
+        // Determine lane winner based on highest efficiency in their lane
+        const lanePlayers = allPlayers.filter(x => x.lane === p.lane);
+        if (lanePlayers.length < 2 || !p.lane) return '-';
+        const maxEff = Math.max(...lanePlayers.map(x => x.lane_efficiency_pct || 0));
+        const isWinner = (p.lane_efficiency_pct || 0) === maxEff && maxEff > 0;
+        return isWinner ? <Trophy size={16} color="var(--accent-gold)" /> : <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    }},
     { key: 'cs_over_time', label: 'CS OVER TIME', render: (p: any) => {
         if (!p.lh_t || p.lh_t.length < 10) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
         
@@ -241,9 +264,111 @@ export function LaningTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     }},
   ];
 
+  // Prepare Heatmap Points for Selected Player
+  let heatmapPoints: any[] = [];
+  let maxHeat = 1;
+  if (selectedPlayer && selectedPlayer.lane_pos) {
+    Object.entries(selectedPlayer.lane_pos).forEach(([xStr, yDict]: any) => {
+      Object.entries(yDict).forEach(([yStr, count]: any) => {
+        const cnt = Number(count);
+        if (cnt > maxHeat) maxHeat = cnt;
+        heatmapPoints.push({ x: Number(xStr), y: Number(yStr), count: cnt });
+      });
+    });
+  }
+
+  // Prepare data for the LineChart (Last Hits + Denies over first 15 mins)
+  const laningChartData = [];
+  for (let m = 1; m <= 15; m++) {
+    const dataPoint: any = { time: m };
+    allPlayers.forEach(p => {
+       const lh = p.lh_t && p.lh_t.length > m ? p.lh_t[m] : (p.lh_t && p.lh_t.length > 0 ? p.lh_t[p.lh_t.length - 1] : 0);
+       const dn = p.dn_t && p.dn_t.length > m ? p.dn_t[m] : (p.dn_t && p.dn_t.length > 0 ? p.dn_t[p.dn_t.length - 1] : 0);
+       dataPoint[`player_${p.player_slot}`] = lh + dn;
+    });
+    laningChartData.push(dataPoint);
+  }
+
+  const PLAYER_COLORS: Record<number, string> = {
+    0: '#3375FF', 1: '#66FFBF', 2: '#BF00BF', 3: '#F3F00B', 4: '#FF6B00',
+    128: '#FE86C2', 129: '#A1B447', 130: '#65D9F7', 131: '#008321', 132: '#A46900'
+  };
+
   return (
     <div className="animation-fade-in">
       <TeamTable title="All Players" players={allPlayers} columns={laningCols} />
+      
+      <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem', flexWrap: 'wrap' }}>
+        {/* Heatmap Section */}
+        <div className="glass-surface" style={{ flex: '1 1 300px', maxWidth: '350px', padding: '1rem', borderRadius: '4px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>Laning Map</h3>
+          {selectedPlayer ? (
+            <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', background: '#0a0a0a', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
+              <img src="/minimap.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} />
+              {heatmapPoints.map((pt, i) => {
+                 const left = ((pt.x - 64) / 128) * 100;
+                 const top = (1 - ((pt.y - 64) / 128)) * 100;
+                 const intensity = pt.count / maxHeat;
+                 // Gradient: Red -> Yellow -> Green based on intensity (Dota style)
+                 const hue = (1 - intensity) * 120;
+                 return (
+                   <div key={i} style={{
+                     position: 'absolute',
+                     left: `${left}%`, top: `${top}%`,
+                     width: '16px', height: '16px',
+                     transform: 'translate(-50%, -50%)',
+                     borderRadius: '50%',
+                     background: `radial-gradient(circle, hsla(${hue}, 100%, 50%, ${intensity * 0.8 + 0.2}) 0%, transparent 70%)`,
+                     zIndex: 2,
+                     pointerEvents: 'none'
+                   }} />
+                 );
+              })}
+            </div>
+          ) : (
+            <div style={{ width: '100%', aspectRatio: '1/1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '4px' }}>
+              Select a player to view heatmap
+            </div>
+          )}
+        </div>
+
+        {/* Chart Section */}
+        <div className="glass-surface" style={{ flex: '2 1 500px', padding: '1rem', borderRadius: '4px' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '1rem', textAlign: 'center', color: 'var(--text-primary)' }}>Last Hits + Denies (First 15 Minutes)</h3>
+          <div style={{ height: '350px', width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={laningChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="time" stroke="var(--text-muted)" tickFormatter={(t) => `${t}:00`} />
+                <YAxis stroke="var(--text-muted)" />
+                <Tooltip 
+                  contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+                  labelFormatter={(t) => `Minute ${t}`}
+                />
+                <Legend formatter={(value) => {
+                   const slot = parseInt(value.split('_')[1]);
+                   const p = allPlayers.find(x => x.player_slot === slot);
+                   return <span style={{ color: selectedPlayer?.player_slot === slot ? '#fff' : 'inherit', fontWeight: selectedPlayer?.player_slot === slot ? 'bold' : 'normal' }}>{p ? HEROES[p.hero_id]?.name || `Player ${slot}` : value}</span>;
+                }} />
+                {allPlayers.map((p) => {
+                  const isSelected = selectedPlayer?.player_slot === p.player_slot;
+                  return (
+                    <Line 
+                      key={p.player_slot}
+                      type="monotone" 
+                      dataKey={`player_${p.player_slot}`} 
+                      stroke={PLAYER_COLORS[p.player_slot] || 'var(--text-primary)'} 
+                      strokeWidth={isSelected ? 4 : 2}
+                      opacity={selectedPlayer && !isSelected ? 0.3 : 1}
+                      dot={false}
+                    />
+                  );
+                })}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -266,7 +391,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
               <th style={{ padding: '0.5rem' }}></th>
               {colPlayers.map((cp: any) => (
                 <th key={cp.hero_id} style={{ padding: '0.5rem' }}>
-                  <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/heroes/${cp.hero_name?.replace('npc_dota_hero_', '')}.png`} alt={cp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px' }} />
+                  <img src={getHeroImage(cp.hero_name?.replace('npc_dota_hero_', ''))} alt={cp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px' }} />
                 </th>
               ))}
               <th style={{ padding: '0.5rem', color: 'var(--text-muted)' }}>SUM</th>
@@ -278,7 +403,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
               return (
                 <tr key={rp.hero_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '0.5rem' }}>
-                     <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/heroes/${rp.hero_name?.replace('npc_dota_hero_', '')}.png`} alt={rp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px' }} />
+                     <img src={getHeroImage(rp.hero_name?.replace('npc_dota_hero_', ''))} alt={rp.hero_name} style={{ width: '32px', height: '18px', borderRadius: '2px' }} />
                   </td>
                   {colPlayers.map((cp: any) => {
                     const val = getValue(rp, cp);
@@ -335,7 +460,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
                return (
                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                    {killer && !killer.includes('creep') && !killer.includes('neutral') && !killer.includes('tower') ? 
-                     <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/heroes/${killer}.png`} alt={killer} style={{ width: '24px', height: '14px', borderRadius: '2px', objectFit: 'cover' }} /> : 
+                     <img src={getHeroImage(killer)} alt={killer} style={{ width: '24px', height: '14px', borderRadius: '2px', objectFit: 'cover' }} /> : 
                      <span style={{ height: '14px' }}>☠️</span>}
                    <span style={{ marginTop: '2px' }}>{`${m}:${s}`}</span>
                  </div>
@@ -465,7 +590,7 @@ export function ItemsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
           return (
             <div key={i} title={itemName} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
               <div style={{ width: '32px', height: '23px', background: 'rgba(0,0,0,0.5)', borderRadius: '2px', overflow: 'hidden' }}>
-                <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName}.png`} alt={itemName}
+                <img src={getItemImage(itemName)} alt={itemName}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               </div>
               <span style={{ marginTop: '2px' }}>{prefix}{m}:{s}</span>
@@ -503,8 +628,9 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
         {entries.map(([name, count]: any) => (
-          <div key={name} style={{ fontSize: '0.75rem', display: 'flex', gap: '0.5rem' }}>
+          <div key={name} style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ color: 'var(--accent-gold)' }}>{count}x</span>
+            <img src={getAbilityImage(name)} alt={name} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
             <span style={{ color: 'var(--text-secondary)' }}>{name.replace(/_/g, ' ').replace(/^[a-z]+\s/, '')}</span>
           </div>
         ))}

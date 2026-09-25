@@ -147,28 +147,44 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
     """
     source = settings.data_source if settings else "both"
     
-    data = None
+    od_data = None
+    stratz_data = None
+
+    if source in ["opendota", "both"]:
+        client = get_opendota_client(settings.opendota_api_key if settings else None)
+        try:
+            od_data = await client.get_match(match.match_id)
+        except Exception as e:
+            logger.error(f"OpenDota failed for match {match.match_id}: {e}")
+            if source == "opendota":
+                return False
+
     if source in ["stratz", "both"]:
         from services.stratz import get_stratz_client
         stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
         if stratz_client:
             try:
-                data = await stratz_client.get_match(match.match_id)
+                stratz_data = await stratz_client.get_match(match.match_id)
             except Exception as e:
                 logger.error(f"Stratz failed for match {match.match_id}: {e}")
                 if source == "stratz":
                     return False
-        
-    if not data and source in ["opendota", "both"]:
-        client = get_opendota_client(settings.opendota_api_key if settings else None)
-        try:
-            data = await client.get_match(match.match_id)
-        except Exception as e:
-            logger.error(f"OpenDota failed for match {match.match_id}: {e}")
-            return False
 
+    # Choose the primary data source (prefer OpenDota for deep stats)
+    data = od_data if od_data else stratz_data
     if not data:
         return False
+        
+    # If we have both, we can merge Stratz high-fidelity coordinates into OpenDota data
+    if od_data and stratz_data:
+        for p_od in data.get("players", []):
+            p_stratz = next((p for p in stratz_data.get("players", []) if p.get("account_id") == p_od.get("account_id")), None)
+            if p_stratz:
+                # Augment OpenDota with Stratz high-fidelity coordinates
+                if not p_od.get("kills_log") and p_stratz.get("kills_log"):
+                    p_od["kills_log"] = p_stratz["kills_log"]
+                if not p_od.get("purchase_log") and p_stratz.get("purchase_log"):
+                    p_od["purchase_log"] = p_stratz["purchase_log"]
 
     # Find our player in the match
     player_data = None
@@ -252,7 +268,7 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "lane_role": p.get("lane_role"),
             "lane_efficiency_pct": p.get("lane_efficiency_pct"),
             "is_roaming": p.get("is_roaming"),
-            "pos": p.get("pos", {}),
+            "lane_pos": p.get("lane_pos", {}),
 
             # Casts / Farm tab data
             "ability_uses": p.get("ability_uses", {}),

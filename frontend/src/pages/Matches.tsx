@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import { HEROES } from '../lib/heroes';
+import { getHeroImage, getItemImage } from '../lib/dota';
 import { ITEMS } from '../lib/items';
 
 const AVAILABLE_COLUMNS = [
@@ -149,7 +150,7 @@ export default function Matches() {
                         content = (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                             <img 
-                              src={getHeroImgUrl(hero.img_name)} 
+                              src={getHeroImage(hero.img_name)} 
                               alt={hero.name}
                               style={{ width: '60px', height: '34px', objectFit: 'cover', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -179,7 +180,7 @@ export default function Matches() {
                               return (
                                 <div key={i} style={{ width: '30px', height: '22px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
                                   {itemName && (
-                                    <img src={`https://cdn.akamai.steamstatic.com/apps/dota2/images/dota_react/items/${itemName.replace('item_', '')}.png`} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                    <img src={getItemImage(itemName.replace('item_', ''))} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                   )}
                                 </div>
                               );

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { HEROES, getHeroImgUrl } from '../lib/heroes';
+import { HEROES } from '../lib/heroes';
+import { getHeroImage } from '../lib/dota';
 
 interface MatchMapProps {
   matchData: any;
@@ -268,7 +269,7 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
                   borderRadius: '50%',
                   border: `2px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}`,
                   boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
-                  backgroundImage: hero ? `url(${getHeroImgUrl(hero.img_name)})` : 'none',
+                  backgroundImage: hero ? `url(${getHeroImage(hero.img_name)})` : 'none',
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
                   backgroundColor: '#333',
