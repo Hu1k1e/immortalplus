@@ -295,6 +295,9 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "xp_t": p.get("xp_t"),
             "lh_t": p.get("lh_t"),
             "dn_t": p.get("dn_t"),
+            "hero_damage_t": p.get("hero_damage_t"),
+            "hero_healing_t": p.get("hero_healing_t"),
+            "camps_stacked_t": p.get("camps_stacked_t"),
             # Logs for detailed tabs
             "obs_log": p.get("obs_log", []),
             "sen_log": p.get("sen_log", []),
@@ -310,6 +313,9 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
 
             # Casts / Farm tab data
             "ability_uses": p.get("ability_uses", {}),
+            "ability_targets": p.get("ability_targets", {}),
+            "hero_hits": p.get("hero_hits", {}),
+            "damage_targets": p.get("damage_targets", {}),
             "item_uses": p.get("item_uses", {}),
             "gold_reasons": p.get("gold_reasons", {}),
             "xp_reasons": p.get("xp_reasons", {}),

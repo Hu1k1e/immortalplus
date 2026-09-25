@@ -53,6 +53,12 @@ export function getItemImage(itemName: string): string {
 export function getAbilityImage(abilityName: string): string {
   if (!abilityName) return '';
   
+  if (abilityName.includes('attribute_bonus')) {
+    return '/assets/images/stats.png';
+  } else if (abilityName.includes('special_bonus')) {
+    return '/assets/images/dota2/talent_tree.svg';
+  }
+  
   if (ABILITIES[abilityName]) {
     return CDN_BASE + ABILITIES[abilityName].img;
   }
