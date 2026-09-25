@@ -260,7 +260,9 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "gold_reasons": p.get("gold_reasons", {}),
             "xp_reasons": p.get("xp_reasons", {}),
             # Benchmarks tab
+            "benchmarks": p.get("benchmarks", {}),
             # Performance tab
+            "life_state_dead": p.get("life_state_dead"),
             "multi_kills": p.get("multi_kills"),
             "kill_streaks": p.get("kill_streaks"),
             "stuns": p.get("stuns"),
@@ -279,9 +281,21 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "damage_targets": p.get("damage_targets"),
             "damage_inflictor": p.get("damage_inflictor"),
             "damage_inflictor_received": p.get("damage_inflictor_received"),
+            "deaths_log": p.get("deaths_log", []),
+            "killed": p.get("killed", {}),
+            "killed_by": p.get("killed_by", {}),
             # Farm tab
             "gold_reasons": p.get("gold_reasons"),
             "xp_reasons": p.get("xp_reasons"),
+            "hero_kills": p.get("hero_kills", 0),
+            "lane_kills": p.get("lane_kills", 0),
+            "neutral_kills": p.get("neutral_kills", 0),
+            "ancient_kills": p.get("ancient_kills", 0),
+            "tower_kills": p.get("tower_kills", 0),
+            "courier_kills": p.get("courier_kills", 0),
+            "roshan_kills": p.get("roshan_kills", 0),
+            "observer_kills": p.get("observer_kills", 0),
+            "necronomicon_kills": p.get("necronomicon_kills", 0),
             # Casts tab
             "ability_uses": p.get("ability_uses"),
             "ability_targets": p.get("ability_targets"),
