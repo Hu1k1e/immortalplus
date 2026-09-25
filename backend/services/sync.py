@@ -185,6 +185,7 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
         return False
 
     # Update match with detailed data
+    match.opendota_raw = json.dumps(data)
     match.gold_t = json.dumps(player_data.get("gold_t")) if player_data.get("gold_t") else None
     match.xp_t = json.dumps(player_data.get("xp_t")) if player_data.get("xp_t") else None
     match.lh_t = json.dumps(player_data.get("lh_t")) if player_data.get("lh_t") else None
@@ -249,11 +250,16 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             # Laning tab data
             "lane": p.get("lane"),
             "lane_role": p.get("lane_role"),
-            "is_roaming": p.get("is_roaming"),
-            "lane_efficiency": p.get("lane_efficiency"),
             "lane_efficiency_pct": p.get("lane_efficiency_pct"),
+            "is_roaming": p.get("is_roaming"),
+            "pos": p.get("pos", {}),
+
+            # Casts / Farm tab data
+            "ability_uses": p.get("ability_uses", {}),
+            "item_uses": p.get("item_uses", {}),
+            "gold_reasons": p.get("gold_reasons", {}),
+            "xp_reasons": p.get("xp_reasons", {}),
             # Benchmarks tab
-            "benchmarks": p.get("benchmarks"),
             # Performance tab
             "multi_kills": p.get("multi_kills"),
             "kill_streaks": p.get("kill_streaks"),

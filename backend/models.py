@@ -73,6 +73,7 @@ class Match(SQLModel, table=True):
     radiant_xp_adv: Optional[str] = None    # JSON array: team xp advantage per minute  
     chat: Optional[str] = None              # JSON array: match chat log
     draft_timings: Optional[str] = None     # JSON array: draft pick/ban order
+    opendota_raw: Optional[str] = None      # JSON: full OpenDota match response
     played_at: Optional[datetime] = None
     synced_at: datetime = Field(default_factory=datetime.utcnow)
 

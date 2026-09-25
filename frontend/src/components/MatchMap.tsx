@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { HEROES, getHeroImgUrl } from '../lib/heroes';
 
 interface MatchMapProps {
   matchData: any;
@@ -89,6 +90,41 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
   const maxGold = Math.max(1, ...goldAdv.map((g: number) => Math.abs(g)));
   const currentMinute = Math.floor(currentTime / 60);
 
+  // Hero positions based on pos dict {"1": {"x": 123, "y": 123}}
+  const heroPositions = useMemo(() => {
+    if (!matchData?.all_players) return [];
+    const positions: any[] = [];
+    
+    matchData.all_players.forEach((p: any) => {
+      // Find the closest previous minute position if current minute doesn't exist
+      // Since pos is sparsely sampled sometimes
+      let minStr = String(currentMinute);
+      let posData = p.pos ? p.pos[minStr] : null;
+      
+      // If we don't have exact minute, try to fallback to previous known minute up to 5 mins back
+      if (!posData && p.pos) {
+        for (let back = currentMinute - 1; back >= Math.max(0, currentMinute - 5); back--) {
+          if (p.pos[String(back)]) {
+            posData = p.pos[String(back)];
+            break;
+          }
+        }
+      }
+
+      if (posData && posData.x && posData.y) {
+        const left = Math.min(100, Math.max(0, ((posData.x - 64) / 128) * 100));
+        const top = Math.min(100, Math.max(0, (1 - ((posData.y - 64) / 128)) * 100));
+        positions.push({
+          playerSlot: p.player_slot,
+          heroId: p.hero_id,
+          left,
+          top
+        });
+      }
+    });
+    return positions;
+  }, [matchData, currentMinute]);
+
   const mapSize = compact ? '320px' : '100%';
 
   // Zoom and Pan state
@@ -151,11 +187,11 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}>
           <img 
-            src="https://static.wikia.nocookie.net/dota2_gamepedia/images/c/c2/Minimap_7.33.png" 
+            src="/minimap.png" 
             alt="Dota 2 Map"
             style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7, pointerEvents: 'none' }}
             onError={(e) => {
-              e.currentTarget.src = 'https://raw.githubusercontent.com/SteamDatabase/GameTracking-Dota2/master/game/dota/panorama/images/map/map_icon_png.png';
+              e.currentTarget.style.display = 'none';
             }}
           />
 
@@ -193,7 +229,7 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
 
           {visibleEvents.map((evt, i) => (
             <div
-              key={i}
+              key={`evt-${i}`}
               style={{
                 position: 'absolute',
                 left: `${evt.left}%`,
@@ -211,6 +247,38 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
               title={`[${formatTime(evt.time)}] ${evt.type}`}
             />
           ))}
+
+          {/* Hero Positions */}
+          {heroPositions.map((hp, i) => {
+            const isRad = hp.playerSlot < 128;
+            const isSelected = selectedPlayer && selectedPlayer.player_slot === hp.playerSlot;
+            if (selectedPlayer && !isSelected) return null; // hide others if one selected
+
+            const hero = HEROES[hp.heroId as keyof typeof HEROES] as any;
+            return (
+              <div
+                key={`hero-${i}`}
+                style={{
+                  position: 'absolute',
+                  left: `${hp.left}%`,
+                  top: `${hp.top}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: isSelected ? '32px' : '24px',
+                  height: isSelected ? '32px' : '24px',
+                  borderRadius: '50%',
+                  border: `2px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}`,
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                  backgroundImage: hero ? `url(${getHeroImgUrl(hero.img_name)})` : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundColor: '#333',
+                  zIndex: isSelected ? 20 : 15,
+                  transition: 'all 0.5s linear' // smooth movement
+                }}
+                title={hero ? hero.localized_name : `Player ${hp.playerSlot}`}
+              />
+            );
+          })}
         </div>
 
         {/* Time overlay */}

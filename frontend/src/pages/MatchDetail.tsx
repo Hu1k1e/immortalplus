@@ -480,13 +480,6 @@ export default function MatchDetail() {
         )
       )}
 
-      {mainTab === 'Playback' && (
-        <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
-          <h2 className="gold-text-gradient" style={{ marginBottom: '2rem' }}>Interactive Match Playback</h2>
-          <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} />
-        </div>
-      )}
-
       {mainTab === 'Benchmarks' && <BenchmarksTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Performances' && <PerformancesTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Laning' && <LaningTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
@@ -507,6 +500,15 @@ export default function MatchDetail() {
           <p>This tab will be available in a future update.</p>
         </div>
       )}
+
+      {mainTab === 'Playback' && (
+        <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
+          <h2 className="gold-text-gradient" style={{ marginBottom: '2rem' }}>Interactive Match Playback</h2>
+          <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} />
+        </div>
+      )}
+
+
     </div>
   );
 }
