@@ -25,26 +25,63 @@ const PlayerCell = ({ p }: { p: any }) => {
 const th: React.CSSProperties = { padding: '0.5rem 0.8rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.05)' };
 
-const TeamTable = ({ title, players, columns, winner }: { title: string; players: any[]; columns: { key: string; label: string; render: (p: any) => any }[]; winner?: boolean }) => (
-  <div style={{ marginBottom: '2rem' }}>
-    <h3 style={{ color: title.includes('Radiant') ? 'var(--radiant-green)' : 'var(--dire-red)', marginBottom: '0.5rem' }}>
-      {title} {winner && <span style={{ background: 'var(--radiant-green)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', marginLeft: '0.5rem' }}>WINNER</span>}
-    </h3>
-    <div className="glass-surface" style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead><tr><th style={th}>PLAYER</th>{columns.map(c => <th key={c.key} style={{ ...th, textAlign: 'center' }}>{c.label}</th>)}</tr></thead>
-        <tbody>
-          {players.map((p, i) => (
-            <tr key={i} style={{ transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
-              <td style={td}><PlayerCell p={p} /></td>
-              {columns.map(c => <td key={c.key} style={{ ...td, textAlign: 'center' }}>{c.render(p)}</td>)}
+const TeamTable = ({ title, players, columns, winner, totals }: { title: string; players: any[]; columns: { key: string; label: string; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any }) => {
+  const [sortConfig, setSortConfig] = useState<{key: string | null, direction: 'asc' | 'desc'}>({ key: null, direction: 'desc' });
+  
+  const sortedPlayers = [...players].sort((a, b) => {
+    if (!sortConfig.key) return 0;
+    const col = columns.find(c => c.key === sortConfig.key);
+    if (!col || !col.sortFn) return 0;
+    const result = col.sortFn(a, b);
+    return sortConfig.direction === 'asc' ? result : -result;
+  });
+
+  const handleSort = (key: string, hasSortFn: boolean) => {
+    if (!hasSortFn) return;
+    let dir: 'asc'|'desc' = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') dir = 'asc';
+    setSortConfig({ key, direction: dir });
+  };
+
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <h3 style={{ color: title.includes('Radiant') ? 'var(--radiant-green)' : 'var(--dire-red)', marginBottom: '0.5rem' }}>
+        {title} {winner && <span style={{ background: 'var(--radiant-green)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', marginLeft: '0.5rem' }}>WINNER</span>}
+      </h3>
+      <div className="glass-surface" style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={th}>PLAYER</th>
+              {columns.map(c => (
+                <th key={c.key} onClick={() => handleSort(c.key, !!c.sortFn)} style={{ ...th, textAlign: 'center', cursor: c.sortFn ? 'pointer' : 'default', userSelect: 'none' }}>
+                  {c.label}
+                  {sortConfig.key === c.key && (sortConfig.direction === 'asc' ? ' ↑' : ' ↓')}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {sortedPlayers.map((p, i) => (
+              <tr key={i} style={{ transition: 'background 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                <td style={td}><PlayerCell p={p} /></td>
+                {columns.map(c => <td key={c.key} style={{ ...td, textAlign: 'center' }}>{c.render(p)}</td>)}
+              </tr>
+            ))}
+            {totals && (
+              <tr style={{ background: 'rgba(0,0,0,0.2)' }}>
+                <td style={{ ...td, fontWeight: 'bold' }}>Totals</td>
+                {columns.map(c => (
+                  <td key={c.key} style={{ ...td, textAlign: 'center', fontWeight: 'bold', color: 'var(--text-primary)' }}>{totals[c.key] !== undefined ? totals[c.key] : ''}</td>
+                ))}
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ================ BENCHMARKS TAB ================
 export function BenchmarksTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
@@ -695,61 +732,113 @@ export function FarmTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiant
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
-  const maxHeroKills = Math.max(...allPlayers.map((p: any) => p.hero_kills || 0));
-  const maxCreepKills = Math.max(...allPlayers.map((p: any) => p.lane_kills || 0));
-  const maxNeutralKills = Math.max(...allPlayers.map((p: any) => p.neutral_kills || 0));
-  const maxAncientKills = Math.max(...allPlayers.map((p: any) => p.ancient_kills || 0));
-  const maxTowerKills = Math.max(...allPlayers.map((p: any) => p.tower_kills || 0));
-  const maxCourierKills = Math.max(...allPlayers.map((p: any) => p.courier_kills || 0));
-  const maxRoshanKills = Math.max(...allPlayers.map((p: any) => p.roshan_kills || 0));
-  const maxObserverKills = Math.max(...allPlayers.map((p: any) => p.observer_kills || 0));
-  const maxNecroKills = Math.max(...allPlayers.map((p: any) => p.necronomicon_kills || 0));
+  const maxVals = {
+    hero: Math.max(...allPlayers.map((p: any) => p.hero_kills || 0)),
+    creep: Math.max(...allPlayers.map((p: any) => p.lane_kills || 0)),
+    neutral: Math.max(...allPlayers.map((p: any) => p.neutral_kills || 0)),
+    ancient: Math.max(...allPlayers.map((p: any) => p.ancient_kills || 0)),
+    tower: Math.max(...allPlayers.map((p: any) => p.tower_kills || 0)),
+    courier: Math.max(...allPlayers.map((p: any) => p.courier_kills || 0)),
+    roshan: Math.max(...allPlayers.map((p: any) => p.roshan_kills || 0)),
+    obs: Math.max(...allPlayers.map((p: any) => p.observer_kills || 0)),
+    necro: Math.max(...allPlayers.map((p: any) => p.necronomicon_kills || 0)),
+    other: Math.max(...allPlayers.map((p: any) => Math.max(0, (p.last_hits || 0) - ((p.lane_kills || 0) + (p.neutral_kills || 0))))),
+  };
 
   const renderBar = (val: number, max: number, color: string) => {
     if (!val) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
     const pct = max > 0 ? (val / max) * 100 : 0;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', maxWidth: '50px', margin: '0 auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', minWidth: '40px', maxWidth: '60px', margin: '0 auto' }}>
         <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{val}</span>
-        <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.1)', marginTop: '4px', borderRadius: '2px' }}>
-          <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '2px' }} />
+        <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.1)', marginTop: '4px' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: color }} />
         </div>
       </div>
     );
   };
 
   const unitCols = [
-    { key: 'hero', label: 'HEROES', render: (p: any) => renderBar(p.hero_kills || 0, maxHeroKills, '#ff9800') },
-    { key: 'creep', label: 'CREEPS', render: (p: any) => renderBar(p.lane_kills || 0, maxCreepKills, '#66bb6a') },
-    { key: 'neutral', label: 'NEUTRALS', render: (p: any) => renderBar(p.neutral_kills || 0, maxNeutralKills, '#42a5f5') },
-    { key: 'ancient', label: 'ANCIENTS', render: (p: any) => renderBar(p.ancient_kills || 0, maxAncientKills, 'var(--accent-gold)') },
-    { key: 'tower', label: 'TOWERS', render: (p: any) => renderBar(p.tower_kills || 0, maxTowerKills, 'var(--radiant-green)') },
-    { key: 'courier', label: 'COURIERS', render: (p: any) => renderBar(p.courier_kills || 0, maxCourierKills, 'var(--dire-red)') },
-    { key: 'roshan', label: 'ROSHAN', render: (p: any) => renderBar(p.roshan_kills || 0, maxRoshanKills, '#ff9800') },
-    { key: 'obs', label: 'OBSERVERS', render: (p: any) => renderBar(p.observer_kills || 0, maxObserverKills, '#66bb6a') },
-    { key: 'necro', label: 'NECRONOMICON', render: (p: any) => renderBar(p.necronomicon_kills || 0, maxNecroKills, '#42a5f5') },
-    { key: 'other', label: 'OTHER', render: (p: any) => {
-        const others = (p.last_hits || 0) - ((p.lane_kills || 0) + (p.neutral_kills || 0));
-        return renderBar(Math.max(0, others), Math.max(0, others), 'var(--text-muted)');
+    { key: 'hero', label: 'HEROES', sortFn: (a: any, b: any) => (a.hero_kills || 0) - (b.hero_kills || 0), render: (p: any) => renderBar(p.hero_kills || 0, maxVals.hero, '#ff9800') },
+    { key: 'creep', label: 'CREEPS', sortFn: (a: any, b: any) => (a.lane_kills || 0) - (b.lane_kills || 0), render: (p: any) => renderBar(p.lane_kills || 0, maxVals.creep, '#66bb6a') },
+    { key: 'neutral', label: 'NEUTRALS', sortFn: (a: any, b: any) => (a.neutral_kills || 0) - (b.neutral_kills || 0), render: (p: any) => renderBar(p.neutral_kills || 0, maxVals.neutral, '#42a5f5') },
+    { key: 'ancient', label: 'ANCIENTS', sortFn: (a: any, b: any) => (a.ancient_kills || 0) - (b.ancient_kills || 0), render: (p: any) => renderBar(p.ancient_kills || 0, maxVals.ancient, 'var(--accent-gold)') },
+    { key: 'tower', label: 'TOWERS', sortFn: (a: any, b: any) => (a.tower_kills || 0) - (b.tower_kills || 0), render: (p: any) => renderBar(p.tower_kills || 0, maxVals.tower, 'var(--radiant-green)') },
+    { key: 'courier', label: 'COURIERS', sortFn: (a: any, b: any) => (a.courier_kills || 0) - (b.courier_kills || 0), render: (p: any) => renderBar(p.courier_kills || 0, maxVals.courier, 'var(--dire-red)') },
+    { key: 'roshan', label: 'ROSHAN', sortFn: (a: any, b: any) => (a.roshan_kills || 0) - (b.roshan_kills || 0), render: (p: any) => renderBar(p.roshan_kills || 0, maxVals.roshan, '#ff9800') },
+    { key: 'obs', label: 'OBSERVERS', sortFn: (a: any, b: any) => (a.observer_kills || 0) - (b.observer_kills || 0), render: (p: any) => renderBar(p.observer_kills || 0, maxVals.obs, '#66bb6a') },
+    { key: 'necro', label: 'NECRONOMICON', sortFn: (a: any, b: any) => (a.necronomicon_kills || 0) - (b.necronomicon_kills || 0), render: (p: any) => renderBar(p.necronomicon_kills || 0, maxVals.necro, '#42a5f5') },
+    { key: 'other', label: 'OTHER', sortFn: (a: any, b: any) => {
+        const oA = Math.max(0, (a.last_hits || 0) - ((a.lane_kills || 0) + (a.neutral_kills || 0)));
+        const oB = Math.max(0, (b.last_hits || 0) - ((b.lane_kills || 0) + (b.neutral_kills || 0)));
+        return oA - oB;
+    }, render: (p: any) => {
+        const others = Math.max(0, (p.last_hits || 0) - ((p.lane_kills || 0) + (p.neutral_kills || 0)));
+        return renderBar(others, maxVals.other, 'var(--text-muted)');
     }},
   ];
 
-  const lhCols = [5, 10, 15, 20, 25, 30, 35, 40].map(min => ({
+  const lhMinutes = [5, 10, 15, 20, 25, 30, 35, 40];
+  const maxLhByMin: Record<number, number> = {};
+  lhMinutes.forEach(min => {
+    maxLhByMin[min] = Math.max(...allPlayers.map((p: any) => (p.lh_t && p.lh_t.length > min) ? p.lh_t[min] : 0));
+  });
+
+  const renderLhBar = (current: number, delta: number, max: number, isRad: boolean) => {
+    if (!current) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    const pct = max > 0 ? (current / max) * 100 : 0;
+    const color = isRad ? 'var(--radiant-green)' : 'var(--dire-red)';
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', minWidth: '50px', maxWidth: '80px', margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.85rem', color: 'var(--accent-gold)', fontWeight: 'bold' }}>{current}</span>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>(+{delta})</span>
+        </div>
+        <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.1)', marginTop: '4px' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: color }} />
+        </div>
+      </div>
+    );
+  };
+
+  const lhCols = lhMinutes.map(min => ({
     key: `lh_${min}`,
     label: `${min}'`,
+    sortFn: (a: any, b: any) => {
+      const vA = (a.lh_t && a.lh_t.length > min) ? a.lh_t[min] : 0;
+      const vB = (b.lh_t && b.lh_t.length > min) ? b.lh_t[min] : 0;
+      return vA - vB;
+    },
     render: (p: any) => {
       if (!p.lh_t || p.lh_t.length <= min) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
       const current = p.lh_t[min];
       const prev = p.lh_t.length > min - 5 ? p.lh_t[min - 5] : 0;
       const delta = current - prev;
-      return (
-        <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'center' }}>
-          <span style={{ color: 'var(--accent-gold)' }}>{current}</span>
-          <span style={{ color: 'var(--text-muted)' }}>(+{delta})</span>
-        </div>
-      );
+      return renderLhBar(current, delta, maxLhByMin[min], p.player_slot < 128);
     }
   }));
+
+  const getTotals = (teamPlayers: any[]) => {
+    const t: any = {};
+    t.hero = teamPlayers.reduce((acc, p) => acc + (p.hero_kills || 0), 0);
+    t.creep = teamPlayers.reduce((acc, p) => acc + (p.lane_kills || 0), 0);
+    t.neutral = teamPlayers.reduce((acc, p) => acc + (p.neutral_kills || 0), 0);
+    t.ancient = teamPlayers.reduce((acc, p) => acc + (p.ancient_kills || 0), 0);
+    t.tower = teamPlayers.reduce((acc, p) => acc + (p.tower_kills || 0), 0);
+    t.courier = teamPlayers.reduce((acc, p) => acc + (p.courier_kills || 0), 0);
+    t.roshan = teamPlayers.reduce((acc, p) => acc + (p.roshan_kills || 0), 0);
+    t.obs = teamPlayers.reduce((acc, p) => acc + (p.observer_kills || 0), 0);
+    t.necro = teamPlayers.reduce((acc, p) => acc + (p.necronomicon_kills || 0), 0);
+    t.other = teamPlayers.reduce((acc, p) => acc + Math.max(0, (p.last_hits || 0) - ((p.lane_kills || 0) + (p.neutral_kills || 0))), 0);
+    
+    lhMinutes.forEach(min => {
+      t[`lh_${min}`] = teamPlayers.reduce((acc, p) => acc + ((p.lh_t && p.lh_t.length > min) ? p.lh_t[min] : 0), 0);
+    });
+    return t;
+  };
+
+  const radTotals = getTotals(radiant);
+  const direTotals = getTotals(dire);
 
   // Reasons Graph Data Setup
   const goldReasonsData = allPlayers.map(p => {
@@ -801,12 +890,12 @@ export function FarmTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiant
   return (
     <div className="animation-fade-in">
       <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '1rem' }}>Unit Kills</h2>
-      <TeamTable title="Radiant - Unit Kills" players={radiant} columns={unitCols} winner={radiantWin} />
-      <TeamTable title="Dire - Unit Kills" players={dire} columns={unitCols} winner={!radiantWin} />
+      <TeamTable title="Radiant - Unit Kills" players={radiant} columns={unitCols} winner={radiantWin} totals={radTotals} />
+      <TeamTable title="Dire - Unit Kills" players={dire} columns={unitCols} winner={!radiantWin} totals={direTotals} />
       
       <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '3rem' }}>Last Hits</h2>
-      <TeamTable title="Radiant - Last Hits" players={radiant} columns={lhCols} winner={radiantWin} />
-      <TeamTable title="Dire - Last Hits" players={dire} columns={lhCols} winner={!radiantWin} />
+      <TeamTable title="Radiant - Last Hits" players={radiant} columns={lhCols} winner={radiantWin} totals={radTotals} />
+      <TeamTable title="Dire - Last Hits" players={dire} columns={lhCols} winner={!radiantWin} totals={direTotals} />
 
       <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem', marginTop: '3rem' }}>Gold Reasons</h2>
       <div style={{ width: '100%', height: '400px', background: 'var(--bg-surface)', padding: '1rem', borderRadius: '4px' }}>
