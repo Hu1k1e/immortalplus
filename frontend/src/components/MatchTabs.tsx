@@ -1046,17 +1046,33 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
-  const renderAbilities = (p: any) => {
-    const uses = p.ability_uses || {};
-    const entries = Object.entries(uses).sort(([, a]: any, [, b]: any) => b - a).slice(0, 6);
-    if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>No data</span>;
+  const renderAbilityGrid = (uses: any) => {
+    if (!uses || Object.keys(uses).length === 0) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    // Filter out common items/attributes if they show up in abilities
+    const entries = Object.entries(uses).filter(([k]) => !k.startsWith('item_') && !k.startsWith('special_bonus'));
+    if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
-        {entries.map(([name, count]: any) => (
-          <div key={name} style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span style={{ color: 'var(--accent-gold)' }}>{count}x</span>
-            <img src={getAbilityImage(name)} alt={name} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-            <span style={{ color: 'var(--text-secondary)' }}>{name.replace(/_/g, ' ').replace(/^[a-z]+\s/, '')}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'flex-start' }}>
+        {entries.sort((a: any, b: any) => b[1] - a[1]).map(([k, v]: any) => (
+          <div key={k} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px 6px 2px 2px', borderRadius: '4px' }}>
+            <img src={getAbilityImage(k)} style={{ width: '28px', height: '28px', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px' }} />
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-gold)' }}>{v}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderItemGrid = (uses: any) => {
+    if (!uses || Object.keys(uses).length === 0) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    const entries = Object.entries(uses).filter(([k]) => !k.includes('tpscroll') && !k.includes('ward'));
+    if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'flex-start' }}>
+        {entries.sort((a: any, b: any) => b[1] - a[1]).map(([k, v]: any) => (
+          <div key={k} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px 6px 2px 2px', borderRadius: '4px' }}>
+            <img src={getItemImage(k.replace('item_', ''))} style={{ width: '36px', height: '28px', border: '1px solid rgba(0,0,0,0.5)', objectFit: 'cover', borderRadius: '2px' }} />
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>{v}</span>
           </div>
         ))}
       </div>
@@ -1064,7 +1080,8 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
   };
 
   const castsCols = [
-    { key: 'abilities', label: 'ABILITY CASTS', render: renderAbilities },
+    { key: 'abilities', label: 'ABILITIES', render: (p: any) => renderAbilityGrid(p.ability_uses) },
+    { key: 'items', label: 'ITEMS', render: (p: any) => renderItemGrid(p.item_uses) }
   ];
 
   return (
@@ -1150,80 +1167,219 @@ export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchD
 }
 
 // ================ ACTIONS TAB ================
-
 export function ActionsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
   const actionCols = [
-    { key: 'apm', label: 'APM', render: (p: any) => p.actions_per_min || '-' },
-    { key: 'pings', label: 'PINGS', render: (p: any) => p.pings || '-' },
-    { key: 'runes', label: 'RUNE PICKUPS', render: (p: any) => p.rune_pickups || 0 },
-    { key: 'stacked', label: 'CAMPS STACKED', render: (p: any) => p.camps_stacked || 0 },
-    { key: 'creeps', label: 'CREEPS STACKED', render: (p: any) => p.creeps_stacked || 0 },
+    { key: 'apm', label: 'APM', sortFn: (a: any, b: any) => (a.actions_per_min || 0) - (b.actions_per_min || 0), render: (p: any) => p.actions_per_min || '-' },
+    { key: 'pings', label: 'PINGS', sortFn: (a: any, b: any) => (a.pings || 0) - (b.pings || 0), render: (p: any) => p.pings || '-' },
+    { key: 'runes', label: 'RUNE PICKUPS', sortFn: (a: any, b: any) => (a.rune_pickups || 0) - (b.rune_pickups || 0), render: (p: any) => p.rune_pickups || '-' },
+    { key: 'stacked', label: 'CAMPS STACKED', sortFn: (a: any, b: any) => (a.camps_stacked || 0) - (b.camps_stacked || 0), render: (p: any) => p.camps_stacked || '-' },
+    { key: 'creeps', label: 'CREEPS STACKED', sortFn: (a: any, b: any) => (a.creeps_stacked || 0) - (b.creeps_stacked || 0), render: (p: any) => p.creeps_stacked || '-' },
   ];
+
+  const getTotals = (teamPlayers: any[]) => {
+    return {
+      apm: Math.round(teamPlayers.reduce((acc, p) => acc + (p.actions_per_min || 0), 0) / teamPlayers.length) || '-',
+      pings: teamPlayers.reduce((acc, p) => acc + (p.pings || 0), 0) || '-',
+      runes: teamPlayers.reduce((acc, p) => acc + (p.rune_pickups || 0), 0) || '-',
+      stacked: teamPlayers.reduce((acc, p) => acc + (p.camps_stacked || 0), 0) || '-',
+      creeps: teamPlayers.reduce((acc, p) => acc + (p.creeps_stacked || 0), 0) || '-',
+    };
+  };
 
   return (
     <div className="animation-fade-in">
-      <TeamTable title="Radiant - Actions" players={radiant} columns={actionCols} winner={radiantWin} />
-      <TeamTable title="Dire - Actions" players={dire} columns={actionCols} winner={!radiantWin} />
+      <TeamTable title="Radiant - Actions" players={radiant} columns={actionCols} winner={radiantWin} totals={getTotals(radiant)} />
+      <TeamTable title="Dire - Actions" players={dire} columns={actionCols} winner={!radiantWin} totals={getTotals(dire)} />
     </div>
   );
 }
 
 // ================ TEAMFIGHTS TAB ================
 export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; allPlayers: any[] }) {
+  const [selectedTf, setSelectedTf] = useState<number>(0);
+
   if (!teamfights?.length) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>No teamfight data available.</div>;
 
-  const formatTime = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
+  const formatTime = (t: number) => {
+    const neg = t < 0;
+    const abs = Math.abs(t);
+    return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${(abs % 60).toString().padStart(2, '0')}`;
+  };
 
-  return (
-    <div className="animation-fade-in">
-      <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem' }}>Teamfights ({teamfights.length})</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-        {teamfights.map((tf: any, idx: number) => (
-          <div key={idx} className="glass-surface" style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3>Teamfight #{idx + 1}</h3>
-              <div style={{ display: 'flex', gap: '1rem', color: 'var(--text-secondary)' }}>
-                <span>⏱ {formatTime(tf.start)} - {formatTime(tf.end)}</span>
-                <span>💀 {tf.deaths} deaths</span>
-              </div>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    <th style={th}>PLAYER</th>
-                    <th style={{ ...th, textAlign: 'center' }}>DMG</th>
-                    <th style={{ ...th, textAlign: 'center' }}>HEAL</th>
-                    <th style={{ ...th, textAlign: 'center' }}>GOLD Δ</th>
-                    <th style={{ ...th, textAlign: 'center' }}>XP Δ</th>
-                    <th style={{ ...th, textAlign: 'center' }}>DEATHS</th>
-                    <th style={{ ...th, textAlign: 'center' }}>BB</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tf.players?.map((tfp: any, pi: number) => {
-                    const player = allPlayers[pi];
-                    if (!player) return null;
-                    return (
-                      <tr key={pi}>
-                        <td style={td}><PlayerCell p={player} /></td>
-                        <td style={{ ...td, textAlign: 'center' }}>{fmtK(tfp.damage)}</td>
-                        <td style={{ ...td, textAlign: 'center', color: 'var(--radiant-green)' }}>{fmtK(tfp.healing)}</td>
-                        <td style={{ ...td, textAlign: 'center', color: tfp.gold_delta >= 0 ? 'var(--accent-gold)' : 'var(--dire-red)' }}>{tfp.gold_delta >= 0 ? '+' : ''}{tfp.gold_delta}</td>
-                        <td style={{ ...td, textAlign: 'center' }}>{tfp.xp_delta >= 0 ? '+' : ''}{tfp.xp_delta}</td>
-                        <td style={{ ...td, textAlign: 'center', color: tfp.deaths ? 'var(--dire-red)' : '' }}>{tfp.deaths}</td>
-                        <td style={{ ...td, textAlign: 'center' }}>{tfp.buybacks || 0}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+  const tf = teamfights[selectedTf];
+  const maxDamage = Math.max(...tf.players.map((p: any) => p.damage || 0));
+  const maxHealing = Math.max(...tf.players.map((p: any) => p.healing || 0));
+  const maxGold = Math.max(...tf.players.map((p: any) => Math.abs(p.gold_delta || 0)));
+  const maxXp = Math.max(...tf.players.map((p: any) => Math.abs(p.xp_delta || 0)));
+
+  const renderBar = (val: number, max: number, color: string) => {
+    if (!val) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    const pct = max > 0 ? (Math.abs(val) / max) * 100 : 0;
+    const c = val < 0 ? 'var(--dire-red)' : color;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', minWidth: '40px', maxWidth: '60px', margin: '0 auto' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{val < 0 ? '' : ''}{val}</span>
+        <div style={{ width: '100%', height: '2px', background: 'rgba(255,255,255,0.1)', marginTop: '4px' }}>
+          <div style={{ width: `${pct}%`, height: '100%', background: c }} />
+        </div>
+      </div>
+    );
+  };
+
+  const renderAbilityGrid = (uses: any) => {
+    if (!uses || Object.keys(uses).length === 0) return null;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'flex-start', maxWidth: '100px' }}>
+        {Object.entries(uses).map(([k, v]: any) => (
+          <div key={k} style={{ position: 'relative' }}>
+            <img src={getAbilityImage(k)} style={{ width: '20px', height: '20px', border: '1px solid rgba(0,0,0,0.5)' }} />
+            <span style={{ position: 'absolute', bottom: '-4px', right: '-4px', fontSize: '0.65rem', background: 'black', padding: '0 2px', borderRadius: '2px', border: '1px solid rgba(255,255,255,0.2)' }}>{v}</span>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  const renderItemGrid = (uses: any) => {
+    if (!uses || Object.keys(uses).length === 0) return null;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'flex-start', maxWidth: '100px' }}>
+        {Object.entries(uses).map(([k, v]: any) => (
+          <div key={k} style={{ position: 'relative' }}>
+            <img src={getItemImage(k.replace('item_', ''))} style={{ width: '28px', height: '20px', border: '1px solid rgba(0,0,0,0.5)', objectFit: 'cover' }} />
+            <span style={{ position: 'absolute', bottom: '-4px', right: '-4px', fontSize: '0.65rem', background: 'black', padding: '0 2px', borderRadius: '2px', border: '1px solid rgba(255,255,255,0.2)' }}>{v}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const cols = [
+    { key: 'death', label: 'DEATH', render: (p: any) => p.deaths > 0 ? <span style={{ color: 'var(--dire-red)', fontSize: '1.2rem' }}>💀</span> : '' },
+    { key: 'damage', label: 'DAMAGE', sortFn: (a: any, b: any) => (a.damage || 0) - (b.damage || 0), render: (p: any) => renderBar(p.damage || 0, maxDamage, 'var(--accent-gold)') },
+    { key: 'healing', label: 'HEALING', sortFn: (a: any, b: any) => (a.healing || 0) - (b.healing || 0), render: (p: any) => renderBar(p.healing || 0, maxHealing, 'var(--radiant-green)') },
+    { key: 'gold_delta', label: 'G', sortFn: (a: any, b: any) => (a.gold_delta || 0) - (b.gold_delta || 0), render: (p: any) => renderBar(p.gold_delta || 0, maxGold, '#ff9800') },
+    { key: 'xp_delta', label: 'XP', sortFn: (a: any, b: any) => (a.xp_delta || 0) - (b.xp_delta || 0), render: (p: any) => renderBar(p.xp_delta || 0, maxXp, '#42a5f5') },
+    { key: 'abilities', label: 'ABILITIES', render: (p: any) => renderAbilityGrid(p.ability_uses) },
+    { key: 'items', label: 'ITEMS', render: (p: any) => renderItemGrid(p.item_uses) }
+  ];
+
+  const mapEvents: any[] = [];
+  let radiantKills = 0;
+  let direKills = 0;
+  
+  if (tf.players) {
+    tf.players.forEach((p: any, i: number) => {
+      if (p.deaths > 0) {
+        const isRad = allPlayers[i].player_slot < 128;
+        if (isRad) direKills++; else radiantKills++;
+        if (p.deaths_pos) {
+          // OpenDota deaths_pos format needs mapping if it exists
+          // Sometimes it's an object of { "x,y": count }, sometimes just x and y if mapped
+          // We will attempt to parse it safely.
+          const px = p.deaths_pos.x || 0;
+          const py = p.deaths_pos.y || 0;
+          let left = 0, top = 0;
+          if (px && py) {
+             left = Math.min(100, Math.max(0, ((px - 64) / 128) * 100));
+             top = Math.min(100, Math.max(0, (1 - ((py - 64) / 128)) * 100));
+          } else {
+             // Handle { "123,145": 1 }
+             const k = Object.keys(p.deaths_pos)[0];
+             if (k && k.includes(',')) {
+                const [x,y] = k.split(',').map(Number);
+                left = Math.min(100, Math.max(0, ((x - 64) / 128) * 100));
+                top = Math.min(100, Math.max(0, (1 - ((y - 64) / 128)) * 100));
+             }
+          }
+          if (left && top) {
+            mapEvents.push({ left, top, color: isRad ? 'var(--radiant-green)' : 'var(--dire-red)' });
+          }
+        }
+      }
+    });
+  }
+
+  const matchDuration = Math.max(...teamfights.map((t: any) => t.end || 0));
+
+  return (
+    <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
+      
+      {/* TIMELINE */}
+      <div style={{ position: 'relative', width: '100%', height: '40px', background: 'rgba(255,255,255,0.05)', borderRadius: '20px', marginBottom: '2rem', display: 'flex', alignItems: 'center' }}>
+        <div style={{ position: 'absolute', left: 0, width: '100%', height: '2px', background: 'rgba(255,255,255,0.2)' }} />
+        {teamfights.map((t: any, i: number) => {
+          const left = (t.start / matchDuration) * 100;
+          const isSelected = selectedTf === i;
+          return (
+            <div 
+              key={i} 
+              onClick={() => setSelectedTf(i)}
+              style={{
+                position: 'absolute', 
+                left: `${left}%`, 
+                width: '16px', height: '16px', 
+                background: isSelected ? 'var(--accent-gold)' : 'var(--dire-red)',
+                borderRadius: '50%',
+                transform: 'translate(-50%, 0)',
+                cursor: 'pointer',
+                border: isSelected ? '2px solid #fff' : '2px solid #000',
+                zIndex: isSelected ? 10 : 1
+              }}
+              title={`Teamfight ${i+1}
+${formatTime(t.start)} - ${formatTime(t.end)}
+Deaths: ${t.deaths}`}
+            />
+          );
+        })}
+      </div>
+
+      <div style={{ display: 'flex', gap: '2rem' }}>
+        {/* MAP & SUMMARY */}
+        <div style={{ flex: '0 0 350px', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ position: 'relative', width: '350px', height: '350px', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+            <img src="/map.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement!.style.background = '#222'; }} />
+            {mapEvents.map((m: any, i: number) => (
+              <div key={i} style={{
+                position: 'absolute', left: `${m.left}%`, top: `${m.top}%`,
+                width: '12px', height: '12px', background: m.color, borderRadius: '50%',
+                transform: 'translate(-50%, -50%)', border: '1px solid #000'
+              }} />
+            ))}
+          </div>
+          
+          <div className="glass-surface" style={{ padding: '1.5rem', textAlign: 'center' }}>
+            <h3 style={{ color: 'var(--accent-gold)', marginBottom: '0.5rem' }}>{formatTime(tf.start)} - {formatTime(tf.end)}</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginTop: '1rem' }}>
+              <div style={{ textAlign: 'center' }}>
+                <span style={{ fontSize: '2rem', color: 'var(--radiant-green)' }}>{radiantKills}</span>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>RADIANT</div>
+              </div>
+              <div style={{ fontSize: '1.5rem', color: 'var(--text-secondary)' }}>-</div>
+              <div style={{ textAlign: 'center' }}>
+                <span style={{ fontSize: '2rem', color: 'var(--dire-red)' }}>{direKills}</span>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>DIRE</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* TABLES */}
+        <div style={{ flex: '1', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <TeamTable 
+            title="Radiant - Teamfights" 
+            players={allPlayers.filter(p => p.player_slot < 128).map((p, i) => ({ ...p, ...tf.players[i] }))}
+            columns={cols}
+          />
+          <TeamTable 
+            title="Dire - Teamfights" 
+            players={allPlayers.filter(p => p.player_slot >= 128).map((p, i) => ({ ...p, ...tf.players[i+5] }))}
+            columns={cols}
+          />
+        </div>
       </div>
     </div>
   );
