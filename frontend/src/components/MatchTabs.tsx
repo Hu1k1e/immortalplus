@@ -118,6 +118,21 @@ export const RichAbilityTooltip = ({ abilityName, children }: any) => {
   );
 };
 
+export const isItemName = (name: string) => {
+  if (!name) return false;
+  if (name.startsWith('item_')) return true;
+  return !!(itemsData as any)[name];
+};
+
+export const UniversalTooltip = ({ name, children }: any) => {
+  const isItem = isItemName(name);
+  if (isItem) {
+    return <RichItemTooltip itemName={name.replace('item_', '')}>{children}</RichItemTooltip>;
+  } else {
+    return <RichAbilityTooltip abilityName={name}>{children}</RichAbilityTooltip>;
+  }
+};
+
 // ================ SHARED HELPERS ================
 const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
 const fmtK = (n: any) => (n == null || isNaN(n)) ? '-' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -699,59 +714,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     }}
   ];
 
-  const RichAbilityTooltip = ({ name, children, isItem = false }: any) => {
-    const [show, setShow] = useState(false);
-    const data = isItem ? (itemsData as any)[name.replace('item_', '')] : (abilitiesData as any)[name];
 
-    return (
-      <div 
-        style={{ position: 'relative', display: 'inline-block' }}
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-      >
-        {children}
-        {show && data && (
-          <div style={{
-            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-            background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
-            borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
-            textAlign: 'left', marginBottom: '8px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
-               <img src={isItem ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
-               <div>
-                 <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
-                 {data.dmg_type && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>DAMAGE TYPE: <span style={{ color: '#fff' }}>{data.dmg_type}</span></div>}
-                 {data.bkbpierce && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>PIERCES DEBUFF IMMUNITY: <span style={{ color: data.bkbpierce === 'Yes' ? '#66bb6a' : '#ef5350' }}>{data.bkbpierce}</span></div>}
-               </div>
-            </div>
-            {data.desc && <p style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4' }}>{data.desc}</p>}
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {data.attrib && data.attrib.map((a: any, i: number) => (
-                 <div key={i} style={{ fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
-                    <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
-                 </div>
-              ))}
-            </div>
-            
-            {(data.mc || data.cd) && (
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                  <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
-                </div>}
-                {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                  ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
-                </div>}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const renderAbilityDamage = (dmgDict: any) => {
     if (!dmgDict) return null;
@@ -759,12 +722,12 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '300px' }}>
         {sorted.map(([name, amount]: any, i: number) => (
-          <RichAbilityTooltip key={i} name={name} isItem={name.includes('item_')}>
+          <UniversalTooltip key={i} name={name}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '2px', borderRadius: '2px', cursor: 'help' }}>
-              <img src={name.includes('item_') ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
+              <img src={isItemName(name) ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
               <span style={{ fontSize: '0.65rem', marginTop: '2px', color: 'var(--text-muted)' }}>{fmtK(amount)}</span>
             </div>
-          </RichAbilityTooltip>
+          </UniversalTooltip>
         ))}
       </div>
     );
@@ -785,9 +748,9 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '4px', borderRadius: '4px', width: '100%' }}>
             {/* Ability Icon + Total */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: '60px' }}>
-              <RichAbilityTooltip name={item.ability} isItem={item.ability.includes('item_')}>
-                <img src={item.ability.includes('item_') ? getItemImage(item.ability.replace('item_', '')) : getAbilityImage(item.ability)} alt={item.ability} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px', cursor: 'help' }} onError={(e) => { if (e.currentTarget.parentElement?.parentElement) e.currentTarget.parentElement.parentElement.style.display = 'none'; }} />
-              </RichAbilityTooltip>
+              <UniversalTooltip name={item.ability}>
+                <img src={isItemName(item.ability) ? getItemImage(item.ability.replace('item_', '')) : getAbilityImage(item.ability)} alt={item.ability} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px', cursor: 'help' }} onError={(e) => { if (e.currentTarget.parentElement?.parentElement) e.currentTarget.parentElement.parentElement.style.display = 'none'; }} />
+              </UniversalTooltip>
               <span style={{ fontSize: '0.75rem', color: '#e2b742', fontWeight: 'bold' }}>{fmtK(item.total)}</span>
             </div>
             
@@ -1174,16 +1137,18 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'flex-start', alignContent: 'flex-start', paddingTop: '4px' }}>
         {entries.sort((a: any, b: any) => (b[1] as number) - (a[1] as number)).map(([k, v]: any) => {
           const isAttack = k === 'null' || k === '';
-          const imgSrc = isAttack ? '/assets/images/default_attack.png' : getAbilityImage(k);
+          const imgSrc = isAttack ? '/assets/images/default_attack.png' : (isItemName(k) ? getItemImage(k.replace('item_', '')) : getAbilityImage(k));
           const title = isAttack ? 'Auto Attack' : k;
           
           return (
-            <div key={k} title={title.replace(/_/g, ' ')} style={{ position: 'relative', display: 'inline-block', width: '38px', height: '28px' }}>
-              <img src={imgSrc} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
-              <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
-                {v}
-              </span>
-            </div>
+            <UniversalTooltip key={k} name={isAttack ? '' : k}>
+              <div title={isAttack ? title : undefined} style={{ position: 'relative', display: 'inline-block', width: '38px', height: '28px' }}>
+                <img src={imgSrc} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement?.parentElement) e.currentTarget.parentElement.parentElement.style.display = 'none'; }} />
+                <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  {v}
+                </span>
+              </div>
+            </UniversalTooltip>
           );
         })}
       </div>
