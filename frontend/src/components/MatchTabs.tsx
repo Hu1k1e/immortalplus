@@ -3,8 +3,9 @@ import { HEROES } from '../lib/heroes';
 import abilitiesData from '../lib/constants/abilities.json';
 import itemsData from '../lib/constants/items.json';
 import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar, AreaChart, Area, ReferenceLine } from 'recharts';
 import { Trophy } from 'lucide-react';
+import MatchMap from './MatchMap';
 
 // ================ SHARED HELPERS ================
 const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
@@ -1032,7 +1033,7 @@ export function ObjectivesTab({ objectives, allPlayers }: { objectives: any[]; a
 }
 
 // ================ VISION TAB ================
-export function VisionTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
+export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchData: any }) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
@@ -1044,14 +1045,23 @@ export function VisionTab({ allPlayers, radiantWin }: { allPlayers: any[]; radia
   ];
 
   return (
-    <div className="animation-fade-in">
-      <TeamTable title="Radiant - Vision" players={radiant} columns={visionCols} winner={radiantWin} />
-      <TeamTable title="Dire - Vision" players={dire} columns={visionCols} winner={!radiantWin} />
+    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div style={{ display: 'flex', gap: '2rem' }}>
+        <div style={{ flex: '1' }}>
+          <TeamTable title="Radiant - Vision" players={radiant} columns={visionCols} winner={matchData?.radiant_win} />
+          <TeamTable title="Dire - Vision" players={dire} columns={visionCols} winner={!matchData?.radiant_win} />
+        </div>
+        <div style={{ flex: '1' }}>
+          <h3 className="gold-text-gradient" style={{ marginBottom: '1rem' }}>Interactive Vision Map</h3>
+          <MatchMap matchData={matchData} selectedPlayer={null} compact={false} />
+        </div>
+      </div>
     </div>
   );
 }
 
 // ================ ACTIONS TAB ================
+
 export function ActionsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
@@ -1216,6 +1226,66 @@ export function LogTab({ allPlayers, matchData }: { allPlayers: any[]; matchData
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ================ GRAPHS TAB ================
+export function GraphsTab({ matchData }: { matchData: any }) {
+  if (!matchData.radiant_gold_adv || !matchData.radiant_xp_adv) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Graph data not available.</div>;
+  
+  let goldAdv = matchData.radiant_gold_adv;
+  let xpAdv = matchData.radiant_xp_adv;
+  if (typeof goldAdv === 'string') goldAdv = JSON.parse(goldAdv);
+  if (typeof xpAdv === 'string') xpAdv = JSON.parse(xpAdv);
+
+  const data = goldAdv.map((val: number, idx: number) => ({
+    time: idx,
+    gold: val,
+    xp: xpAdv[idx] || 0
+  }));
+
+  const maxVal = Math.max(...data.map((d: any) => Math.max(Math.abs(d.gold), Math.abs(d.xp))));
+
+  const gradientOffset = () => {
+    const dataMax = Math.max(...data.map((i: any) => Math.max(i.gold, i.xp)));
+    const dataMin = Math.min(...data.map((i: any) => Math.min(i.gold, i.xp)));
+    if (dataMax <= 0) return 0;
+    if (dataMin >= 0) return 1;
+    return dataMax / (dataMax - dataMin);
+  };
+  const off = gradientOffset();
+
+  return (
+    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      <div className="glass-surface" style={{ padding: '1.5rem', height: '400px' }}>
+        <h3 style={{ marginBottom: '1rem', textAlign: 'center' }}>Advantage (Gold & XP)</h3>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+            <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + 'm'} />
+            <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => Math.abs(val) > 1000 ? (Math.abs(val)/1000).toFixed(1) + 'k' : Math.abs(val).toString()} domain={[-maxVal, maxVal]} />
+            <Tooltip 
+              contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+              labelFormatter={(label) => label + ' Minutes'}
+            />
+            <Legend />
+            <ReferenceLine y={0} stroke="rgba(255,255,255,0.5)" />
+            <defs>
+              <linearGradient id="splitColorGold" x1="0" y1="0" x2="0" y2="1">
+                <stop offset={off} stopColor="var(--radiant-green)" stopOpacity={0.8} />
+                <stop offset={off} stopColor="var(--dire-red)" stopOpacity={0.8} />
+              </linearGradient>
+              <linearGradient id="splitColorXP" x1="0" y1="0" x2="0" y2="1">
+                <stop offset={off} stopColor="#4da6ff" stopOpacity={0.8} />
+                <stop offset={off} stopColor="#ff4d4d" stopOpacity={0.8} />
+              </linearGradient>
+            </defs>
+            <Area type="monotone" dataKey="gold" stroke="none" fill="url(#splitColorGold)" name="Gold Adv" />
+            <Area type="monotone" dataKey="xp" stroke="none" fill="url(#splitColorXP)" name="XP Adv" />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

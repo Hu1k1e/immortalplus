@@ -104,7 +104,7 @@ The application runs entirely locally via Docker Compose, composed of three main
 - **Farm Tab**: Rebuilt to match OpenDota exactly, including GPM/XPM breakdown, Stacked Bar Graphs for gold/xp reasons, and unit kill matrices.
 - **Items Tab**: Replicated the timeline view showing exact minute marks for purchases and a RichItemTooltip displaying prices, cooldowns, and descriptions.
 
-### Phase 2: Visual & Spatial Data (Pending)
+### ✅ Phase 2: Visual & Spatial Data (Completed)
 - **Graphs Tab**: Implement Recharts to overlay Net Worth, XP, and Win Probability advantages, matching OpenDota's area charts exactly.
 - **Vision & Objectives**: Render the interactive Dota 2 minimap using our heatmap component, plotting exact coordinates for wards (`obs_log`, `sen_log`) and tower kills.
 
@@ -122,3 +122,50 @@ The application runs entirely locally via Docker Compose, composed of three main
 - **2026-09-25 (Afternoon)**: Built a local JSON database of Dota 2 constants (Heroes, Items, Abilities) by pulling from OpenDota. Centralized all image resolutions and CDN references to `frontend/src/lib/dota.ts` (`getHeroImage`, `getItemImage`, `getAbilityImage`). Replaced all broken Akamai links with Cloudflare and fixed missing ability icons on the Casts Tab.
 - **2026-09-25 (Evening)**: Rebuilt the Laning Tab UI to feature an interactive player selection radio button, a dynamic `LaningMap` drawing a red-to-green Heatmap overlay of the player's movements (`lane_pos`), and a Recharts LineChart that highlights the selected player's CS over time. Resolved Recharts Legend bug by mapping `hero.name`. Completely rewrote the `CombatTab` to match OpenDota's UI: merged Kills and Damage matrices into unified 10x10 grids with hover tooltips (`Pudge → Dire: 2`), implemented the Death tables displaying killer hero images and timestamp logs, and mapped `damage_inflictor` APIs to render Damage Dealt and Damage Received tables showcasing ability and item icons alongside exact damage values.
 - **2026-09-25 (Night)**: Architected the OpenDota UI Parity and Local Parsing Roadmap. Created `auto_sync.py` to run in the background, autonomously polling, syncing, and parsing new matches in real-time. Scheduled `fetch_constants.py` as a daily background chron job to ensure item/ability tooltips stay updated with the latest Dota 2 patch. Completely rebuilt `FarmTab` with 1-to-1 parity Stacked Bar Graphs for gold/xp reasons using Recharts, and `ItemsTab` with a phase-based purchase timeline and robust `RichItemTooltip` parsing costs, cooldowns, and stats.
+- **2026-09-26 (Midnight)**: Configured the local parser Docker container (`odota/parser`) and built `local_parser.py` / `parser_aggregator.py` to autonomously download replays directly from Valve, bypassing Stratz entirely if the Steam API Key is available. Added `SteamClient` in `steam.py` to fetch highly reliable `replay_salt` and `cluster`. Completed Phase 2: Visual & Spatial Data by adding exact Recharts `AreaChart` parity for the Net Worth and XP Advantage graphs on the new `GraphsTab`, and overlaid an interactive Ward / Vision minimap onto the `VisionTab` leveraging the existing `MatchMap`.
+
+
+## 10. File Structure & Component Linking
+
+### Frontend (`frontend/src/`)
+- `App.tsx`: Main React Router orchestrating navigation.
+- `main.tsx`: Entry point.
+- **Pages**:
+  - `Dashboard.tsx`: Lands on login. Fetches progress from `/api/progress/summary`.
+  - `Matches.tsx`: Main history table calling `/api/matches`. Has Sync / Parse triggers.
+  - `MatchDetail.tsx`: Single match view. Contains `MatchScoreboard`, `MatchMap`, and the `MatchTabs` logic.
+  - `DraftHelper.tsx`: Live draft interface, consumes WebSockets from `/api/draft/ws`.
+  - `Settings.tsx`: Modifies `user_settings` table (Steam API Key, OpenAI Key, preferences).
+- **Components**:
+  - `MatchTabs.tsx`: Houses all detailed tab contents (Benchmarks, Performances, Laning, Combat, Farm, Items, Graphs, Vision, Casts, Actions, Teamfights, Log).
+  - `MatchMap.tsx`: Interactive Dota 2 canvas mapping kills, wards, and hero locations dynamically on a scrubbable timeline.
+  - `MatchScoreboard.tsx`: Tabular 10-player data density (items, KDA, backpack, levels).
+  - `ItemTooltip.tsx` & `RichItemTooltip.tsx`: Parses `items.json` and renders exact costs and stats on hover.
+  - `Sidebar.tsx`: Persistent left-hand navigation.
+- **Libraries (`lib/`)**:
+  - `dota.ts`: Core helper to resolve Hero, Item, and Ability images from Cloudflare CDNs.
+  - `api.ts`: Global Axios client setup.
+  - `heroes.ts`: Hardcoded hero ID mapping fallback.
+  - `constants/`: Locally generated JSON files (`items.json`, `abilities.json`) pulled via `fetch_constants.py`.
+
+### Backend (`backend/`)
+- `main.py`: FastAPI root. Bootstraps DB, mounts routers, schedules `auto_sync.py`.
+- `models.py`: All SQLModel classes (Matches, Players, Settings, Progress).
+- `database.py`: SQLite engine wrapper with WAL enabled.
+- **Services (`services/`)**:
+  - `sync.py`: Main orchestrator. When a match is synced, tries OpenDota first. If deep data is missing, drops down to Stratz/Steam API for replay_salt and triggers `local_parser.py`.
+  - `local_parser.py`: Connects to `odota/parser` via Docker, downloads `.dem.bz2`, extracts, and parses.
+  - `parser_aggregator.py`: Reduces the streaming JSON from `odota/parser` into the final OpenDota-style JSON object.
+  - `steam.py`: Direct connection to Valve's WebAPI (`GetMatchDetails`) to bypass 3rd party rate limits for replay clusters.
+  - `stratz.py`: GraphQL client for pulling Meta and fallback clusters.
+  - `opendota.py`: Main integration fetching `/api/matches/{id}`.
+  - `analysis_engine.py`: Takes a fully parsed Match JSON and sends it to the configured LLM API (OpenAI) to return `mistakes` and `action_items`.
+  - `auto_sync.py`: Indefinite while-loop running in background, checking for new matches on Steam/OpenDota periodically.
+  - `fetch_constants.py`: Cron script to redownload `items.json` and `abilities.json`.
+- **Routers (`routers/`)**:
+  - `matches.py`, `settings.py`, `progress.py`, `draft.py`: Expose JSON REST endpoints.
+
+### Infrastructure
+- `docker-compose.yml`: Spins up Nginx, FastAPI, and `odota/parser` on port 5600.
+- `Dockerfile.frontend` & `Dockerfile.backend`: Build instructions for GHCR.
+- `nginx.conf`: Proxies `/api` to backend and upgrades WebSocket connections for Live Draft.
