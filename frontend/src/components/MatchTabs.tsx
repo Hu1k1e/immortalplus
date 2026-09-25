@@ -1163,20 +1163,25 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
   };
 
   const renderHitsGrid = (p: any) => {
-    const targets = p.damage_targets || {};
-    const rightClicks = targets['null'] || targets[''] || {};
-    const entries = Object.entries(rightClicks).filter(([k]) => k.startsWith('npc_dota_hero_'));
+    const hits = p.hero_hits || {};
+    const entries = Object.entries(hits);
     if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-start', alignContent: 'flex-start', paddingTop: '4px' }}>
-        {entries.sort((a: any, b: any) => (b[1] as number) - (a[1] as number)).map(([k, v]: any) => (
-          <div key={k} title={k.replace('npc_dota_hero_', '').replace(/_/g, ' ')} style={{ position: 'relative', display: 'inline-block', width: '32px', height: '18px' }}>
-            <img src={getHeroImage(k.replace('npc_dota_hero_', ''))} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
-            <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
-              {v >= 1000 ? (v/1000).toFixed(1) + 'k' : v}
-            </span>
-          </div>
-        ))}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'flex-start', alignContent: 'flex-start', paddingTop: '4px' }}>
+        {entries.sort((a: any, b: any) => (b[1] as number) - (a[1] as number)).map(([k, v]: any) => {
+          const isAttack = k === 'null' || k === '';
+          const imgSrc = isAttack ? '/assets/images/default_attack.png' : getAbilityImage(k);
+          const title = isAttack ? 'Auto Attack' : k;
+          
+          return (
+            <div key={k} title={title.replace(/_/g, ' ')} style={{ position: 'relative', display: 'inline-block', width: '38px', height: '28px' }}>
+              <img src={imgSrc} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+              <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {v}
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
   };
