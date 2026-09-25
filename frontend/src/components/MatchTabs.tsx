@@ -19,7 +19,10 @@ const TooltipContent = ({ data, itemName, isItem }: any) => {
     if (a.display) {
       return a.display.replace('{value}', val);
     }
-    return `${a.header || ''} ${val}`;
+    if (a.header) {
+      return `${a.header} ${val}`;
+    }
+    return null;
   };
 
   return (
@@ -60,11 +63,15 @@ const TooltipContent = ({ data, itemName, isItem }: any) => {
 
         {data.attrib && data.attrib.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1rem' }}>
-            {data.attrib.map((a: any, i: number) => (
-               <div key={i} style={{ fontSize: '0.8rem', color: '#fff' }}>
-                  {formatAttrib(a)}
-               </div>
-            ))}
+            {data.attrib.map((a: any, i: number) => {
+               const formatted = formatAttrib(a);
+               if (!formatted) return null;
+               return (
+                 <div key={i} style={{ fontSize: '0.8rem', color: '#fff' }}>
+                    {formatted}
+                 </div>
+               );
+            })}
           </div>
         )}
         
@@ -754,7 +761,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
         {sorted.map(([name, amount]: any, i: number) => (
           <RichAbilityTooltip key={i} name={name} isItem={name.includes('item_')}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '2px', borderRadius: '2px', cursor: 'help' }}>
-              <img src={name.includes('item_') ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+              <img src={name.includes('item_') ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
               <span style={{ fontSize: '0.65rem', marginTop: '2px', color: 'var(--text-muted)' }}>{fmtK(amount)}</span>
             </div>
           </RichAbilityTooltip>
@@ -779,7 +786,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
             {/* Ability Icon + Total */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: '60px' }}>
               <RichAbilityTooltip name={item.ability} isItem={item.ability.includes('item_')}>
-                <img src={item.ability.includes('item_') ? getItemImage(item.ability.replace('item_', '')) : getAbilityImage(item.ability)} alt={item.ability} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px', cursor: 'help' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                <img src={item.ability.includes('item_') ? getItemImage(item.ability.replace('item_', '')) : getAbilityImage(item.ability)} alt={item.ability} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px', cursor: 'help' }} onError={(e) => { if (e.currentTarget.parentElement?.parentElement) e.currentTarget.parentElement.parentElement.style.display = 'none'; }} />
               </RichAbilityTooltip>
               <span style={{ fontSize: '0.75rem', color: '#e2b742', fontWeight: 'bold' }}>{fmtK(item.total)}</span>
             </div>
@@ -1115,7 +1122,7 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
             <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <RichAbilityTooltip abilityName={k}>
                 <div style={{ position: 'relative', display: 'inline-block', width: '32px', height: '32px' }}>
-                  <img src={getAbilityImage(k)} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+                  <img src={getAbilityImage(k)} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
                   <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: 'var(--accent-gold)', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
                     {v}
                   </span>
@@ -1172,7 +1179,7 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
           
           return (
             <div key={k} title={title.replace(/_/g, ' ')} style={{ position: 'relative', display: 'inline-block', width: '38px', height: '28px' }}>
-              <img src={imgSrc} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+              <img src={imgSrc} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
               <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
                 {v}
               </span>
@@ -1340,7 +1347,7 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', justifyContent: 'flex-start', maxWidth: '100px' }}>
         {Object.entries(uses).map(([k, v]: any) => (
           <div key={k} style={{ position: 'relative' }}>
-            <img src={getAbilityImage(k)} style={{ width: '20px', height: '20px', border: '1px solid rgba(0,0,0,0.5)' }} />
+            <img src={getAbilityImage(k)} style={{ width: '20px', height: '20px', border: '1px solid rgba(0,0,0,0.5)' }} onError={(e) => { if (e.currentTarget.parentElement) e.currentTarget.parentElement.style.display = 'none'; }} />
             <span style={{ position: 'absolute', bottom: '-4px', right: '-4px', fontSize: '0.65rem', background: 'black', padding: '0 2px', borderRadius: '2px', border: '1px solid rgba(255,255,255,0.2)' }}>{v}</span>
           </div>
         ))}
