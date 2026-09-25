@@ -97,7 +97,23 @@ The application runs entirely locally via Docker Compose, composed of three main
 - [x] **AI Suggestions on Timeline**: Plot the AI Coach's generated "Action Items" and "Mistakes" directly onto the timeline (e.g. "Died out of position here at 14:22 - Missing vision").
 - [x] **2D Interactive Map**: Plot wards and kills on a 2D Dota map overlay using extracted X/Y coordinates. *Note: Moving forward, the backend should be integrated with STRATZ GraphQL API to guarantee high-fidelity X/Y coordinates, as OpenDota parsing is unreliable for unrequested matches.*
 
-## 8. Implementation History Log
+## 8. OpenDota UI Parity & Local Parsing Roadmap
+
+### Phase 1: The Core Metrics (Completed)
+- **Local Parsing**: Integrated a background parsing loop (`auto_sync.py`) to bypass OpenDota API rate limits and long queues. Scheduled `fetch_constants.py` to run daily and automatically update tooltips whenever a Dota patch changes.
+- **Farm Tab**: Rebuilt to match OpenDota exactly, including GPM/XPM breakdown, Stacked Bar Graphs for gold/xp reasons, and unit kill matrices.
+- **Items Tab**: Replicated the timeline view showing exact minute marks for purchases and a RichItemTooltip displaying prices, cooldowns, and descriptions.
+
+### Phase 2: Visual & Spatial Data (Pending)
+- **Graphs Tab**: Implement Recharts to overlay Net Worth, XP, and Win Probability advantages, matching OpenDota's area charts exactly.
+- **Vision & Objectives**: Render the interactive Dota 2 minimap using our heatmap component, plotting exact coordinates for wards (`obs_log`, `sen_log`) and tower kills.
+
+### Phase 3: The Event Logs (Pending)
+- **Teamfights & Actions**: Create accordion-style dropdowns for teamfights, calculating gold/xp swings during specific timeframes.
+- **Casts Tab**: Map `ability_uses` and `item_uses` into a tabulated format showing cast frequencies.
+- **Log, Story, Chat**: Render chronological event lists using the `chat` array parsing exact timestamps.
+
+## 9. Implementation History Log
 - **2026-09-24**: Scaffolded core architecture. Configured custom design system. Built backend routers for matches, draft, and settings. Setup GitHub Actions. Mapped correct host ports. Wired basic API endpoints for Settings, Dashboard, and Matches. Fixed SQLModel session bugs.
 - **2026-09-24 (Later)**: Mapped Hero IDs to visual portraits. Added Steam Account ID input to Settings to enable profile creation and OpenDota match syncing. Built out the Live Draft UI with WebSockets and configured Nginx to proxy WebSocket Upgrade headers. Added AI Coach and D2PT to the roadmap.
 - **2026-09-24 (Evening)**: Completed Phase 4 (Dashboard Recharts, AI Coach backend), Phase 5 (Live Playback Timeline mapping LLM suggestions to timestamps), and Phase 7 (Dotabuff-style 10-player data density scoreboard).
@@ -105,3 +121,4 @@ The application runs entirely locally via Docker Compose, composed of three main
 - **2026-09-25 (Morning)**: Completely rewrote the internal components for `BenchmarksTab`, `PerformancesTab`, `LaningTab`, `CombatTab`, `FarmTab`, and `ItemsTab`. Implemented high-fidelity data visualization UI matching OpenDota (stacked colored bar charts, dynamic matrices, relative percentage bars, colored percentiles, phase-based item logs, hover tooltips). Updated `sync.py` to aggressively parse and inject deeper OpenDota JSON fields (`deaths_log`, `killed`, `killed_by`, `hero_kills`, `lane_kills`, etc.) to power these UI components.
 - **2026-09-25 (Afternoon)**: Built a local JSON database of Dota 2 constants (Heroes, Items, Abilities) by pulling from OpenDota. Centralized all image resolutions and CDN references to `frontend/src/lib/dota.ts` (`getHeroImage`, `getItemImage`, `getAbilityImage`). Replaced all broken Akamai links with Cloudflare and fixed missing ability icons on the Casts Tab.
 - **2026-09-25 (Evening)**: Rebuilt the Laning Tab UI to feature an interactive player selection radio button, a dynamic `LaningMap` drawing a red-to-green Heatmap overlay of the player's movements (`lane_pos`), and a Recharts LineChart that highlights the selected player's CS over time. Resolved Recharts Legend bug by mapping `hero.name`. Completely rewrote the `CombatTab` to match OpenDota's UI: merged Kills and Damage matrices into unified 10x10 grids with hover tooltips (`Pudge → Dire: 2`), implemented the Death tables displaying killer hero images and timestamp logs, and mapped `damage_inflictor` APIs to render Damage Dealt and Damage Received tables showcasing ability and item icons alongside exact damage values.
+- **2026-09-25 (Night)**: Architected the OpenDota UI Parity and Local Parsing Roadmap. Created `auto_sync.py` to run in the background, autonomously polling, syncing, and parsing new matches in real-time. Scheduled `fetch_constants.py` as a daily background chron job to ensure item/ability tooltips stay updated with the latest Dota 2 patch. Completely rebuilt `FarmTab` with 1-to-1 parity Stacked Bar Graphs for gold/xp reasons using Recharts, and `ItemsTab` with a phase-based purchase timeline and robust `RichItemTooltip` parsing costs, cooldowns, and stats.
