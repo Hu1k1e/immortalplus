@@ -57,6 +57,8 @@ export function getAbilityImage(abilityName: string): string {
     return '/assets/images/stats.png';
   } else if (abilityName.includes('special_bonus')) {
     return '/assets/images/dota2/talent_tree.svg';
+  } else if (['ability_lamp_use', 'ability_pluck_famango', 'twin_gate_portal_warp'].includes(abilityName)) {
+    return `/assets/images/dota2/abilities/${abilityName}.png`;
   }
   
   if (ABILITIES[abilityName]) {

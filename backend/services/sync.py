@@ -290,6 +290,11 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "sen_placed": p.get("sen_placed", 0),
             "net_worth": p.get("net_worth", 0),
             "rank_tier": p.get("rank_tier"),
+            "aghanims_scepter": p.get("aghanims_scepter"),
+            "aghanims_shard": p.get("aghanims_shard"),
+            "moonshard": p.get("moonshard"),
+            "permanent_buffs": p.get("permanent_buffs", []),
+            "buyback_log": p.get("buyback_log", []),
             # Time series for graphs
             "gold_t": p.get("gold_t"),
             "xp_t": p.get("xp_t"),

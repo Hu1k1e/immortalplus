@@ -8,55 +8,94 @@ import { Trophy } from 'lucide-react';
 import MatchMap from './MatchMap';
 
 
-export const RichItemTooltip = ({ itemName, children }: any) => {
-  const [show, setShow] = useState(false);
-  const data = (itemsData as any)[itemName];
+
+const TooltipContent = ({ data, itemName, isItem }: any) => {
+  if (!data) return null;
+  
+  const imgUrl = isItem ? getItemImage(itemName) : getAbilityImage(itemName);
+  
+  const formatAttrib = (a: any) => {
+    let val = Array.isArray(a.value) ? a.value.join(' / ') : a.value;
+    if (a.display) {
+      return a.display.replace('{value}', val);
+    }
+    return `${a.header || ''} ${val}`;
+  };
 
   return (
-    <div 
-      style={{ position: 'relative', display: 'inline-block' }}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
-      {children}
-      {show && data && (
-        <div style={{
-          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-          background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
-          borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
-          textAlign: 'left', marginBottom: '8px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
-             <img src={getItemImage(itemName)} style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
-             <div>
-               <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
-               <div style={{ color: 'var(--accent-gold)', fontSize: '0.8rem', fontWeight: 'bold' }}>💰 {data.cost}</div>
+    <div style={{
+      position: 'absolute', zIndex: 100, width: '340px', pointerEvents: 'none',
+      background: '#1a1f26', border: '1px solid #333', padding: '0',
+      borderRadius: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.8)', 
+      color: 'var(--text-primary)', textAlign: 'left',
+      top: '100%', left: '50%', transform: 'translateX(-50%)', marginTop: '8px'
+    }}>
+      <div style={{ display: 'flex', gap: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+         <img src={imgUrl} style={{ width: isItem ? '60px' : '45px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(0,0,0,0.5)' }} />
+         <div>
+           <h4 style={{ margin: '0 0 0.25rem 0', color: '#fff', fontSize: '1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
+           {isItem && data.cost > 0 && <div style={{ color: '#e2b742', fontSize: '0.8rem', fontWeight: 'bold' }}>💰 {data.cost}</div>}
+         </div>
+      </div>
+      
+      <div style={{ padding: '1rem' }}>
+        {data.behavior && (
+           <div style={{ fontSize: '0.8rem', color: '#ccc', marginBottom: '1rem' }}>
+             <span style={{ color: '#888' }}>TARGET:</span> {Array.isArray(data.behavior) ? data.behavior.join(' / ') : data.behavior}
+           </div>
+        )}
+        
+        {data.abilities && data.abilities.map((ab: any, i: number) => (
+           <div key={i} style={{ marginBottom: '1rem' }}>
+             <div style={{ color: '#a3d867', fontSize: '0.85rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+               {ab.type === 'active' ? 'Use: ' : 'Passive: '} {ab.title}
              </div>
-          </div>
-          {data.desc && <p style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4' }}>{data.desc}</p>}
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            {data.attrib && data.attrib.map((a: any, i: number) => (
-               <div key={i} style={{ fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
-                  <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
+             <div style={{ fontSize: '0.85rem', color: '#ccc', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{ab.description}</div>
+           </div>
+        ))}
+
+        {(!data.abilities || data.abilities.length === 0) && data.desc && (
+           <div style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{data.desc}</div>
+        )}
+
+        {data.attrib && data.attrib.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginBottom: '1rem' }}>
+            {data.attrib.map((a: any, i: number) => (
+               <div key={i} style={{ fontSize: '0.8rem', color: '#fff' }}>
+                  {formatAttrib(a)}
                </div>
             ))}
           </div>
-          
-          {(data.mc || data.cd) && (
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-              {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
-              </div>}
-              {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
-              </div>}
-            </div>
-          )}
-        </div>
-      )}
+        )}
+        
+        {data.hint && data.hint.length > 0 && (
+           <div style={{ fontSize: '0.8rem', color: '#888', fontStyle: 'italic', marginBottom: '1rem' }}>
+             {data.hint.map((h: string, i: number) => <div key={i}>{h}</div>)}
+           </div>
+        )}
+        
+        {(data.mc || data.cd) && (
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
+              💧 {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
+            </div>}
+            {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#ccc', fontSize: '0.8rem', fontWeight: 'bold' }}>
+              ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
+            </div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export const RichItemTooltip = ({ itemName, children }: any) => {
+  const [show, setShow] = useState(false);
+  const data = (itemsData as any)[itemName];
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      {show && data && <TooltipContent data={data} itemName={itemName} isItem={true} />}
     </div>
   );
 };
@@ -64,55 +103,13 @@ export const RichItemTooltip = ({ itemName, children }: any) => {
 export const RichAbilityTooltip = ({ abilityName, children }: any) => {
   const [show, setShow] = useState(false);
   const data = (abilitiesData as any)[abilityName];
-
   return (
-    <div 
-      style={{ position: 'relative', display: 'inline-block' }}
-      onMouseEnter={() => setShow(true)}
-      onMouseLeave={() => setShow(false)}
-    >
+    <div style={{ position: 'relative', display: 'inline-block' }} onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
       {children}
-      {show && data && (
-        <div style={{
-          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-          background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
-          borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
-          textAlign: 'left', marginBottom: '8px'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
-             <img src={getAbilityImage(abilityName)} style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
-             <div>
-               <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
-               {data.desc && <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{data.desc}</div>}
-             </div>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-            {data.attrib && data.attrib.map((a: any, i: number) => (
-               <div key={i} style={{ fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
-                  <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
-               </div>
-            ))}
-          </div>
-          
-          {(data.mc || data.cd) && (
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-              {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
-              </div>}
-              {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
-              </div>}
-            </div>
-          )}
-        </div>
-      )}
+      {show && data && <TooltipContent data={data} itemName={abilityName} isItem={false} />}
     </div>
   );
 };
-
 
 // ================ SHARED HELPERS ================
 const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
