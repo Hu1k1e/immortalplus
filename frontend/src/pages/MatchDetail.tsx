@@ -495,7 +495,7 @@ export default function MatchDetail() {
       {mainTab === 'Chat' && <ChatTab chat={matchData.chat || []} allPlayers={allPlayers} />}
       {mainTab === 'Log' && <LogTab allPlayers={allPlayers} matchData={matchData} />}
 
-      {mainTab === 'Graphs' && <GraphsTab matchData={matchData} />}
+      {mainTab === 'Graphs' && <GraphsTab matchData={matchData} allPlayers={allPlayers} />}
       {['Fantasy', 'Story', 'Cosmetics'].includes(mainTab) && (
         <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <h3>{mainTab} Data</h3>

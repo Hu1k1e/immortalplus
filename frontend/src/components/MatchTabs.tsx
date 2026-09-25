@@ -1477,7 +1477,7 @@ export function LogTab({ allPlayers, matchData }: { allPlayers: any[]; matchData
 }
 
 // ================ GRAPHS TAB ================
-export function GraphsTab({ matchData }: { matchData: any }) {
+export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
   if (!matchData.radiant_gold_adv || !matchData.radiant_xp_adv) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Graph data not available.</div>;
   
   let goldAdv = matchData.radiant_gold_adv;
@@ -1485,53 +1485,155 @@ export function GraphsTab({ matchData }: { matchData: any }) {
   if (typeof goldAdv === 'string') goldAdv = JSON.parse(goldAdv);
   if (typeof xpAdv === 'string') xpAdv = JSON.parse(xpAdv);
 
-  const data = goldAdv.map((val: number, idx: number) => ({
+  const advData = goldAdv.map((val: number, idx: number) => ({
     time: idx,
     gold: val,
     xp: xpAdv[idx] || 0
   }));
 
-  const maxVal = Math.max(...data.map((d: any) => Math.max(Math.abs(d.gold), Math.abs(d.xp))));
-
+  const maxAdvVal = Math.max(...advData.map((d: any) => Math.max(Math.abs(d.gold), Math.abs(d.xp))));
   const gradientOffset = () => {
-    const dataMax = Math.max(...data.map((i: any) => Math.max(i.gold, i.xp)));
-    const dataMin = Math.min(...data.map((i: any) => Math.min(i.gold, i.xp)));
+    const dataMax = Math.max(...advData.map((i: any) => Math.max(i.gold, i.xp)));
+    const dataMin = Math.min(...advData.map((i: any) => Math.min(i.gold, i.xp)));
     if (dataMax <= 0) return 0;
     if (dataMin >= 0) return 1;
     return dataMax / (dataMax - dataMin);
   };
   const off = gradientOffset();
 
-  return (
-    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div className="glass-surface" style={{ padding: '1.5rem', height: '400px' }}>
-        <h3 style={{ marginBottom: '1rem', textAlign: 'center' }}>Advantage (Gold & XP)</h3>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data} margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
-            <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + 'm'} />
-            <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => Math.abs(val) > 1000 ? (Math.abs(val)/1000).toFixed(1) + 'k' : Math.abs(val).toString()} domain={[-maxVal, maxVal]} />
-            <Tooltip 
-              contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-              labelFormatter={(label) => label + ' Minutes'}
-            />
-            <Legend />
-            <ReferenceLine y={0} stroke="rgba(255,255,255,0.5)" />
-            <defs>
-              <linearGradient id="splitColorGold" x1="0" y1="0" x2="0" y2="1">
-                <stop offset={off} stopColor="var(--radiant-green)" stopOpacity={0.8} />
-                <stop offset={off} stopColor="var(--dire-red)" stopOpacity={0.8} />
-              </linearGradient>
-              <linearGradient id="splitColorXP" x1="0" y1="0" x2="0" y2="1">
-                <stop offset={off} stopColor="#4da6ff" stopOpacity={0.8} />
-                <stop offset={off} stopColor="#ff4d4d" stopOpacity={0.8} />
-              </linearGradient>
-            </defs>
-            <Area type="monotone" dataKey="gold" stroke="none" fill="url(#splitColorGold)" name="Gold Adv" />
-            <Area type="monotone" dataKey="xp" stroke="none" fill="url(#splitColorXP)" name="XP Adv" />
-          </AreaChart>
-        </ResponsiveContainer>
+  const playerColors = [
+    '#3375FF', '#66FFBF', '#BF00BF', '#F3F00B', '#FF6B00', // Radiant
+    '#FE86C2', '#A1B447', '#65D9F7', '#008321', '#A46900'  // Dire
+  ];
+
+  const getHeroName = (slot: number) => {
+    const p = allPlayers.find((x: any) => x.player_slot === slot);
+    return p ? HEROES[p.hero_id]?.name || 'Unknown' : 'Unknown';
+  };
+
+  // Helper to build array for a specific metric (networth_t, gold_t, etc.)
+  const buildLineData = (key: string) => {
+    const length = advData.length;
+    const res = [];
+    for (let i = 0; i < length; i++) {
+      const point: any = { time: i };
+      allPlayers.forEach((p, idx) => {
+        let arr = p[key];
+        if (typeof arr === 'string') arr = JSON.parse(arr);
+        point[`player_${idx}`] = (arr && arr.length > i) ? arr[i] : (arr && arr.length ? arr[arr.length-1] : 0);
+      });
+      res.push(point);
+    }
+    return res;
+  };
+
+  const hasData = (key: string) => allPlayers.some(p => {
+    let arr = p[key];
+    if (typeof arr === 'string') arr = JSON.parse(arr);
+    return arr && arr.length > 0;
+  });
+
+  const CustomLineTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      const sorted = [...payload].sort((a: any, b: any) => b.value - a.value);
+      return (
+        <div style={{ background: 'rgba(0,0,0,0.85)', border: '1px solid #323232', borderRadius: '6px', padding: '10px 14px', minWidth: '160px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+          <div style={{ textAlign: 'center', fontWeight: 'bold', marginBottom: '8px', fontSize: '13px', color: '#fff' }}>
+            {label}:00
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {sorted.map((p: any, i: number) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', fontSize: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                   <span style={{ display: 'inline-block', width: '10px', height: '10px', borderRadius: '2px', backgroundColor: p.stroke }} />
+                   <span style={{ color: p.stroke, fontWeight: 600 }}>{p.name}</span>
+                </div>
+                <span style={{ color: '#fff', fontFamily: 'monospace', fontWeight: 500 }}>{p.value?.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const renderLineChart = (title: string, dataKey: string) => {
+    if (!hasData(dataKey)) return null;
+    const chartData = buildLineData(dataKey);
+    return (
+      <div style={{ marginBottom: '3rem' }}>
+        <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>{title}</h3>
+        <div style={{ width: '100%', height: '400px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData} margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + ':00'} />
+              <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => val.toLocaleString()} />
+              <Tooltip content={<CustomLineTooltip />} />
+              <Legend 
+                wrapperStyle={{ paddingTop: '20px' }} 
+                iconType="circle"
+              />
+              {allPlayers.map((p, idx) => (
+                <Line 
+                  key={idx} 
+                  type="monotone" 
+                  dataKey={`player_${idx}`} 
+                  name={getHeroName(p.player_slot)} 
+                  stroke={playerColors[idx]} 
+                  strokeWidth={2} 
+                  dot={false}
+                  activeDot={{ r: 6, strokeWidth: 0 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
+    );
+  };
+
+  return (
+    <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
+      <div style={{ marginBottom: '4rem' }}>
+        <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Radiant Advantage</h3>
+        <div style={{ width: '100%', height: '400px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={advData} margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + ':00'} />
+              <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => Math.abs(val) > 1000 ? (Math.abs(val)/1000).toFixed(1) + 'k' : Math.abs(val).toString()} domain={[-maxAdvVal, maxAdvVal]} />
+              <Tooltip 
+                contentStyle={{ background: '#1a1f26', border: '1px solid var(--border-color)', borderRadius: '4px' }}
+                labelFormatter={(label) => label + ':00'}
+              />
+              <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
+              <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
+              <defs>
+                <linearGradient id="splitColorGold" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset={off} stopColor="var(--accent-gold)" stopOpacity={0.8} />
+                  <stop offset={off} stopColor="var(--accent-gold)" stopOpacity={0.1} />
+                </linearGradient>
+                <linearGradient id="splitColorXP" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset={off} stopColor="#4da6ff" stopOpacity={0.8} />
+                  <stop offset={off} stopColor="#4da6ff" stopOpacity={0.1} />
+                </linearGradient>
+              </defs>
+              <Area type="monotone" dataKey="gold" stroke="var(--accent-gold)" strokeWidth={2} fill="url(#splitColorGold)" name="Gold" />
+              <Area type="monotone" dataKey="xp" stroke="#4da6ff" strokeWidth={2} fill="url(#splitColorXP)" name="Experience" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {renderLineChart('Net Worth', 'networth_t')}
+      {renderLineChart('Gold', 'gold_t')}
+      {renderLineChart('Experience', 'xp_t')}
+      {renderLineChart('Last Hits', 'lh_t')}
+      {renderLineChart('Hero Damage', 'hero_damage_t')}
+      {renderLineChart('Hero Healing', 'hero_healing_t')}
+      {renderLineChart('Camps Stacked', 'camps_stacked_t')}
     </div>
   );
 }
