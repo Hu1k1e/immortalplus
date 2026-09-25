@@ -7,6 +7,113 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { Trophy } from 'lucide-react';
 import MatchMap from './MatchMap';
 
+
+export const RichItemTooltip = ({ itemName, children }: any) => {
+  const [show, setShow] = useState(false);
+  const data = (itemsData as any)[itemName];
+
+  return (
+    <div 
+      style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && data && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
+          borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
+          textAlign: 'left', marginBottom: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+             <img src={getItemImage(itemName)} style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
+             <div>
+               <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
+               <div style={{ color: 'var(--accent-gold)', fontSize: '0.8rem', fontWeight: 'bold' }}>💰 {data.cost}</div>
+             </div>
+          </div>
+          {data.desc && <p style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4' }}>{data.desc}</p>}
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            {data.attrib && data.attrib.map((a: any, i: number) => (
+               <div key={i} style={{ fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
+                  <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
+               </div>
+            ))}
+          </div>
+          
+          {(data.mc || data.cd) && (
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
+              </div>}
+              {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
+              </div>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export const RichAbilityTooltip = ({ abilityName, children }: any) => {
+  const [show, setShow] = useState(false);
+  const data = (abilitiesData as any)[abilityName];
+
+  return (
+    <div 
+      style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+    >
+      {children}
+      {show && data && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
+          borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
+          textAlign: 'left', marginBottom: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+             <img src={getAbilityImage(abilityName)} style={{ width: '45px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
+             <div>
+               <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
+               {data.desc && <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{data.desc}</div>}
+             </div>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            {data.attrib && data.attrib.map((a: any, i: number) => (
+               <div key={i} style={{ fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
+                  <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
+               </div>
+            ))}
+          </div>
+          
+          {(data.mc || data.cd) && (
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+              {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
+              </div>}
+              {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
+              </div>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 // ================ SHARED HELPERS ================
 const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
 const fmtK = (n: any) => (n == null || isNaN(n)) ? '-' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
@@ -937,59 +1044,6 @@ export function ItemsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
-  const RichItemTooltip = ({ itemName, children }: any) => {
-    const [show, setShow] = useState(false);
-    const data = (itemsData as any)[itemName];
-
-    return (
-      <div 
-        style={{ position: 'relative', display: 'inline-block' }}
-        onMouseEnter={() => setShow(true)}
-        onMouseLeave={() => setShow(false)}
-      >
-        {children}
-        {show && data && (
-          <div style={{
-            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
-            background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
-            borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
-            textAlign: 'left', marginBottom: '8px'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
-               <img src={getItemImage(itemName)} style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
-               <div>
-                 <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
-                 <div style={{ color: 'var(--accent-gold)', fontSize: '0.8rem', fontWeight: 'bold' }}>💰 {data.cost}</div>
-               </div>
-            </div>
-            {data.desc && <p style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4' }}>{data.desc}</p>}
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {data.attrib && data.attrib.map((a: any, i: number) => (
-                 <div key={i} style={{ fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
-                    <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
-                 </div>
-              ))}
-            </div>
-            
-            {(data.mc || data.cd) && (
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                  <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
-                </div>}
-                {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                  ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
-                </div>}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   const renderItemPhase = (p: any, startMin: number, endMin: number | null) => {
     const log = p.purchase_log || [];
     const filtered = log.filter((item: any) => {
@@ -1046,33 +1100,81 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
-  const renderAbilityGrid = (uses: any) => {
-    if (!uses || Object.keys(uses).length === 0) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
-    // Filter out common items/attributes if they show up in abilities
+  const renderAbilityGrid = (p: any) => {
+    const uses = p.ability_uses || {};
+    const targets = p.ability_targets || {};
+    
     const entries = Object.entries(uses).filter(([k]) => !k.startsWith('item_') && !k.startsWith('special_bonus'));
     if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    
+    const sorted = entries.sort((a: any, b: any) => b[1] - a[1]);
+    
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '4px 0' }}>
+        {sorted.map(([k, v]: any) => {
+          const abTargets = targets[k] || {};
+          const targetEntries = Object.entries(abTargets).sort((a: any, b: any) => b[1] - a[1]);
+          return (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <RichAbilityTooltip abilityName={k}>
+                <div style={{ position: 'relative', display: 'inline-block', width: '32px', height: '32px' }}>
+                  <img src={getAbilityImage(k)} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+                  <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: 'var(--accent-gold)', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    {v}
+                  </span>
+                </div>
+              </RichAbilityTooltip>
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 4px' }}>→</span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {targetEntries.map(([tk, tv]: any) => (
+                  <div key={tk} title={tk.replace('npc_dota_hero_', '').replace(/_/g, ' ')} style={{ position: 'relative', display: 'inline-block', width: '28px', height: '16px' }}>
+                    <img src={getHeroImage(tk.replace('npc_dota_hero_', ''))} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+                    <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '9px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      {tv}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderItemGrid = (p: any) => {
+    const uses = p.item_uses || {};
+    const entries = Object.entries(uses).filter(([k]) => !k.includes('tpscroll') && !k.includes('ward'));
+    if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'flex-start', alignContent: 'flex-start', paddingTop: '4px' }}>
         {entries.sort((a: any, b: any) => b[1] - a[1]).map(([k, v]: any) => (
-          <div key={k} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px 6px 2px 2px', borderRadius: '4px' }}>
-            <img src={getAbilityImage(k)} style={{ width: '28px', height: '28px', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px' }} />
-            <span style={{ fontSize: '0.8rem', color: 'var(--accent-gold)' }}>{v}</span>
-          </div>
+          <RichItemTooltip key={k} itemName={k.replace('item_', '')}>
+            <div style={{ position: 'relative', display: 'inline-block', width: '38px', height: '28px' }}>
+              <img src={getItemImage(k.replace('item_', ''))} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+              <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
+                {v}
+              </span>
+            </div>
+          </RichItemTooltip>
         ))}
       </div>
     );
   };
 
-  const renderItemGrid = (uses: any) => {
-    if (!uses || Object.keys(uses).length === 0) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
-    const entries = Object.entries(uses).filter(([k]) => !k.includes('tpscroll') && !k.includes('ward'));
+  const renderHitsGrid = (p: any) => {
+    const targets = p.damage_targets || {};
+    const rightClicks = targets['null'] || targets[''] || {};
+    const entries = Object.entries(rightClicks).filter(([k]) => k.startsWith('npc_dota_hero_'));
     if (!entries.length) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
     return (
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', justifyContent: 'flex-start' }}>
-        {entries.sort((a: any, b: any) => b[1] - a[1]).map(([k, v]: any) => (
-          <div key={k} style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.2)', padding: '2px 6px 2px 2px', borderRadius: '4px' }}>
-            <img src={getItemImage(k.replace('item_', ''))} style={{ width: '36px', height: '28px', border: '1px solid rgba(0,0,0,0.5)', objectFit: 'cover', borderRadius: '2px' }} />
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)' }}>{v}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-start', alignContent: 'flex-start', paddingTop: '4px' }}>
+        {entries.sort((a: any, b: any) => (b[1] as number) - (a[1] as number)).map(([k, v]: any) => (
+          <div key={k} title={k.replace('npc_dota_hero_', '').replace(/_/g, ' ')} style={{ position: 'relative', display: 'inline-block', width: '32px', height: '18px' }}>
+            <img src={getHeroImage(k.replace('npc_dota_hero_', ''))} style={{ width: '100%', height: '100%', border: '1px solid rgba(0,0,0,0.5)', borderRadius: '2px', objectFit: 'cover' }} />
+            <span style={{ position: 'absolute', bottom: '-4px', left: '-4px', background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: '10px', padding: '1px 3px', borderRadius: '3px', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.1)' }}>
+              {v >= 1000 ? (v/1000).toFixed(1) + 'k' : v}
+            </span>
           </div>
         ))}
       </div>
@@ -1080,8 +1182,9 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
   };
 
   const castsCols = [
-    { key: 'abilities', label: 'ABILITIES', render: (p: any) => renderAbilityGrid(p.ability_uses) },
-    { key: 'items', label: 'ITEMS', render: (p: any) => renderItemGrid(p.item_uses) }
+    { key: 'abilities', label: 'ABILITIES', render: renderAbilityGrid },
+    { key: 'items', label: 'ITEMS', render: renderItemGrid },
+    { key: 'hits', label: 'HITS', render: renderHitsGrid }
   ];
 
   return (
