@@ -91,58 +91,127 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
 
   const mapSize = compact ? '320px' : '100%';
 
+  // Zoom and Pan state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY > 0 ? -0.2 : 0.2;
+    setZoom(prev => Math.min(Math.max(1, prev + zoomDelta), 4));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPan({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y
+    });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
   return (
     <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px', gap: '8px' }}>
+        <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => { setZoom(1); setPan({x: 0, y: 0}); }}>Reset Map</button>
+      </div>
       {/* Map Container */}
-      <div style={{ position: 'relative', width: mapSize, maxWidth: '600px', aspectRatio: '1/1', background: '#0a0a0a', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)', margin: compact ? '0' : '0 auto' }}>
-        <img 
-          src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/minimap.png" 
-          alt="Dota 2 Map"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }}
-          onError={(e) => {
-            e.currentTarget.src = 'https://cdn.stratz.com/images/dota2/map/map_7.33.png';
-          }}
-        />
-
-        {/* Building markers (simplified) */}
-        {/* Tower positions - Radiant */}
-        {[
-          { x: 18, y: 82, label: 'T1 Bot' },
-          { x: 38, y: 62, label: 'T1 Mid' },
-          { x: 12, y: 52, label: 'T1 Top' },
-        ].map((t, i) => (
-          <div key={`rt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--radiant-green)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
-        ))}
-        {/* Tower positions - Dire */}
-        {[
-          { x: 88, y: 18, label: 'T1 Top' },
-          { x: 62, y: 38, label: 'T1 Mid' },
-          { x: 88, y: 48, label: 'T1 Bot' },
-        ].map((t, i) => (
-          <div key={`dt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--dire-red)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
-        ))}
-
-        {/* Events overlay */}
-        {visibleEvents.map((evt, i) => (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              left: `${evt.left}%`,
-              top: `${evt.top}%`,
-              transform: 'translate(-50%, -50%)',
-              width: evt.type === 'kill' ? '10px' : '8px',
-              height: evt.type === 'kill' ? '10px' : '8px',
-              borderRadius: evt.type === 'obs' ? '50%' : evt.type === 'sen' ? '2px' : '50%',
-              background: evt.color,
-              boxShadow: `0 0 4px ${evt.color}`,
-              opacity: (currentTime - evt.time < 120) ? 1 : 0.3,
-              transition: 'opacity 0.3s',
-              zIndex: evt.type === 'kill' ? 10 : 5,
+      <div 
+        style={{ 
+          position: 'relative', 
+          width: mapSize, 
+          maxWidth: '600px', 
+          aspectRatio: '1/1', 
+          background: '#0a0a0a', 
+          borderRadius: '8px', 
+          overflow: 'hidden', 
+          border: '1px solid var(--border-color)', 
+          margin: compact ? '0' : '0 auto',
+          cursor: isDragging ? 'grabbing' : 'grab'
+        }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      >
+        <div style={{
+          width: '100%',
+          height: '100%',
+          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
+          transformOrigin: 'center',
+          transition: isDragging ? 'none' : 'transform 0.1s ease-out'
+        }}>
+          <img 
+            src="https://static.wikia.nocookie.net/dota2_gamepedia/images/c/c2/Minimap_7.33.png" 
+            alt="Dota 2 Map"
+            style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7, pointerEvents: 'none' }}
+            onError={(e) => {
+              e.currentTarget.src = 'https://raw.githubusercontent.com/SteamDatabase/GameTracking-Dota2/master/game/dota/panorama/images/map/map_icon_png.png';
             }}
-            title={`[${formatTime(evt.time)}] ${evt.type}`}
           />
-        ))}
+
+          {/* Building markers (simplified) */}
+          {/* Tower positions - Radiant */}
+          {[
+            { x: 18, y: 82, label: 'T1 Bot' },
+            { x: 38, y: 62, label: 'T1 Mid' },
+            { x: 12, y: 52, label: 'T1 Top' },
+          ].map((t, i) => (
+            <div key={`rt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--radiant-green)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
+          ))}
+          {/* Tower positions - Dire */}
+          {[
+            { x: 88, y: 18, label: 'T1 Top' },
+            { x: 62, y: 38, label: 'T1 Mid' },
+            { x: 88, y: 48, label: 'T1 Bot' },
+          ].map((t, i) => (
+            <div key={`dt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--dire-red)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
+          ))}
+
+          {/* Events overlay */}
+          <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
+            {visibleEvents.length > 1 && (
+              <polyline 
+                points={visibleEvents.sort((a,b) => a.time - b.time).map(e => `${e.left},${e.top}`).join(' ')} 
+                fill="none" 
+                stroke="var(--accent-gold)" 
+                strokeWidth="0.5" 
+                strokeDasharray="2,2" 
+                opacity="0.6" 
+              />
+            )}
+          </svg>
+
+          {visibleEvents.map((evt, i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                left: `${evt.left}%`,
+                top: `${evt.top}%`,
+                transform: 'translate(-50%, -50%)',
+                width: evt.type === 'kill' ? '10px' : '8px',
+                height: evt.type === 'kill' ? '10px' : '8px',
+                borderRadius: evt.type === 'obs' ? '50%' : evt.type === 'sen' ? '2px' : '50%',
+                background: evt.color,
+                boxShadow: `0 0 4px ${evt.color}`,
+                opacity: (currentTime - evt.time < 120) ? 1 : 0.4,
+                transition: 'opacity 0.3s',
+                zIndex: evt.type === 'kill' ? 10 : 5,
+              }}
+              title={`[${formatTime(evt.time)}] ${evt.type}`}
+            />
+          ))}
+        </div>
 
         {/* Time overlay */}
         <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.8)', padding: '4px 10px', borderRadius: '4px', fontSize: '0.85rem', color: 'var(--accent-gold)', fontWeight: 'bold' }}>
