@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { HEROES } from '../lib/heroes';
+import abilitiesData from '../lib/constants/abilities.json';
+import itemsData from '../lib/constants/items.json';
 import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { Trophy } from 'lucide-react';
@@ -378,8 +380,16 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
-  const getKills = (rp: any, cp: any) => rp.killed ? (rp.killed[cp.hero_name] || 0) : 0;
-  const getDmg = (rp: any, cp: any) => rp.damage ? (rp.damage[cp.hero_name] || 0) : 0;
+  const getKills = (rp: any, cp: any) => {
+    const cpImgName = HEROES[cp.hero_id as keyof typeof HEROES]?.img_name;
+    const cpHeroKey = cpImgName ? `npc_dota_hero_${cpImgName}` : '';
+    return rp.killed ? (rp.killed[cpHeroKey] || 0) : 0;
+  };
+  const getDmg = (rp: any, cp: any) => {
+    const cpImgName = HEROES[cp.hero_id as keyof typeof HEROES]?.img_name;
+    const cpHeroKey = cpImgName ? `npc_dota_hero_${cpImgName}` : '';
+    return rp.damage ? (rp.damage[cpHeroKey] || 0) : 0;
+  };
 
   const HeroMatrix = ({ title, allPlayers, getValue, isDamage = false }: any) => {
     return (
@@ -391,7 +401,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
               <th style={{ padding: '0.2rem' }}></th>
               {allPlayers.map((cp: any) => (
                 <th key={cp.hero_id} style={{ padding: '0.2rem', minWidth: '24px' }}>
-                  <img src={getHeroImage(cp.hero_name?.replace('npc_dota_hero_', ''))} alt={cp.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px' }} />
+                  <img src={getHeroImage(HEROES[cp.hero_id as keyof typeof HEROES]?.img_name || '')} alt={cp.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px' }} />
                 </th>
               ))}
               <th style={{ padding: '0.2rem', color: 'var(--text-muted)' }}>SUM</th>
@@ -404,7 +414,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
               return (
                 <tr key={rp.hero_id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '0.2rem' }}>
-                     <img src={getHeroImage(rp.hero_name?.replace('npc_dota_hero_', ''))} alt={rp.hero_name} style={{ width: '28px', height: '16px', borderRadius: '2px', borderLeft: `3px solid ${rp.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+                     <img src={getHeroImage(HEROES[rp.hero_id as keyof typeof HEROES]?.img_name || '')} alt={rpName} style={{ width: '28px', height: '16px', borderRadius: '2px', borderLeft: `3px solid ${rp.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
                   </td>
                   {allPlayers.map((cp: any) => {
                     const cpName = HEROES[cp.hero_id as keyof typeof HEROES]?.name || cp.hero_name;
@@ -481,15 +491,115 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     }}
   ];
 
+  const RichAbilityTooltip = ({ name, children, isItem = false }: any) => {
+    const [show, setShow] = useState(false);
+    const data = isItem ? (itemsData as any)[name.replace('item_', '')] : (abilitiesData as any)[name];
+
+    return (
+      <div 
+        style={{ position: 'relative', display: 'inline-block' }}
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+      >
+        {children}
+        {show && data && (
+          <div style={{
+            position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+            background: '#1a1f26', border: '1px solid var(--border-color)', padding: '1rem',
+            borderRadius: '4px', zIndex: 100, width: '320px', pointerEvents: 'none',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.8)', color: 'var(--text-primary)',
+            textAlign: 'left', marginBottom: '8px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+               <img src={isItem ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)' }} />
+               <div>
+                 <h4 style={{ margin: '0 0 0.5rem 0', color: '#e2b742', fontSize: '1.1rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{data.dname}</h4>
+                 {data.dmg_type && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>DAMAGE TYPE: <span style={{ color: '#fff' }}>{data.dmg_type}</span></div>}
+                 {data.bkbpierce && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>PIERCES DEBUFF IMMUNITY: <span style={{ color: data.bkbpierce === 'Yes' ? '#66bb6a' : '#ef5350' }}>{data.bkbpierce}</span></div>}
+               </div>
+            </div>
+            {data.desc && <p style={{ fontSize: '0.85rem', color: '#ccc', marginBottom: '1rem', lineHeight: '1.4' }}>{data.desc}</p>}
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {data.attrib && data.attrib.map((a: any, i: number) => (
+                 <div key={i} style={{ fontSize: '0.8rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{a.header} </span>
+                    <span style={{ color: '#fff' }}>{Array.isArray(a.value) ? a.value.join(' / ') : a.value}</span>
+                 </div>
+              ))}
+            </div>
+            
+            {(data.mc || data.cd) && (
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                {data.mc && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#2196f3', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                  <div style={{ width: '12px', height: '12px', background: '#2196f3', borderRadius: '2px' }} /> {Array.isArray(data.mc) ? data.mc.join('/') : data.mc}
+                </div>}
+                {data.cd && <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                  ⏱️ {Array.isArray(data.cd) ? data.cd.join('/') : data.cd}
+                </div>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderAbilityDamage = (dmgDict: any) => {
     if (!dmgDict) return null;
     const sorted = Object.entries(dmgDict).sort((a: any, b: any) => b[1] - a[1]);
     return (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '300px' }}>
         {sorted.map(([name, amount]: any, i: number) => (
-          <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '2px', borderRadius: '2px' }} title={`${name}: ${amount}`}>
-            <img src={name.includes('item_') ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
-            <span style={{ fontSize: '0.65rem', marginTop: '2px', color: 'var(--text-muted)' }}>{fmtK(amount)}</span>
+          <RichAbilityTooltip key={i} name={name} isItem={name.includes('item_')}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(255,255,255,0.05)', padding: '2px', borderRadius: '2px', cursor: 'help' }}>
+              <img src={name.includes('item_') ? getItemImage(name.replace('item_', '')) : getAbilityImage(name)} alt={name} style={{ width: '20px', height: '20px', objectFit: 'cover' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+              <span style={{ fontSize: '0.65rem', marginTop: '2px', color: 'var(--text-muted)' }}>{fmtK(amount)}</span>
+            </div>
+          </RichAbilityTooltip>
+        ))}
+      </div>
+    );
+  };
+
+  const renderDamageTargets = (targetsDict: any) => {
+    if (!targetsDict) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+    // Format: { "pudge_meat_hook": { "npc_dota_hero_nyx_assassin": 3135, ... } }
+    // Calculate total per ability for sorting
+    const abilities = Object.entries(targetsDict).map(([ability, heroes]: any) => {
+      const total = Object.values(heroes).reduce((sum: any, val: any) => sum + val, 0) as number;
+      return { ability, heroes, total };
+    }).sort((a, b) => b.total - a.total);
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-start' }}>
+        {abilities.map((item, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.02)', padding: '4px', borderRadius: '4px', width: '100%' }}>
+            {/* Ability Icon + Total */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: '60px' }}>
+              <RichAbilityTooltip name={item.ability} isItem={item.ability.includes('item_')}>
+                <img src={item.ability.includes('item_') ? getItemImage(item.ability.replace('item_', '')) : getAbilityImage(item.ability)} alt={item.ability} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '2px', cursor: 'help' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+              </RichAbilityTooltip>
+              <span style={{ fontSize: '0.75rem', color: '#e2b742', fontWeight: 'bold' }}>{fmtK(item.total)}</span>
+            </div>
+            
+            {/* Arrow */}
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>→</span>
+            
+            {/* Targets Breakdown */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+              {Object.entries(item.heroes)
+                .sort((a: any, b: any) => b[1] - a[1])
+                .map(([heroName, amount]: any, j: number) => {
+                  const name = HEROES[Object.values(HEROES).find(h => h.img_name === heroName.replace('npc_dota_hero_', ''))?.id as number]?.name || heroName;
+                  return (
+                    <div key={j} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: 'rgba(0,0,0,0.2)', padding: '2px', borderRadius: '2px' }} title={`${name}: ${amount}`}>
+                      <img src={getHeroImage(heroName.replace('npc_dota_hero_', ''))} alt={heroName} style={{ width: '20px', height: '12px', objectFit: 'cover', borderRadius: '2px' }} onError={(e) => e.currentTarget.style.display = 'none'} />
+                      <span style={{ fontSize: '0.65rem', marginTop: '1px', color: 'var(--text-muted)' }}>{fmtK(amount)}</span>
+                    </div>
+                  );
+              })}
+            </div>
           </div>
         ))}
       </div>
@@ -497,7 +607,7 @@ export function CombatTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
   };
 
   const getDamageCols = () => [
-    { key: 'dealt', label: 'DEALT', render: (p: any) => renderAbilityDamage(p.damage_inflictor) },
+    { key: 'dealt', label: 'DEALT', render: (p: any) => renderDamageTargets(p.damage_targets) },
     { key: 'received', label: 'RECEIVED', render: (p: any) => renderAbilityDamage(p.damage_inflictor_received) }
   ];
 
