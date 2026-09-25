@@ -105,6 +105,8 @@ class StratzClient:
             gameMode
             lobbyType
             startDateTime
+            clusterId
+            replaySalt
             players {
               steamAccountId
               heroId

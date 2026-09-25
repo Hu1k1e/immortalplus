@@ -17,6 +17,8 @@ from models import (
 )
 from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
+from services.local_parser import parse_match_locally
+from services.parser_aggregator import aggregate_parser_output
 from models import MatchAnalysis
 
 logger = logging.getLogger(__name__)
@@ -170,13 +172,34 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
                 if source == "stratz":
                     return False
 
-    # Choose the primary data source (prefer OpenDota for deep stats)
-    data = od_data if od_data else stratz_data
+    # Check if OpenDota is missing the parsed data (e.g., rate limits, missing parser output)
+    needs_local_parse = False
+    if od_data:
+        # If openDota doesn't have deep parse data (no players with purchase_log)
+        has_deep = any(p.get("purchase_log") for p in od_data.get("players", []))
+        if not has_deep:
+            needs_local_parse = True
+    elif stratz_data:
+        needs_local_parse = True
+
+    local_parse_data = None
+    if needs_local_parse and stratz_data:
+        cluster = stratz_data.get("clusterId")
+        salt = stratz_data.get("replaySalt")
+        if cluster and salt:
+            logger.info(f"OpenDota parse missing. Bypassing rate limits via local parser for {match.match_id}")
+            raw_lines = await parse_match_locally(match.match_id, cluster, salt)
+            if raw_lines:
+                local_parse_data = aggregate_parser_output(raw_lines, {})
+                logger.info("Local parse aggregation complete.")
+
+    # Choose the primary data source (prefer OpenDota for deep stats, fallback to local parse, then stratz)
+    data = od_data if (od_data and not needs_local_parse) else (local_parse_data if local_parse_data else stratz_data)
     if not data:
         return False
         
-    # If we have both, we can merge Stratz high-fidelity coordinates into OpenDota data
-    if od_data and stratz_data:
+    # If we have both, we can merge Stratz high-fidelity coordinates into the primary data
+    if data and stratz_data:
         for p_od in data.get("players", []):
             p_stratz = next((p for p in stratz_data.get("players", []) if p.get("account_id") == p_od.get("account_id")), None)
             if p_stratz:

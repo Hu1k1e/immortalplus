@@ -26,16 +26,12 @@ services:
       - backend
     restart: unless-stopped
 
-  # Replay Parser (Placeholder for Java Clarity Service)
+  # Replay Parser (OpenDota Java Clarity Service)
   replay_parser:
-    image: eclipse-temurin:21-jre-alpine
+    image: odota/parser:latest
     container_name: immortalplus_parser
-    volumes:
-      - immortalplus_replays:/app/replays
-    # We will build the jar later. For now, just keep it alive
-    command: ["sh", "-c", "echo 'Parser placeholder' && tail -f /dev/null"]
     ports:
-      - "8001:8001"
+      - "5600:5600"
     restart: unless-stopped
 
 volumes:
