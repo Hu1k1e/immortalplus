@@ -19,6 +19,7 @@ from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
 from services.local_parser import parse_match_locally
 from services.parser_aggregator import aggregate_parser_output
+from services.steam import SteamClient
 from models import MatchAnalysis
 
 logger = logging.getLogger(__name__)
@@ -183,9 +184,23 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
         needs_local_parse = True
 
     local_parse_data = None
-    if needs_local_parse and stratz_data:
-        cluster = stratz_data.get("clusterId")
-        salt = stratz_data.get("replaySalt")
+    if needs_local_parse:
+        cluster, salt = None, None
+        
+        # 1. Prefer Steam API directly if key is provided (most reliable)
+        if settings and settings.steam_api_key:
+            steam_client = SteamClient(settings.steam_api_key)
+            steam_data = await steam_client.get_match_details(match.match_id)
+            if steam_data:
+                cluster = steam_data.get("cluster")
+                salt = steam_data.get("replay_salt")
+                
+        # 2. Fallback to Stratz if Steam API wasn't available or failed
+        if not cluster or not salt:
+            if stratz_data:
+                cluster = stratz_data.get("clusterId")
+                salt = stratz_data.get("replaySalt")
+                
         if cluster and salt:
             logger.info(f"OpenDota parse missing. Bypassing rate limits via local parser for {match.match_id}")
             raw_lines = await parse_match_locally(match.match_id, cluster, salt)
