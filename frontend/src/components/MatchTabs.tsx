@@ -1827,18 +1827,49 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
         <div style={{ flex: "0 0 350px", display: "flex", flexDirection: "column", gap: "1rem" }}>
           <div style={{ position: "relative", width: "350px", height: "350px", borderRadius: "4px", overflow: "hidden", border: "1px solid var(--border-color)", background: "#222" }}>
             <img src="/assets/images/dota2/Game_map_7.41.jpg" alt="Map" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            
+            {/* Average Teamfight Position */}
+            {(() => {
+              if (!tf.deaths_pos || tf.deaths_pos.length === 0) return null;
+              const avgX = tf.deaths_pos.reduce((acc: number, m: any) => acc + m.x, 0) / tf.deaths_pos.length;
+              const avgY = tf.deaths_pos.reduce((acc: number, m: any) => acc + m.y, 0) / tf.deaths_pos.length;
+              const px = Math.min(100, Math.max(0, (avgX / 127) * 100));
+              const py = Math.min(100, Math.max(0, (avgY / 127) * 100));
+              const isRadiantWon = tf.radiant_gold_advantage_delta > 0;
+              return (
+                <div style={{
+                  position: "absolute", left: `${px}%`, top: `${py}%`,
+                  zIndex: 4, transform: "translate(-50%, -50%)",
+                  display: "flex", flexDirection: "column", alignItems: "center", pointerEvents: "none"
+                }}>
+                  {isRadiantWon ? <IconRadiant style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(102,187,106,0.8))" }} /> : <IconDire style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(244,67,54,0.8))" }} />}
+                  <div style={{ color: "var(--accent-gold)", fontWeight: "bold", fontSize: "0.85rem", textShadow: "0 0 4px #000", marginTop: "2px" }}>
+                    {Math.abs(tf.radiant_gold_advantage_delta)}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Individual Deaths */}
             {tf.deaths_pos.map((m: any, i: number) => {
                const px = Math.min(100, Math.max(0, (m.x / 127) * 100));
                const py = Math.min(100, Math.max(0, (m.y / 127) * 100));
+               const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
+               
                return (
                  <div key={i} className="map-icon-hover" style={{
                    position: "absolute", left: `${px}%`, top: `${py}%`,
                    width: "24px", height: "24px", zIndex: 5,
                    transform: "translate(-50%, -50%)",
                    display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer"
+                   cursor: "pointer",
+                   borderRadius: "50%",
+                   border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
+                   overflow: "hidden",
+                   background: "#000"
                  }}>
-                   {m.isRadiant ? <IconRadiant style={{ width: 20, height: 20 }} /> : <IconDire style={{ width: 20, height: 20 }} />}
+                   {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "8px", height: "8px", background: m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)", borderRadius: "50%" }} />}
+                   
                    <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
                      <PlayerCell p={m.player} />
                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
@@ -1881,6 +1912,12 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
 export function ChatTab({ chat, allPlayers }: { chat: any[]; allPlayers: any[] }) {
   if (!chat?.length) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>No chat data available.</div>;
 
+  // Import chat_wheel data
+  const [chatWheel, setChatWheel] = React.useState<Record<string, any>>({});
+  React.useEffect(() => {
+    import('../lib/constants/chat_wheel.json').then((mod: any) => setChatWheel(mod.default || mod));
+  }, []);
+
   const formatTime = (t: number) => {
     const neg = t < 0;
     const abs = Math.abs(t);
@@ -1888,34 +1925,143 @@ export function ChatTab({ chat, allPlayers }: { chat: any[]; allPlayers: any[] }
   };
 
   const getPlayer = (slot: number) => allPlayers.find((p: any) => p.player_slot === slot);
+  const isRadiant = (slot: number) => (slot ?? 0) < 128;
+  const getCW = (id: string) => chatWheel[id] || {};
 
-  // Only show actual text chat, not chatwheel
-  const textChat = chat.filter((c: any) => c.type === 'chat');
+  // Spam detection
+  const processed = useMemo(() => {
+    const msgs = chat.map(m => ({...m}));
+    for (let i = 0; i < msgs.length - 1; i++) {
+      const curr = msgs[i]; const next = msgs[i + 1];
+      if (curr.player_slot === next.player_slot) {
+        if (next.time - curr.time < 15 && curr.key === next.key) next.spam = true;
+        if (curr.type === 'chat' && next.type === 'chat') {
+          const ck = (curr.key || '').trim(); const nk = (next.key || '').trim();
+          if (ck.length >= 2 && nk.length >= 2 && ck.slice(0,2) === nk.slice(0,2) && ck.slice(-2) === nk.slice(-2)) next.spam = true;
+        }
+      }
+    }
+    return msgs;
+  }, [chat]);
+
+  // Filter states
+  const [filters, setFilters] = useState<Record<string, boolean>>({
+    radiant: true, dire: true, text: true, phrases: true, all: true, allies: true, spam: true
+  });
+
+  const toggle = (key: string) => setFilters(prev => ({ ...prev, [key]: !prev[key] }));
+
+  // Filter counts
+  const counts = useMemo(() => ({
+    radiant: processed.filter(m => isRadiant(m.player_slot)).length,
+    dire: processed.filter(m => !isRadiant(m.player_slot)).length,
+    text: processed.filter(m => m.type === 'chat').length,
+    phrases: processed.filter(m => m.type === 'chatwheel').length,
+    all: processed.filter(m => m.type === 'chat' || (m.type === 'chatwheel' && getCW(m.key).all_chat)).length,
+    allies: processed.filter(m => m.type === 'chatwheel' && !getCW(m.key).all_chat).length,
+    spam: processed.filter(m => m.spam).length,
+  }), [processed, chatWheel]);
+
+  // Apply filters
+  const filteredMessages = useMemo(() => {
+    let msgs = [...processed];
+    if (!filters.radiant) msgs = msgs.filter(m => !isRadiant(m.player_slot));
+    if (!filters.dire) msgs = msgs.filter(m => isRadiant(m.player_slot));
+    if (!filters.text) msgs = msgs.filter(m => m.type !== 'chat');
+    if (!filters.phrases) msgs = msgs.filter(m => m.type !== 'chatwheel');
+    if (!filters.all) msgs = msgs.filter(m => !(m.type === 'chat' || (m.type === 'chatwheel' && getCW(m.key).all_chat)));
+    if (!filters.allies) msgs = msgs.filter(m => !(m.type === 'chatwheel' && !getCW(m.key).all_chat));
+    if (!filters.spam) msgs = msgs.filter(m => !m.spam);
+    return msgs.sort((a, b) => a.time - b.time || (a.spam ? 1 : -1));
+  }, [processed, filters, chatWheel]);
+
+  const filterGroups = [
+    { label: 'FACTION', items: [
+      { key: 'radiant', label: 'Radiant', count: counts.radiant, disabled: !filters.dire },
+      { key: 'dire', label: 'Dire', count: counts.dire, disabled: !filters.radiant },
+    ]},
+    { label: 'TYPE', items: [
+      { key: 'text', label: 'Text', count: counts.text, disabled: !filters.phrases },
+      { key: 'phrases', label: 'Phrases', count: counts.phrases, disabled: !filters.text },
+    ]},
+    { label: 'TARGET', items: [
+      { key: 'all', label: 'All', count: counts.all, disabled: !filters.allies },
+      { key: 'allies', label: 'Allies', count: counts.allies, disabled: !filters.all },
+    ]},
+    { label: 'OTHER', items: [
+      { key: 'spam', label: 'Spam', count: counts.spam, disabled: false },
+    ]},
+  ];
 
   return (
-    <div className="animation-fade-in">
-      <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem' }}>Chat Log</h2>
-      <div className="glass-surface" style={{ padding: '1.5rem', maxHeight: '600px', overflowY: 'auto' }}>
-        {textChat.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)' }}>No text chat in this match.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {textChat.map((c: any, i: number) => {
-              const player = getPlayer(c.player_slot);
-              const hero = player ? HEROES[player.hero_id] : null;
-              const isRadiant = (c.player_slot ?? 0) < 128;
-              return (
-                <div key={i} style={{ display: 'flex', gap: '0.8rem', padding: '0.4rem 0.8rem', borderRadius: '4px', background: 'rgba(0,0,0,0.2)' }}>
-                  <span style={{ color: 'var(--text-muted)', minWidth: '50px', fontSize: '0.8rem' }}>{formatTime(c.time)}</span>
-                  <span style={{ color: isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                    {hero?.name || 'Unknown'}:
-                  </span>
-                  <span style={{ fontSize: '0.85rem' }}>{c.key}</span>
-                </div>
-              );
-            })}
+    <div className="animation-fade-in" style={{ padding: '1rem 2rem' }}>
+      {/* FILTERS */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', marginBottom: '1.5rem' }}>
+        {filterGroups.map(group => (
+          <div key={group.label}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.1em' }}>{group.label}</div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              {group.items.filter(i => i.count > 0).map(item => (
+                <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: item.disabled ? 'not-allowed' : 'pointer', opacity: item.disabled ? 0.4 : 1 }}>
+                  <span 
+                    onClick={() => !item.disabled && toggle(item.key)}
+                    style={{ width: '18px', height: '18px', borderRadius: '3px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', background: filters[item.key] ? 'var(--accent-gold)' : 'transparent', color: filters[item.key] ? '#000' : 'var(--text-muted)' }}
+                  >{filters[item.key] ? '👁' : ''}</span>
+                  <span style={{ fontSize: '0.85rem' }}>{item.label}</span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{item.count}</span>
+                </label>
+              ))}
+            </div>
           </div>
-        )}
+        ))}
+      </div>
+
+      <hr style={{ border: 0, height: '1px', background: 'linear-gradient(to right, rgba(255,255,255,0.15), transparent)', marginBottom: '1rem' }} />
+
+      {/* MESSAGES */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {filteredMessages.map((msg, i) => {
+          const player = getPlayer(msg.player_slot);
+          const hero = player ? HEROES[player.hero_id as keyof typeof HEROES] : null;
+          const rad = isRadiant(msg.player_slot);
+          const isSpam = msg.spam;
+
+          // Build message content
+          let messageContent: React.ReactNode = msg.key;
+          if (msg.type === 'chatwheel') {
+            const cw = getCW(msg.key);
+            messageContent = <><span style={{ marginRight: '5px' }}>🔊</span> {cw.message || cw.label || `dota_chatwheel_message_${msg.key}`}</>;
+          }
+
+          // Target
+          const target = msg.type === 'chat' || (msg.type === 'chatwheel' && getCW(msg.key).all_chat) ? 'ALL' : 'ALLIES';
+
+          return (
+            <div key={i} style={{ 
+              display: 'flex', alignItems: 'center', gap: '0', padding: '2px 0',
+              opacity: isSpam ? 0.4 : 1, filter: isSpam ? 'grayscale(100%)' : 'none'
+            }}>
+              {/* Faction icon */}
+              <div style={{ width: '20px', flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                {rad ? <IconRadiant style={{ width: 14, height: 14 }} /> : <IconDire style={{ width: 14, height: 14 }} />}
+              </div>
+              {/* Time */}
+              <span style={{ width: '54px', textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', flexShrink: 0 }}>{formatTime(msg.time)}</span>
+              {/* Hero image */}
+              <div style={{ width: '36px', height: '20px', flexShrink: 0 }}>
+                {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: '36px', height: '20px', objectFit: 'cover' }} /> : null}
+              </div>
+              {/* Target */}
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '0.09em', marginLeft: '8px', marginBottom: '2px', flexShrink: 0 }}>[{target}]</span>
+              {/* Author name */}
+              <span style={{ margin: '0 8px', fontSize: '0.85rem', fontWeight: 600, color: rad ? 'var(--radiant-green)' : 'var(--dire-red)', whiteSpace: 'nowrap' }}>
+                {player?.persona || player?.personaname || hero?.name || 'Unknown'}
+              </span>
+              {/* Message */}
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{messageContent}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1923,47 +2069,455 @@ export function ChatTab({ chat, allPlayers }: { chat: any[]; allPlayers: any[] }
 
 // ================ LOG TAB ================
 export function LogTab({ allPlayers, matchData }: { allPlayers: any[]; matchData: any }) {
-  // Combine all kill events from all players into a unified log
-  const events: { time: number; text: string; type: string }[] = [];
+  const DIVIDER_SECONDS = 30;
+  const [selectedTypes, setSelectedTypes] = useState<number[]>([0, 1, 2]); // kills, objectives, runes
+  const [selectedPlayers, setSelectedPlayers] = useState<number[]>([]);
 
-  allPlayers.forEach((p: any) => {
-    const hero = HEROES[p.hero_id]?.name || 'Unknown';
-    (p.kills_log || []).forEach((k: any) => {
-      events.push({ time: k.time, text: `${hero} killed an enemy`, type: 'kill' });
+  const typeLabels = ['Kills', 'Objectives', 'Runes'];
+  const heroOptions = allPlayers.map((p: any, i: number) => ({
+    id: i, label: HEROES[p.hero_id as keyof typeof HEROES]?.name || 'Unknown', hero_id: p.hero_id
+  }));
+
+  const formatTime = (t: number) => {
+    const neg = t < 0; const abs = Math.abs(t);
+    return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${(abs % 60).toString().padStart(2, '0')}`;
+  };
+
+  const isEntryRadiant = (entry: any) => {
+    if (entry.isRadiant !== undefined) return entry.isRadiant;
+    if (entry.alt_key === 'CHAT_MESSAGE_COURIER_LOST') return entry.team !== 2;
+    if (entry.unit && entry.unit.indexOf('goodguys') !== -1) return true;
+    return entry.team === 2 || (entry.player_slot !== undefined && entry.player_slot < 128);
+  };
+
+  const translateBuilding = (key: string) => {
+    const isGood = key.indexOf('goodguys') !== -1;
+    const team = isGood ? 'Radiant' : 'Dire';
+    const part = (key.split('guys_')[1] || key).replace(/_/g, ' ');
+    return `${team}'s ${part}`;
+  };
+
+  // Build log
+  const logData = useMemo(() => {
+    let log: any[] = [];
+    const filteredPlayers = selectedPlayers.length === 0 ? allPlayers : allPlayers.filter((_, i) => selectedPlayers.includes(i));
+
+    // Objectives
+    if (selectedTypes.includes(1)) {
+      (matchData.objectives || []).forEach((o: any) => {
+        if (selectedPlayers.length > 0 && !selectedPlayers.includes(o.slot)) return;
+        const player = allPlayers[o.slot];
+        log.push({
+          ...o, ...player, type: 'objectives', alt_key: o.type,
+          detail: o.key || o.type
+        });
+      });
+    }
+
+    // Kills & Runes per player
+    filteredPlayers.forEach((player: any) => {
+      if (selectedTypes.includes(0)) {
+        (player.kills_log || []).forEach((entry: any) => {
+          log.push({ ...entry, ...player, type: 'kills', detail: entry.key });
+        });
+      }
+      if (selectedTypes.includes(2)) {
+        (player.runes_log || []).forEach((entry: any) => {
+          log.push({ ...entry, ...player, type: 'runes', detail: String(entry.key) });
+        });
+      }
     });
+
+    return log.sort((a, b) => a.time - b.time);
+  }, [allPlayers, matchData, selectedTypes, selectedPlayers]);
+
+  const runeNames: Record<string, string> = { '0': 'Double Damage', '1': 'Haste', '2': 'Illusion', '3': 'Invisibility', '4': 'Regeneration', '5': 'Bounty', '6': 'Arcane', '7': 'Water', '8': 'Shield', '9': 'Wisdom' };
+  const runeColors: Record<string, string> = { '0': '#4da6ff', '1': '#ff8c00', '2': '#c77dff', '3': '#c0c0c0', '4': '#66bb6a', '5': '#ffd700', '6': '#9c27b0', '7': '#4fc3f7', '8': '#78909c', '9': '#e040fb' };
+
+  // Render entry message
+  const EntryMessage = ({ entry }: { entry: any }) => {
+    const heroName = (key: string) => {
+      const found = Object.values(HEROES).find((h: any) => h.img_name === key || `npc_dota_hero_${h.img_name}` === key);
+      return found ? found.name : key.replace('npc_dota_hero_', '').replace(/_/g, ' ');
+    };
+
+    if (entry.type === 'kills') {
+      const victimName = heroName(entry.detail);
+      const victimHero = Object.values(HEROES).find((h: any) => h.name === victimName || h.img_name === entry.detail || `npc_dota_hero_${h.img_name}` === entry.detail);
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: '#ff5555' }}>⚔</span>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>killed</span>
+          {victimHero && <img src={getHeroImage(victimHero.img_name || '')} style={{ width: 16, height: 16, borderRadius: '50%' }} />}
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'rgba(255,255,255,0.8)' }}>{victimName}</span>
+        </div>
+      );
+    }
+    if (entry.type === 'runes') {
+      const runeId = entry.detail;
+      const runeName = runeNames[runeId] || `Rune ${runeId}`;
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ color: runeColors[runeId] || '#ffd700', fontSize: '14px' }}>◆</span>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', textTransform: 'lowercase' }}>activated</span>
+          <span style={{ fontSize: '12px', fontWeight: 'bold', color: runeColors[runeId] || 'rgba(255,255,255,0.8)' }}>{runeName} Rune</span>
+        </div>
+      );
+    }
+    if (entry.type === 'objectives') {
+      if (entry.alt_key === 'CHAT_MESSAGE_FIRSTBLOOD') {
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#ff5555' }}>🩸</span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#ff5555' }}>Drew First Blood</span>
+          </div>
+        );
+      }
+      if (entry.alt_key === 'building_kill') {
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#e5cf11' }}>⚡</span>
+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>destroyed</span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'rgba(255,255,255,0.8)' }}>{translateBuilding(entry.key || '')}</span>
+          </div>
+        );
+      }
+      if (entry.alt_key === 'CHAT_MESSAGE_ROSHAN_KILL') {
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#9dddcc' }}>🐉</span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#9dddcc' }}>slain Roshan</span>
+          </div>
+        );
+      }
+      if (entry.alt_key === 'CHAT_MESSAGE_AEGIS') {
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#ffd700' }}>🛡</span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#ffd700' }}>picked up Aegis</span>
+          </div>
+        );
+      }
+      if (entry.alt_key === 'CHAT_MESSAGE_COURIER_LOST') {
+        const team = entry.team === 2 ? "Radiant" : "Dire";
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#ff5555' }}>⚔</span>
+            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>killed</span>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'rgba(255,255,255,0.8)' }}>{team}'s courier</span>
+          </div>
+        );
+      }
+      return <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>{entry.alt_key}</span>;
+    }
+    return null;
+  };
+
+  // Group consecutive entries by same player
+  const renderEntries = () => {
+    const elements: React.ReactNode[] = [];
+    let groupedEntries: any[] = [];
+    let lastEntryTime = Number.MIN_SAFE_INTEGER;
+
+    logData.forEach((entry, index) => {
+      groupedEntries.push(entry);
+      const nextEntry = logData[index + 1];
+
+      if (
+        index === logData.length - 1 ||
+        nextEntry.player_slot !== entry.player_slot ||
+        nextEntry.time - entry.time > DIVIDER_SECONDS
+      ) {
+        const renderGroup = [...groupedEntries];
+        groupedEntries = [];
+        const rad = isEntryRadiant(renderGroup[0]);
+
+        // Time divider
+        if (renderGroup[0].time - lastEntryTime >= DIVIDER_SECONDS) {
+          elements.push(
+            <div key={`div-${index}`} style={{ display: 'flex', maxWidth: '800px', width: '100%', justifyContent: 'center', alignItems: 'center', margin: '24px 0', color: 'rgba(255,255,255,0.8)' }}>
+              <div style={{ height: '1px', width: '100%', background: rad ? 'linear-gradient(to left, rgba(255,255,255,0.08), transparent)' : 'linear-gradient(to right, rgba(255,255,255,0.08), transparent)' }} />
+              <span style={{ fontSize: '14px', margin: '0 16px', whiteSpace: 'nowrap' }}>{formatTime(renderGroup[0].time)}</span>
+              <div style={{ height: '1px', width: '100%', background: rad ? 'linear-gradient(to right, rgba(255,255,255,0.08), transparent)' : 'linear-gradient(to left, rgba(255,255,255,0.08), transparent)' }} />
+            </div>
+          );
+        }
+
+        const heroImg = renderGroup[0].hero_id !== undefined
+          ? <img src={getHeroImage(HEROES[renderGroup[0].hero_id as keyof typeof HEROES]?.img_name || '')} style={{ width: '72px', height: '40px', borderRadius: '4px', objectFit: 'cover' }} />
+          : <div style={{ width: '72px', height: '40px', borderRadius: '4px', background: rad ? 'rgba(102,187,106,0.2)' : 'rgba(244,67,54,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{rad ? <IconRadiant style={{ width: 24, height: 24 }} /> : <IconDire style={{ width: 24, height: 24 }} />}</div>;
+
+        const messagesBlock = (
+          <div style={{ display: 'flex', flexDirection: 'column', borderRadius: '4px', background: rad ? 'linear-gradient(to right, rgba(33,129,44,0.15), transparent)' : 'linear-gradient(to left, rgba(157,54,31,0.15), transparent)', padding: rad ? '0 0 0 7px' : '0 7px 0 0' }}>
+            {renderGroup.map((e, ei) => {
+              lastEntryTime = e.time;
+              if (rad) {
+                return (
+                  <div key={ei} style={{ display: 'flex', alignItems: 'center', margin: '6px 0' }}>
+                    <EntryMessage entry={e} />
+                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginLeft: '15px' }}>{formatTime(e.time)}</span>
+                  </div>
+                );
+              }
+              return (
+                <div key={ei} style={{ display: 'flex', alignItems: 'center', margin: '6px 0' }}>
+                  <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginRight: '15px' }}>{formatTime(e.time)}</span>
+                  <EntryMessage entry={e} />
+                </div>
+              );
+            })}
+          </div>
+        );
+
+        elements.push(
+          <div key={`entry-${index}`} style={{ display: 'flex', maxWidth: '800px', width: '100%', margin: '4px 0', justifyContent: rad ? 'flex-start' : 'flex-end', alignItems: 'center' }}>
+            {rad ? <>{heroImg}<div style={{ width: 16 }} />{messagesBlock}</> : <>{messagesBlock}<div style={{ width: 16 }} />{heroImg}</>}
+          </div>
+        );
+      }
+    });
+    return elements;
+  };
+
+  return (
+    <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
+      {/* FILTERS */}
+      <div className="glass-surface" style={{ padding: '1rem 1.5rem', marginBottom: '1.5rem' }}>
+        <div style={{ fontSize: '0.85rem', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Filter</div>
+        <div style={{ display: 'flex', gap: '2rem', flexWrap: 'wrap' }}>
+          {/* Type filter */}
+          <div>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Type</div>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {typeLabels.map((label, idx) => {
+                const active = selectedTypes.includes(idx);
+                return (
+                  <span key={idx} onClick={() => setSelectedTypes(prev => active ? prev.filter(t => t !== idx) : [...prev, idx])}
+                    style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', cursor: 'pointer',
+                      background: active ? 'rgba(102,187,106,0.3)' : 'rgba(255,255,255,0.05)',
+                      border: active ? '1px solid var(--radiant-green)' : '1px solid var(--border-color)',
+                      color: active ? 'var(--radiant-green)' : 'var(--text-muted)'
+                    }}>{label} {active && '✕'}</span>
+                );
+              })}
+            </div>
+          </div>
+          {/* Player/Hero filter */}
+          <div style={{ flex: 1, minWidth: '200px' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '6px' }}>Specify Heroes</div>
+            <select multiple value={selectedPlayers.map(String)} onChange={(e) => {
+              const opts = Array.from(e.target.selectedOptions).map(o => parseInt(o.value));
+              setSelectedPlayers(opts);
+            }} style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)', borderRadius: '4px', color: 'var(--text-primary)', padding: '4px', fontSize: '0.8rem', minHeight: '80px' }}>
+              {heroOptions.map((h: any) => <option key={h.id} value={h.id}>{h.label}</option>)}
+            </select>
+            {selectedPlayers.length > 0 && <button onClick={() => setSelectedPlayers([])} style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--accent-gold)', background: 'none', border: 'none', cursor: 'pointer' }}>Clear selection</button>}
+          </div>
+        </div>
+      </div>
+
+      {/* LOG ENTRIES */}
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', letterSpacing: '0.044em' }}>
+        {logData.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', padding: '2rem' }}>No log data available.</div>
+        ) : renderEntries()}
+      </div>
+    </div>
+  );
+}
+
+// ================ STORY TAB ================
+export function StoryTab({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
+  const formatTime = (t: number) => {
+    const neg = t < 0; const abs = Math.abs(t);
+    return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${(abs % 60).toString().padStart(2, '0')}`;
+  };
+
+  const getHero = (slot: number) => {
+    const p = allPlayers.find((x: any) => x.player_slot === slot);
+    return p ? HEROES[p.hero_id as keyof typeof HEROES] : null;
+  };
+  const getHeroByIdx = (idx: number) => {
+    const p = allPlayers[idx];
+    return p ? HEROES[p.hero_id as keyof typeof HEROES] : null;
+  };
+  const isRadiantSlot = (slot: number) => (slot ?? 0) < 128;
+
+  const HeroInline = ({ heroId, slot }: { heroId?: number; slot?: number }) => {
+    const hero = heroId ? HEROES[heroId as keyof typeof HEROES] : (slot !== undefined ? getHero(slot) : null);
+    if (!hero) return <span style={{ color: 'var(--text-muted)' }}>Unknown</span>;
+    const rad = slot !== undefined ? isRadiantSlot(slot) : heroId !== undefined && allPlayers.find((p: any) => p.hero_id === heroId)?.player_slot < 128;
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+        <img src={getHeroImage(hero.img_name || '')} style={{ width: 20, height: 20, borderRadius: '50%', verticalAlign: 'middle' }} />
+        <span style={{ color: rad ? 'var(--radiant-green)' : 'var(--dire-red)', fontWeight: 600 }}>{hero.name}</span>
+      </span>
+    );
+  };
+
+  const GoldInline = ({ amount }: { amount: number }) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+      <span style={{ color: '#ffd700' }}>💰</span>
+      <span style={{ color: '#ffd700', fontWeight: 'bold' }}>{amount.toLocaleString()}</span>
+    </span>
+  );
+
+  const TeamInline = ({ isRadiant }: { isRadiant: boolean }) => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+      {isRadiant ? <IconRadiant style={{ width: 16, height: 16 }} /> : <IconDire style={{ width: 16, height: 16 }} />}
+      <span style={{ color: isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)', fontWeight: 600 }}>{isRadiant ? 'Radiant' : 'Dire'}</span>
+    </span>
+  );
+
+  // Parse data
+  const duration = matchData.duration || 0;
+  const radiantWin = matchData.radiant_win;
+  const startTime = matchData.start_time;
+  const objectives = matchData.objectives || [];
+  const teamfights = matchData.teamfights || [];
+  const chat = matchData.chat || [];
+  const radGoldAdv = matchData.radiant_gold_adv ? (typeof matchData.radiant_gold_adv === 'string' ? JSON.parse(matchData.radiant_gold_adv) : matchData.radiant_gold_adv) : [];
+
+  // Events
+  const storyElements: React.ReactNode[] = [];
+  let keyIdx = 0;
+
+  // Intro
+  const gameDate = startTime ? new Date(startTime * 1000).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'an unknown date';
+  const durMins = Math.floor(duration / 60);
+  storyElements.push(
+    <div key={keyIdx++} className="glass-surface" style={{ padding: '1.5rem', marginBottom: '1rem', fontSize: '0.95rem', lineHeight: 1.8 }}>
+      On {gameDate}, two teams decided to play a game of Dota 2. Little did they know, the game would last about {durMins} minutes.
+    </div>
+  );
+
+  // First blood
+  const fb = objectives.find((o: any) => o.type === 'CHAT_MESSAGE_FIRSTBLOOD');
+  if (fb) {
+    const killer = allPlayers.find((p: any) => p.player_slot === fb.player_slot);
+    const killerHero = killer ? HEROES[killer.hero_id as keyof typeof HEROES] : null;
+    // Try to find victim from kills_log
+    let victim: any = null;
+    if (killer?.kills_log?.length) {
+      const firstKill = killer.kills_log[0];
+      const victimHeroObj = Object.values(HEROES).find((h: any) => `npc_dota_hero_${h.img_name}` === firstKill.key || h.img_name === firstKill.key);
+      if (victimHeroObj) {
+        victim = allPlayers.find((p: any) => p.hero_id === (victimHeroObj as any).id);
+      }
+    }
+    storyElements.push(
+      <div key={keyIdx++} style={{ padding: '0.5rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+        First blood was drawn when {killerHero ? <HeroInline heroId={killer.hero_id} slot={killer.player_slot} /> : 'a hero'} killed {victim ? <HeroInline heroId={victim.hero_id} slot={victim.player_slot} /> : 'an enemy'} at {formatTime(fb.time)}.
+      </div>
+    );
+  }
+
+  // Teamfights
+  const parsedTf = typeof teamfights === 'string' ? JSON.parse(teamfights) : teamfights;
+  if (Array.isArray(parsedTf)) {
+    parsedTf.forEach((tf: any) => {
+      const goldDelta = tf.radiant_gold_advantage_delta || 0;
+      const radWon = goldDelta > 0;
+
+      // Get dead heroes
+      const deadHeroes: string[] = [];
+      const killerHeroes: string[] = [];
+      (tf.players || []).forEach((p: any, i: number) => {
+        if (p && p.deaths > 0) {
+          const h = getHeroByIdx(i);
+          if (h) deadHeroes.push(h.name);
+        }
+        if (p && (p.damage || 0) > 0) {
+          const h = getHeroByIdx(i);
+          if (h) killerHeroes.push(h.name);
+        }
+      });
+
+      storyElements.push(
+        <div key={keyIdx++} style={{ padding: '0.5rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+          <TeamInline isRadiant={radWon} /> won a teamfight ({formatTime(tf.start)} - {formatTime(tf.end)}),
+          resulting in a net worth increase of <GoldInline amount={Math.abs(goldDelta)} />.
+          {deadHeroes.length > 0 && <> {deadHeroes.join(', ')} died in the fight.</>}
+        </div>
+      );
+    });
+  }
+
+  // Building kills
+  objectives.filter((o: any) => o.type === 'building_kill').forEach((o: any) => {
+    const key = o.key || '';
+    const isGood = key.indexOf('goodguys') !== -1;
+    const part = (key.split('guys_')[1] || '').replace(/_/g, ' ');
+    storyElements.push(
+      <div key={keyIdx++} style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+        <TeamInline isRadiant={isGood} />'s {part} was destroyed at {formatTime(o.time)}.
+      </div>
+    );
   });
 
-  // Add objectives
-  (matchData.objectives || []).forEach((o: any) => {
-    if (o.type === 'building_kill') {
-      events.push({ time: o.time, text: `Building destroyed: ${o.key?.replace('npc_dota_', '').replace(/_/g, ' ')}`, type: 'objective' });
-    } else if (o.type === 'CHAT_MESSAGE_FIRSTBLOOD') {
-      events.push({ time: o.time, text: 'First Blood!', type: 'firstblood' });
+  // Gold bars at 10 min intervals
+  const intervals = [10, 20, 30, 40];
+  intervals.forEach(min => {
+    const idx = min;
+    if (radGoldAdv.length > idx) {
+      const radTotal = allPlayers.filter((p: any) => p.player_slot < 128).reduce((acc: number, p: any) => {
+        const gt = typeof p.gold_t === 'string' ? JSON.parse(p.gold_t) : (p.gold_t || []);
+        return acc + (gt[idx] || 0);
+      }, 0);
+      const direTotal = allPlayers.filter((p: any) => p.player_slot >= 128).reduce((acc: number, p: any) => {
+        const gt = typeof p.gold_t === 'string' ? JSON.parse(p.gold_t) : (p.gold_t || []);
+        return acc + (gt[idx] || 0);
+      }, 0);
+      const diff = radGoldAdv[idx] || 0;
+      const total = radTotal + direTotal || 1;
+      const radPct = (radTotal / total) * 100;
+
+      storyElements.push(
+        <div key={keyIdx++} style={{ margin: '1.5rem 0' }}>
+          <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{min} Minutes In</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <span><GoldInline amount={radTotal} /></span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{Math.round(Math.abs(diff) / total * 100)}% / <GoldInline amount={Math.abs(diff)} /> Diff</span>
+            <span><GoldInline amount={direTotal} /></span>
+          </div>
+          <div style={{ width: '100%', height: '8px', background: 'var(--dire-red)', borderRadius: '4px', overflow: 'hidden' }}>
+            <div style={{ width: `${radPct}%`, height: '100%', background: 'var(--radiant-green)', borderRadius: '4px 0 0 4px', position: 'relative' }}>
+              <div style={{ position: 'absolute', right: 0, top: '-3px', width: '3px', height: '14px', background: '#fff', borderRadius: '2px' }} />
+            </div>
+          </div>
+        </div>
+      );
     }
   });
 
-  events.sort((a, b) => a.time - b.time);
+  // Match result
+  const radKills = allPlayers.filter((p: any) => p.player_slot < 128).reduce((a: number, p: any) => a + (p.kills || 0), 0);
+  const direKills = allPlayers.filter((p: any) => p.player_slot >= 128).reduce((a: number, p: any) => a + (p.kills || 0), 0);
 
-  const formatTime = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
-  const colorMap: Record<string, string> = { kill: 'var(--dire-red)', objective: 'var(--accent-gold)', firstblood: '#ff4444' };
+  storyElements.push(
+    <div key={keyIdx++} style={{ padding: '1rem 0', fontSize: '1rem', lineHeight: 1.8 }}>
+      The match ended in a <TeamInline isRadiant={radiantWin} /> victory at {formatTime(duration)} with a score of{' '}
+      <span style={{ color: 'var(--radiant-green)', fontWeight: 'bold' }}>{radKills}</span>{' '}to{' '}
+      <span style={{ color: 'var(--dire-red)', fontWeight: 'bold' }}>{direKills}</span>.
+    </div>
+  );
+
+  // Chat messages (sample last few)
+  const textChats = (typeof chat === 'string' ? JSON.parse(chat) : (chat || [])).filter((c: any) => c.type === 'chat');
+  const endChats = textChats.filter((c: any) => c.time > duration - 60);
+  endChats.forEach((c: any) => {
+    const player = allPlayers.find((p: any) => p.player_slot === c.player_slot);
+    const hero = player ? HEROES[player.hero_id as keyof typeof HEROES] : null;
+    storyElements.push(
+      <div key={keyIdx++} style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8, fontStyle: 'italic' }}>
+        "{c.key}", {hero ? <HeroInline heroId={player.hero_id} slot={player.player_slot} /> : 'someone'} said.
+      </div>
+    );
+  });
 
   return (
-    <div className="animation-fade-in">
-      <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem' }}>Match Log</h2>
-      <div className="glass-surface" style={{ padding: '1.5rem', maxHeight: '600px', overflowY: 'auto' }}>
-        {events.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)' }}>No log data available.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-            {events.map((e, i) => (
-              <div key={i} style={{ display: 'flex', gap: '1rem', padding: '0.3rem 0.5rem', borderLeft: `3px solid ${colorMap[e.type] || 'var(--text-muted)'}`, background: 'rgba(0,0,0,0.15)', borderRadius: '0 4px 4px 0' }}>
-                <span style={{ color: 'var(--text-muted)', minWidth: '50px', fontSize: '0.8rem' }}>{formatTime(e.time)}</span>
-                <span style={{ fontSize: '0.85rem' }}>{e.text}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="animation-fade-in" style={{ padding: '1rem 0', maxWidth: '900px' }}>
+      {storyElements}
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { ITEMS } from '../lib/items';
 
 import MatchScoreboard from '../components/MatchScoreboard';
 import MatchMap from '../components/MatchMap';
-import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab, GraphsTab } from '../components/MatchTabs';
+import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab, StoryTab, GraphsTab } from '../components/MatchTabs';
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -496,12 +496,7 @@ export default function MatchDetail() {
       {mainTab === 'Log' && <LogTab allPlayers={allPlayers} matchData={matchData} />}
 
       {mainTab === 'Graphs' && <GraphsTab matchData={matchData} allPlayers={allPlayers} />}
-      {mainTab === 'Story' && (
-        <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          <h3>{mainTab} Data</h3>
-          <p>This tab will be available in a future update.</p>
-        </div>
-      )}
+      {mainTab === 'Story' && <StoryTab matchData={matchData} allPlayers={allPlayers} />}
 
       {mainTab === 'Playback' && (
         <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
