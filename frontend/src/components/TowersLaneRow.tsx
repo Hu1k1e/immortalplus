@@ -4,28 +4,30 @@ import AdvantageGraph from './AdvantageGraph';
 
 const LANE_NAMES: Record<number, string> = { 1: 'Bottom Lane', 2: 'Middle Lane', 3: 'Top Lane' };
 
-// Real building screen positions (top%/left% on a square map view), taken
-// straight from OpenDota's own frontend building-map data — not guessed.
+// Real building screen positions (top%/left% on a square map view) — the
+// patch 7.33 set (buildingData733.ts), the more current of the two
+// coordinate sets OpenDota's own frontend vendors; the earlier pass here
+// used the older 6.70 set (buildingData.ts) by mistake.
 interface BuildingEntry { id: string; top: number; left: number; }
 
 const RADIANT_BUILDINGS: BuildingEntry[] = [
   { id: 't4br', top: 82, left: 12 }, { id: 't4tr', top: 79, left: 8 },
-  { id: 't3br', top: 83.5, left: 23 }, { id: 't2br', top: 85, left: 46 }, { id: 't1br', top: 83, left: 78 },
-  { id: 't3mr', top: 71, left: 18 }, { id: 't2mr', top: 63, left: 27 }, { id: 't1mr', top: 54, left: 38 },
-  { id: 't3tr', top: 68, left: 7 }, { id: 't2tr', top: 51, left: 8 }, { id: 't1tr', top: 35, left: 8 },
+  { id: 't3br', top: 83.5, left: 23 }, { id: 't2br', top: 85, left: 46 }, { id: 't1br', top: 82, left: 75 },
+  { id: 't3mr', top: 71.5, left: 18.5 }, { id: 't2mr', top: 63, left: 27.5 }, { id: 't1mr', top: 54, left: 38 },
+  { id: 't3tr', top: 68, left: 8 }, { id: 't2tr', top: 53, left: 9 }, { id: 't1tr', top: 36, left: 9.5 },
   { id: 'brbr', top: 80.5, left: 20 }, { id: 'bmbr', top: 84.5, left: 20 },
-  { id: 'brmr', top: 70.5, left: 15 }, { id: 'bmmr', top: 73, left: 18 },
-  { id: 'brtr', top: 70.5, left: 5.5 }, { id: 'bmtr', top: 70.5, left: 9.5 },
+  { id: 'brmr', top: 72, left: 15 }, { id: 'bmmr', top: 74.5, left: 18 },
+  { id: 'brtr', top: 70.5, left: 6.5 }, { id: 'bmtr', top: 70.5, left: 10.5 },
   { id: 'ar', top: 83, left: 5 },
 ];
 const DIRE_BUILDINGS: BuildingEntry[] = [
   { id: 't4bd', top: 16, left: 84 }, { id: 't4td', top: 13, left: 81 },
-  { id: 't3bd', top: 28, left: 86 }, { id: 't2bd', top: 45, left: 86 }, { id: 't1bd', top: 60, left: 86 },
-  { id: 't3md', top: 24, left: 73 }, { id: 't2md', top: 34, left: 63 }, { id: 't1md', top: 44, left: 53 },
-  { id: 't3td', top: 11, left: 70 }, { id: 't2td', top: 10, left: 44 }, { id: 't1td', top: 10, left: 15 },
-  { id: 'brbd', top: 24, left: 84.5 }, { id: 'bmbd', top: 24, left: 88.5 },
+  { id: 't3bd', top: 28, left: 85.5 }, { id: 't2bd', top: 45, left: 85 }, { id: 't1bd', top: 60, left: 84 },
+  { id: 't3md', top: 24, left: 73 }, { id: 't2md', top: 33, left: 64 }, { id: 't1md', top: 43.5, left: 51 },
+  { id: 't3td', top: 12.5, left: 70 }, { id: 't2td', top: 11, left: 49 }, { id: 't1td', top: 12, left: 18 },
+  { id: 'brbd', top: 24, left: 84 }, { id: 'bmbd', top: 24, left: 88 },
   { id: 'brmd', top: 19.5, left: 74.5 }, { id: 'bmmd', top: 22, left: 77.5 },
-  { id: 'brtd', top: 8, left: 74 }, { id: 'bmtd', top: 12, left: 74 },
+  { id: 'brtd', top: 10, left: 74 }, { id: 'bmtd', top: 14, left: 74 },
   { id: 'ad', top: 9, left: 84 },
 ];
 
@@ -115,11 +117,11 @@ function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: num
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#2a2c30' }}>
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b' }}>
       <img
         src="/assets/images/dota2/minimap_geometry_current.png"
         alt="Map"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.88) hue-rotate(180deg) brightness(1.05) saturate(0.9)' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.75) saturate(0.9)' }}
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
       {RADIANT_BUILDINGS.map((b) => renderBuilding(b, true))}

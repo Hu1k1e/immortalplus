@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage, getItemImage, getAbilityImage, ITEMS } from '../lib/dota';
 import { getPlayerPosition, POSITION_INFO } from '../lib/roles';
@@ -43,26 +43,28 @@ function formatClock(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function WardIcon({ type, size = 14 }: { type: 'obs' | 'sen'; size?: number }) {
-  return type === 'obs' ? (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-      <circle cx="12" cy="12" r="9" fill="none" stroke="#4da6ff" strokeWidth="2.5" />
-      <circle cx="12" cy="12" r="3" fill="#4da6ff" />
-    </svg>
-  ) : (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
-      <path d="M12 2 L22 8 V16 L12 22 L2 16 V8 Z" fill="none" stroke="#e2b742" strokeWidth="2.5" />
-    </svg>
+function WardIcon({ type, size = 18 }: { type: 'obs' | 'sen'; size?: number }) {
+  const key = type === 'obs' ? 'ward_observer' : 'ward_sentry';
+  return (
+    <img
+      src={getItemImage(key)}
+      alt={type === 'obs' ? 'Observer Ward' : 'Sentry Ward'}
+      style={{ width: size, height: size, objectFit: 'cover', borderRadius: '3px', flexShrink: 0 }}
+      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+    />
   );
 }
 
 /** Single talent-tree badge, top-right of the card. Hovering shows the same
- * 4-tier x 2-option breakdown the game's own talent tooltip shows, chosen
- * option bold/gold, the other dimmed — not just an icon strip. */
-function TalentBadge({ heroNpcName, abilityUpgradesArr }: { heroNpcName?: string; abilityUpgradesArr?: number[] }) {
+ * layout the game's own talent tree uses: two columns of options (tier 25
+ * at the top down to tier 10 at the bottom, matching the in-game tree's
+ * visual order) with the tree icon centered between them, chosen option
+ * gold/bold, the other dimmed. */
+function TalentBadge({ heroNpcName, abilityUpgradesArr, anchor }: { heroNpcName?: string; abilityUpgradesArr?: number[]; anchor: 'left' | 'right' }) {
   const [hovered, setHovered] = useState(false);
   const tiers = getTalentTree(heroNpcName, abilityUpgradesArr);
   if (tiers.length === 0 || !tiers.some((t) => t.options.length > 0)) return null;
+  const reversed = [...tiers].reverse();
 
   return (
     <div
@@ -78,21 +80,35 @@ function TalentBadge({ heroNpcName, abilityUpgradesArr }: { heroNpcName?: string
       />
       {hovered && (
         <div style={{
-          position: 'absolute', top: '100%', right: 0, marginTop: '4px', zIndex: 40, width: '220px',
+          position: 'absolute', top: '100%', marginTop: '4px', zIndex: 40, width: '320px',
+          ...(anchor === 'left' ? { left: 0 } : { right: 0 }),
           background: 'rgba(15,17,21,0.98)', border: '1px solid var(--border-color)', borderRadius: '4px',
-          padding: '0.5rem 0.65rem', fontSize: '0.7rem',
+          padding: '0.6rem 0.75rem', fontSize: '0.7rem',
         }}>
-          {[...tiers].reverse().map((tier) => (
-            <div key={tier.level} style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', padding: '0.2rem 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              {tier.options.map((o, i) => (
-                <span key={i} style={{
-                  color: o.chosen ? 'var(--accent-gold)' : 'var(--text-muted)', fontWeight: o.chosen ? 700 : 400,
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', rowGap: '0.5rem', alignItems: 'center' }}>
+            <img
+              src="/assets/images/dota2/talent_tree.svg" alt=""
+              style={{ gridColumn: 2, gridRow: `1 / span ${reversed.length}`, width: '26px', height: '26px', margin: '0 0.6rem' }}
+            />
+            {reversed.map((tier, row) => (
+              <Fragment key={tier.level}>
+                <span style={{
+                  gridColumn: 1, gridRow: row + 1, textAlign: 'right',
+                  color: tier.options[0]?.chosen ? 'var(--accent-gold)' : 'var(--text-muted)',
+                  fontWeight: tier.options[0]?.chosen ? 700 : 400,
                 }}>
-                  {o.label}
+                  {tier.options[0]?.label}
                 </span>
-              ))}
-            </div>
-          ))}
+                <span style={{
+                  gridColumn: 3, gridRow: row + 1, textAlign: 'left',
+                  color: tier.options[1]?.chosen ? 'var(--accent-gold)' : 'var(--text-muted)',
+                  fontWeight: tier.options[1]?.chosen ? 700 : 400,
+                }}>
+                  {tier.options[1]?.label}
+                </span>
+              </Fragment>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -101,6 +117,7 @@ function TalentBadge({ heroNpcName, abilityUpgradesArr }: { heroNpcName?: string
 
 function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number }) {
   const hero = HEROES[player.hero_id];
+  const isRadiant = player.player_slot < 128;
   const log = purchaseLogOf(player);
   // HEROES here is the legacy hardcoded map (`.name` is the display name,
   // e.g. "Sven") — hero_abilities.json is keyed by the real npc name, so
@@ -122,7 +139,7 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
           {skillBuild && <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>{skillBuild} build</div>}
         </div>
 
-        <TalentBadge heroNpcName={heroNpcName} abilityUpgradesArr={player.ability_upgrades_arr} />
+        <TalentBadge heroNpcName={heroNpcName} abilityUpgradesArr={player.ability_upgrades_arr} anchor={isRadiant ? 'left' : 'right'} />
       </div>
 
       {abilityOrder.length > 0 && (

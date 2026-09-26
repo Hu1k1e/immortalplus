@@ -47,14 +47,19 @@ export default function MatchOverview({
  * Split out so the shared playback clock (useMatchPlayback) is only ever
  * instantiated while actually viewing the grid — PlayerDetailView returns
  * early above this point and has its own map instance untouched by it.
- * Every scrub-reactive section below (Towers, Advantage graph, Builds,
- * Matchup K/D) reads the same currentTime as the fixed GlobalPlaybackBar,
- * so scrubbing anywhere updates the whole page at once, and the bar stays
- * reachable while scrolling since it's fixed to the viewport, not the
- * Playback section's own container.
+ * This clock defaults to the match's final state (currentTime = duration),
+ * so the page shows the real end-of-game result on load, not an all-zero
+ * start — scrubbing or pressing play on the GlobalPlaybackBar is what
+ * moves it. Every scrub-reactive section below (Towers, Advantage graph,
+ * Builds, Matchup K/D) reads this same currentTime, so scrubbing anywhere
+ * updates the whole page at once, and the bar stays reachable while
+ * scrolling since it's fixed to the viewport, not a container. This is a
+ * SEPARATE clock from PlaybackSection's own — that one always starts at 0
+ * and autoplays once scrolled into view, independent of wherever this one
+ * is scrubbed to.
  */
 function OverviewBody({ matchData, allPlayers, setSelectedPlayer }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void }) {
-  const playback = useMatchPlayback();
+  const playback = useMatchPlayback(4, matchData?.duration || 0);
   const isParsed = !!matchData?.is_parsed;
 
   return (
@@ -71,7 +76,7 @@ function OverviewBody({ matchData, allPlayers, setSelectedPlayer }: { matchData:
         <TowersLaneRow matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
         <DraftBuildsKillsRow matchData={matchData} allPlayers={allPlayers} />
         <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
-        <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} playback={playback} />
+        <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} />
       </div>
       {isParsed && (
         <GlobalPlaybackBar

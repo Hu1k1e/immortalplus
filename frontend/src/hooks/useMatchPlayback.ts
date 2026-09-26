@@ -8,8 +8,8 @@ import { useState } from 'react';
  * this hook just gives a sibling component, LiveScoreboardPanel, the same
  * currentTime to read every frame).
  */
-export function useMatchPlayback(initialSpeed = 4) {
-  const [currentTime, setCurrentTime] = useState(0);
+export function useMatchPlayback(initialSpeed = 4, initialTime = 0) {
+  const [currentTime, setCurrentTime] = useState(initialTime);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(initialSpeed);
 

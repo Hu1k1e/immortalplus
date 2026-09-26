@@ -10,10 +10,12 @@ interface MatchupCardProps {
   player: any;
   allPlayers: any[];
   onClick?: () => void;
-  // Page's shared playback clock — when given, K/D read live-as-of-that-time
-  // instead of the final total (counted from kills_log/deaths_log, both
-  // timestamped). Assists stay at the final total: no assist-specific
-  // timestamped log exists in any data source available here.
+  // Page's shared playback clock — when given, K/D and net worth read
+  // live-as-of-that-time instead of the final total (K/D counted from
+  // kills_log/deaths_log, net worth interpolated from networth_t, all
+  // timestamped/per-minute real data). Assists stay at the final total:
+  // no assist-specific timestamped log exists in any data source
+  // available here.
   currentTime?: number;
 }
 
@@ -25,7 +27,21 @@ function countLogUpTo(log: any, currentTime?: number): number | null {
   return arr.filter((e: any) => (e?.time ?? 0) <= currentTime).length;
 }
 
-function GoldIcon({ size = 10 }: { size?: number }) {
+// Same lerp approach as LiveScoreboardPanel/MatchMap for per-minute arrays.
+function interpAtTime(arr: any, t: number): number | null {
+  let series = arr;
+  if (typeof series === 'string') { try { series = JSON.parse(series); } catch { return null; } }
+  if (!Array.isArray(series) || series.length === 0) return null;
+  const minute = t / 60;
+  const i0 = Math.max(0, Math.min(series.length - 1, Math.floor(minute)));
+  const i1 = Math.min(series.length - 1, i0 + 1);
+  const frac = minute - i0;
+  const v0 = series[i0] ?? 0;
+  const v1 = series[i1] ?? v0;
+  return v0 + (v1 - v0) * frac;
+}
+
+function GoldIcon({ size = 13 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
       <circle cx="12" cy="12" r="10" fill="#e2b742" stroke="#a87f1f" strokeWidth="1.5" />
@@ -38,7 +54,9 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
   const [hovered, setHovered] = useState(false);
   const hero = HEROES[player.hero_id];
   const isRadiant = player.player_slot < 128;
-  const netWorth = player.net_worth ?? player.networth ?? 0;
+  const finalNetWorth = player.net_worth ?? player.networth ?? 0;
+  const liveNetWorth = interpAtTime(player.networth_t, currentTime ?? -1);
+  const netWorth = currentTime != null && liveNetWorth != null ? Math.round(liveNetWorth) : finalNetWorth;
   const rankBadge = getRankBadge(player.rank_tier);
 
   const teamPlayers = allPlayers.filter((p) => (p.player_slot < 128) === isRadiant);
@@ -60,34 +78,33 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
         background: isRadiant ? 'rgba(81,164,69,0.05)' : 'rgba(194,53,43,0.05)',
         border: '1px solid var(--border-color)',
         borderRadius: 'var(--radius-md)',
-        overflow: 'hidden',
         cursor: onClick ? 'pointer' : 'default',
         display: 'flex',
         flexDirection: 'column',
         flex: '1 1 0',
-        minWidth: '96px',
-        maxWidth: '138px',
+        minWidth: '130px',
+        maxWidth: '190px',
       }}
     >
       {hero && (
-        <div style={{ width: '100%', aspectRatio: '1 / 0.95', overflow: 'hidden' }}>
+        <div style={{ width: '100%', aspectRatio: '1 / 0.95', overflow: 'hidden', borderRadius: 'var(--radius-md) var(--radius-md) 0 0', flexShrink: 0 }}>
           <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 30%', display: 'block' }} />
         </div>
       )}
 
       <div
-        style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.35rem', padding: '0.5rem 0.55rem 0.25rem' }}
+        style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem 0.7rem 0.3rem' }}
         onMouseEnter={(e) => { e.stopPropagation(); setHovered(true); }}
         onMouseLeave={() => setHovered(false)}
       >
         <span style={{
-          fontSize: '0.62rem', fontWeight: 700, flexShrink: 0, padding: '0.05rem 0.3rem', borderRadius: '3px',
+          fontSize: '0.78rem', fontWeight: 700, flexShrink: 0, padding: '0.08rem 0.4rem', borderRadius: '3px',
           color: perf.score >= 0 ? (isRadiant ? 'var(--radiant-green)' : '#a855f7') : 'var(--text-muted)',
           background: perf.score >= 0 ? (isRadiant ? 'rgba(81,164,69,0.15)' : 'rgba(168,85,247,0.15)') : 'rgba(255,255,255,0.06)',
         }}>
           {perf.score >= 0 ? '+' : ''}{perf.score}
         </span>
-        <div style={{ flex: 1, height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+        <div style={{ flex: 1, height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
           <div style={{ width: `${barPct}%`, height: '100%', background: barColor }} />
         </div>
         {hovered && (
@@ -95,7 +112,7 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
             position: 'absolute', bottom: '100%', marginBottom: '4px',
             ...(isRadiant ? { left: 0 } : { right: 0 }),
             background: 'rgba(20,20,24,0.97)', border: '1px solid var(--border-color)', borderRadius: '4px',
-            padding: '0.3rem 0.5rem', fontSize: '0.68rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', zIndex: 30,
+            padding: '0.35rem 0.6rem', fontSize: '0.78rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', zIndex: 30,
           }}>
             {perf.label}
           </div>
@@ -103,12 +120,12 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
       </div>
 
       {posInfo && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.2rem 0' }} title={posInfo.label}>
-          <PositionIcon short={posInfo.short} />
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.25rem 0' }} title={posInfo.label}>
+          <PositionIcon short={posInfo.short} size={15} />
         </div>
       )}
 
-      <div style={{ textAlign: 'center', fontSize: '0.76rem', padding: '0.15rem 0' }}>
+      <div style={{ textAlign: 'center', fontSize: '0.95rem', padding: '0.2rem 0' }}>
         <span style={{ color: 'var(--text-primary)' }}>{liveKills ?? player.kills ?? 0}</span>
         <span style={{ color: 'var(--text-muted)' }}> / </span>
         <span style={{ color: 'var(--dire-red)' }}>{liveDeaths ?? player.deaths ?? 0}</span>
@@ -116,18 +133,18 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
         <span style={{ color: 'var(--text-secondary)' }}>{player.assists ?? 0}</span>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem', fontSize: '0.7rem', color: 'var(--accent-gold)', padding: '0.15rem 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem', fontSize: '0.88rem', color: 'var(--accent-gold)', padding: '0.2rem 0' }}>
         <GoldIcon />
         {netWorth >= 1000 ? `${(netWorth / 1000).toFixed(1)}k` : netWorth}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem', padding: '0.35rem 0.4rem 0.55rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem 0.7rem' }}>
         {rankBadge ? (
-          <img src={rankBadge} alt="rank" style={{ width: '16px', height: '16px', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <img src={rankBadge} alt="rank" style={{ width: '24px', height: '24px', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         ) : (
-          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: perf.color, flexShrink: 0 }} />
+          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: perf.color, flexShrink: 0 }} />
         )}
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100px' }}>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
           {player.persona || player.personaname || 'Anonymous'}
         </span>
       </div>

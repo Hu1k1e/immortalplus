@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
 
@@ -74,29 +75,72 @@ function DraftGrid({ matchData }: { matchData: any }) {
   );
 }
 
-/** Which enemy heroes a player killed, and how many times — resolved from
- * kills_log's victim `key` (an npc name) against the hero table, same
- * matching pattern used elsewhere for kills_log (AdvantageGraph, story). */
-function killsByVictimHero(player: any): Map<number, number> {
+function formatClock(sec: number) {
+  const m = Math.floor(Math.max(0, sec) / 60);
+  const s = Math.max(0, Math.floor(sec % 60));
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Which enemy heroes a player killed, when, and how many times — resolved
+ * from kills_log's victim `key` (an npc name) against the hero table, same
+ * matching pattern used elsewhere for kills_log (AdvantageGraph, story).
+ * Per-kill gold/XP isn't shown on hover because no data source available
+ * here records it per kill (kills_log only has {time, key}) — showing
+ * real kill timestamps instead of a fabricated bounty estimate. */
+function killsByVictimHero(player: any): Map<number, number[]> {
   let log = player.kills_log;
   if (typeof log === 'string') { try { log = JSON.parse(log); } catch { log = []; } }
-  const counts = new Map<number, number>();
-  if (!Array.isArray(log)) return counts;
+  const times = new Map<number, number[]>();
+  if (!Array.isArray(log)) return times;
   log.forEach((e: any) => {
     const victim = Object.values(HEROES).find((h: any) => `npc_dota_hero_${h.img_name}` === e.key || h.img_name === e.key) as any;
-    if (victim) counts.set(victim.id, (counts.get(victim.id) || 0) + 1);
+    if (victim) {
+      const list = times.get(victim.id) || [];
+      list.push(e.time || 0);
+      times.set(victim.id, list);
+    }
   });
-  return counts;
+  return times;
+}
+
+function KillCell({ hero, kills }: { hero: any; kills: number[] }) {
+  const [hovered, setHovered] = useState(false);
+  const val = kills.length;
+  return (
+    <div
+      style={{
+        position: 'relative', display: 'inline-flex', alignItems: 'center', gap: '5px',
+        padding: '0.2rem 0.4rem', borderRadius: '4px', cursor: val > 0 ? 'default' : undefined,
+        background: val > 0 ? 'rgba(255,255,255,0.05)' : 'transparent',
+        border: val > 0 ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+        opacity: val > 0 ? 1 : 0.35,
+      }}
+      onMouseEnter={() => val > 0 && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '3px', filter: val > 0 ? 'none' : 'grayscale(100%)' }} />
+      <span style={{ fontWeight: val > 0 ? 700 : 400, color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)', minWidth: '10px' }}>{val}</span>
+      {hovered && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: '4px', zIndex: 30,
+          background: 'rgba(15,17,21,0.98)', border: '1px solid var(--border-color)', borderRadius: '4px',
+          padding: '0.35rem 0.55rem', fontSize: '0.7rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap',
+        }}>
+          {hero.name} killed at {kills.map(formatClock).join(', ')}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function KillBreakdownColumn({ title, color, team, enemyTeam }: { title: string; color: string; team: any[]; enemyTeam: any[] }) {
   const enemyHeroes = enemyTeam.map((p) => ({ slot: p.player_slot, hero: HEROES[p.hero_id] })).filter((e) => e.hero);
   const columnTotals = enemyHeroes.map(() => 0);
   const rows = team.map((p) => {
-    const counts = killsByVictimHero(p);
-    const perEnemy = enemyHeroes.map((e) => counts.get(e.hero.id) || 0);
-    perEnemy.forEach((v, i) => { columnTotals[i] += v; });
-    return { player: p, perEnemy, total: perEnemy.reduce((a, b) => a + b, 0) };
+    const times = killsByVictimHero(p);
+    const perEnemy = enemyHeroes.map((e) => times.get(e.hero.id) || []);
+    perEnemy.forEach((list, i) => { columnTotals[i] += list.length; });
+    return { player: p, perEnemy, total: perEnemy.reduce((a, b) => a + b.length, 0) };
   });
   const grandTotal = columnTotals.reduce((a, b) => a + b, 0);
 
@@ -118,17 +162,11 @@ function KillBreakdownColumn({ title, color, team, enemyTeam }: { title: string;
                     </div>
                   </div>
                 </td>
-                {enemyHeroes.map((e, i) => {
-                  const val = perEnemy[i];
-                  return (
-                    <td key={e.slot} style={{ textAlign: 'center', padding: '0.4rem 0.3rem' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: val > 0 ? 1 : 0.35 }}>
-                        <img src={getHeroImage(e.hero.img_name)} alt={e.hero.name} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '3px', filter: val > 0 ? 'none' : 'grayscale(100%)' }} />
-                        <span style={{ fontWeight: val > 0 ? 700 : 400, color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)', minWidth: '10px' }}>{val}</span>
-                      </div>
-                    </td>
-                  );
-                })}
+                {enemyHeroes.map((e, i) => (
+                  <td key={e.slot} style={{ textAlign: 'center', padding: '0.4rem 0.3rem' }}>
+                    <KillCell hero={e.hero} kills={perEnemy[i]} />
+                  </td>
+                ))}
               </tr>
             );
           })}

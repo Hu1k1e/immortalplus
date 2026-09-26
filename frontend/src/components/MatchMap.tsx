@@ -113,41 +113,6 @@ export default function MatchMap({
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current); };
   }, [isPlaying, tick]);
 
-  // Collect all map events
-  const events = useMemo(() => {
-    if (!matchData) return [];
-    const evts: any[] = [];
-
-    const addEvents = (logArray: any[], type: string, color: string, playerSlot: number) => {
-      if (logArray && Array.isArray(logArray)) {
-        logArray.forEach(log => {
-          if (log.x && log.y) {
-            const left = Math.min(100, Math.max(0, ((log.x - 64) / 128) * 100));
-            const top = Math.min(100, Math.max(0, (1 - ((log.y - 64) / 128)) * 100));
-            evts.push({ time: log.time, left, top, type, color, playerSlot, label: log.key || type });
-          }
-        });
-      }
-    };
-
-    if (matchData.all_players) {
-      matchData.all_players.forEach((p: any) => {
-        const isRad = p.player_slot < 128;
-        const obs = p.obs_log || [];
-        const sen = p.sen_log || [];
-        const kills = p.kills_log || [];
-        addEvents(obs, 'obs', '#3b82f6', p.player_slot);
-        addEvents(sen, 'sen', '#eab308', p.player_slot);
-        addEvents(kills, 'kill', isRad ? 'var(--radiant-green)' : 'var(--dire-red)', p.player_slot);
-      });
-    }
-    return evts;
-  }, [matchData]);
-
-
-  const visibleEvents = selectedPlayer 
-    ? events.filter(e => e.playerSlot === selectedPlayer.player_slot && e.time <= currentTime)
-    : events.filter(e => e.time <= currentTime);
 
   const formatTime = (t: number) => {
     const m = Math.floor(t / 60);
@@ -349,32 +314,6 @@ export default function MatchMap({
             { x: 88, y: 48, label: 'T1 Bot' },
           ].map((t, i) => (
             <div key={`dt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--dire-red)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
-          ))}
-
-          {/* Ward/event markers — secondary to hero portraits; these are the
-              only fields with confirmed real position data (see heroWaypoints
-              comment above), so they're kept small and muted rather than a
-              connecting trail (which would misleadingly link unrelated
-              players' events in time order). */}
-          {visibleEvents.filter(e => e.type !== 'kill').map((evt, i) => (
-            <div
-              key={`evt-${i}`}
-              style={{
-                position: 'absolute',
-                left: `${evt.left}%`,
-                top: `${evt.top}%`,
-                transform: 'translate(-50%, -50%)',
-                width: '7px',
-                height: '7px',
-                borderRadius: evt.type === 'obs' ? '50%' : '2px',
-                background: evt.color,
-                border: '1px solid rgba(0,0,0,0.6)',
-                opacity: (currentTime - evt.time < 120) ? 0.9 : 0.35,
-                transition: 'opacity 0.3s',
-                zIndex: 4,
-              }}
-              title={`[${formatTime(evt.time)}] ${evt.type}`}
-            />
           ))}
 
           {/* Hero Positions */}
