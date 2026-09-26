@@ -151,7 +151,7 @@ const PlayerCell = ({ p }: { p: any }) => {
 const th: React.CSSProperties = { padding: '0.5rem 0.8rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.05)' };
 
-const TeamTable = ({ title, players, columns, winner, totals }: { title: string; players: any[]; columns: { key: string; label: string; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any }) => {
+const TeamTable = ({ title, players, columns, winner, totals }: { title: string; players: any[]; columns: { key: string; label: any; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any }) => {
   const [sortConfig, setSortConfig] = useState<{key: string | null, direction: 'asc' | 'desc'}>({ key: null, direction: 'desc' });
   
   const sortedPlayers = [...players].sort((a, b) => {
@@ -1170,47 +1170,99 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
 }
 
 // ================ OBJECTIVES TAB ================
-export function ObjectivesTab({ objectives, allPlayers }: { objectives: any[]; allPlayers: any[] }) {
-  if (!objectives?.length) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>No objectives data available.</div>;
+export function ObjectivesTab({ allPlayers }: { allPlayers: any[] }) {
+  const radiant = allPlayers.filter(p => p.isRadiant);
+  const dire = allPlayers.filter(p => !p.isRadiant);
+  const radiantWin = allPlayers[0]?.radiant_win;
 
-  const getHeroName = (slot: number) => {
-    const p = allPlayers.find((x: any) => x.player_slot === slot);
-    return p ? HEROES[p.hero_id]?.name || 'Unknown' : 'Unknown';
+  const dmgCol = (key: string, label: string, damageKeys: string[]) => ({
+    key,
+    label,
+    sortFn: (a: any, b: any) => {
+       const aDmg = damageKeys.reduce((acc, k) => acc + (a.damage?.[k] || 0), 0);
+       const bDmg = damageKeys.reduce((acc, k) => acc + (b.damage?.[k] || 0), 0);
+       return bDmg - aDmg;
+    },
+    render: (p: any) => {
+       const dmg = damageKeys.reduce((acc, k) => acc + (p.damage?.[k] || 0), 0);
+       if (dmg === 0) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+       return <span>{dmg}</span>;
+    }
+  });
+
+  const getDmgCols = (isRadiant: boolean) => {
+    const enemy = isRadiant ? 'badguys' : 'goodguys';
+    return [
+      { key: 'player', label: 'PLAYER', render: (p: any) => <PlayerCell p={p} /> },
+      dmgCol('anc', 'ANC', [`npc_dota_${enemy}_fort`]),
+      dmgCol('raxb', 'RAXB', [`npc_dota_${enemy}_barracks_melee_bot`, `npc_dota_${enemy}_barracks_ranged_bot`]),
+      dmgCol('raxm', 'RAXM', [`npc_dota_${enemy}_barracks_melee_mid`, `npc_dota_${enemy}_barracks_ranged_mid`]),
+      dmgCol('raxt', 'RAXT', [`npc_dota_${enemy}_barracks_melee_top`, `npc_dota_${enemy}_barracks_ranged_top`]),
+      dmgCol('rosh', 'ROSH', [`npc_dota_roshan`]),
+      dmgCol('shr', 'SHR', [`npc_dota_${enemy}_healer`]),
+      dmgCol('b1', 'B1', [`npc_dota_${enemy}_tower1_bot`]),
+      dmgCol('m1', 'M1', [`npc_dota_${enemy}_tower1_mid`]),
+      dmgCol('t1', 'T1', [`npc_dota_${enemy}_tower1_top`]),
+      dmgCol('b2', 'B2', [`npc_dota_${enemy}_tower2_bot`]),
+      dmgCol('m2', 'M2', [`npc_dota_${enemy}_tower2_mid`]),
+      dmgCol('t2', 'T2', [`npc_dota_${enemy}_tower2_top`]),
+      dmgCol('b3', 'B3', [`npc_dota_${enemy}_tower3_bot`]),
+      dmgCol('m3', 'M3', [`npc_dota_${enemy}_tower3_mid`]),
+      dmgCol('t3', 'T3', [`npc_dota_${enemy}_tower3_top`]),
+      dmgCol('t4', 'T4', [`npc_dota_${enemy}_tower4`]),
+    ];
   };
 
-  const formatTime = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
+  const runesList = [
+    { id: 5, name: 'Bounty', color: '#ff9800' },
+    { id: 1, name: 'Haste', color: '#f44336' },
+    { id: 0, name: 'Double Damage', color: '#2196f3' },
+    { id: 2, name: 'Illusion', color: '#ffeb3b' },
+    { id: 3, name: 'Invisibility', color: '#9c27b0' },
+    { id: 4, name: 'Regeneration', color: '#4caf50' },
+    { id: 6, name: 'Arcane', color: '#e91e63' },
+    { id: 7, name: 'Water', color: '#03a9f4' },
+    { id: 8, name: 'Wisdom', color: '#673ab7' },
+    { id: 9, name: 'Shield', color: '#ffc107' }
+  ];
 
-  const buildingKills = objectives.filter((o: any) => o.type === 'building_kill');
-  const otherEvents = objectives.filter((o: any) => o.type !== 'building_kill');
+  const runesCols = [
+    { key: 'player', label: 'PLAYER', render: (p: any) => <PlayerCell p={p} /> },
+    ...runesList.map(r => ({
+      key: `rune_${r.id}`,
+      label: <img src={`https://www.opendota.com/assets/images/dota2/runes/${r.id}.png`} alt={r.name} title={r.name} style={{ width: '16px', height: '16px', borderRadius: '50%' }} />,
+      sortFn: (a: any, b: any) => (b.runes?.[r.id] || 0) - (a.runes?.[r.id] || 0),
+      render: (p: any) => {
+        const val = p.runes?.[r.id];
+        if (!val) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
+        
+        // OpenDota shows a small horizontal bar
+        // We'll just render the number with a bar
+        // Max value estimation for runes is roughly 10
+        const pct = Math.min(100, (val / 10) * 100);
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <span>{val}</span>
+            <div style={{ width: '30px', height: '2px', background: 'rgba(255,255,255,0.1)' }}>
+               <div style={{ width: `${pct}%`, height: '100%', background: r.color }}></div>
+            </div>
+          </div>
+        );
+      }
+    }))
+  ];
 
   return (
     <div className="animation-fade-in">
-      <h2 className="gold-text-gradient" style={{ marginBottom: '1.5rem' }}>Objectives</h2>
-      <div className="glass-surface" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
-        <h3 style={{ marginBottom: '1rem' }}>Building Kills</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {buildingKills.map((o: any, i: number) => (
-            <div key={i} style={{ display: 'flex', gap: '1rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '4px', alignItems: 'center' }}>
-              <span style={{ color: 'var(--accent-gold)', minWidth: '50px' }}>{formatTime(o.time)}</span>
-              <span>{o.key?.replace('npc_dota_', '').replace(/_/g, ' ')}</span>
-              {o.player_slot != null && <span style={{ color: 'var(--text-muted)', marginLeft: 'auto' }}>by {getHeroName(o.player_slot)}</span>}
-            </div>
-          ))}
-        </div>
+      <div style={{ marginBottom: '2rem' }}>
+        <TeamTable title="Radiant - Objective Damage" players={radiant} columns={getDmgCols(true)} winner={radiantWin} />
+        <TeamTable title="Dire - Objective Damage" players={dire} columns={getDmgCols(false)} winner={!radiantWin} />
       </div>
-      {otherEvents.length > 0 && (
-        <div className="glass-surface" style={{ padding: '1.5rem' }}>
-          <h3 style={{ marginBottom: '1rem' }}>Other Events</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {otherEvents.map((o: any, i: number) => (
-              <div key={i} style={{ display: 'flex', gap: '1rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '4px' }}>
-                <span style={{ color: 'var(--accent-gold)', minWidth: '50px' }}>{formatTime(o.time)}</span>
-                <span>{o.type?.replace(/_/g, ' ')}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      
+      <div>
+        <TeamTable title="Radiant - Runes" players={radiant} columns={runesCols} winner={radiantWin} />
+        <TeamTable title="Dire - Runes" players={dire} columns={runesCols} winner={!radiantWin} />
+      </div>
     </div>
   );
 }

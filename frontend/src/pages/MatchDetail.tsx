@@ -488,7 +488,7 @@ export default function MatchDetail() {
       {mainTab === 'Farm' && <FarmTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Items' && <ItemsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Casts' && <CastsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
-      {mainTab === 'Objectives' && <ObjectivesTab objectives={matchData.objectives || []} allPlayers={allPlayers} />}
+      {mainTab === 'Objectives' && <ObjectivesTab allPlayers={allPlayers} />}
       {mainTab === 'Vision' && <VisionTab allPlayers={allPlayers} matchData={matchData} />}
       {mainTab === 'Actions' && <ActionsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Teamfights' && <TeamfightsTab teamfights={matchData.teamfights || []} allPlayers={allPlayers} />}

@@ -188,7 +188,7 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}>
           <img 
-            src="/minimap.png" 
+            src="/assets/images/dota2/Game_map_7.41.jpg" 
             alt="Dota 2 Map"
             style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7, pointerEvents: 'none' }}
             onError={(e) => {
