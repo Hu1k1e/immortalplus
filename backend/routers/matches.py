@@ -365,13 +365,16 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int, set
         try:
             match = session.exec(select(Match).where(Match.match_id == match_id)).first()
             if match:
-                # Mark as parsed so the frontend polling detects completion
-                match.is_parsed = True
-                session.commit()
-                # Now run full fetch_match_details which will merge local parse with OD data
-                await fetch_match_details(session, match, settings)
-                session.refresh(match)
-                logger.info(f"Local parse complete for {match_id} — is_parsed={match.is_parsed}")
+                # Run full fetch_match_details which will merge local parse with OD data
+                # Only mark as parsed if the fetch_match_details (which does the merging) succeeds
+                success = await fetch_match_details(session, match, settings)
+                if success:
+                    match.is_parsed = True
+                    session.commit()
+                    session.refresh(match)
+                    logger.info(f"Local parse complete for {match_id} — is_parsed={match.is_parsed}")
+                else:
+                    logger.error(f"Failed to fetch/merge details for {match_id} after local parse")
             else:
                 logger.warning(f"Match {match_id} not found in DB after local parse")
         finally:

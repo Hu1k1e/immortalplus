@@ -94,14 +94,17 @@ async def auto_parse_worker():
 
             now = datetime.now(timezone.utc)
 
-            # Find matches that need parsing:
-            # - Not yet parsed (is_parsed=False)
-            # - Not permanently failed
-            # - Either never attempted OR enough time has passed since last attempt
+            # Find matches that need (local) parsing:
+            # Condition: purchase_log is NULL (deep parse data is missing)
+            # This covers:
+            #   - is_parsed=False (never processed at all)
+            #   - is_parsed=True but purchase_log=NULL (OD basic data came through, deep parse missing)
+            # NOT permanently failed, NOT already has deep data
+            from sqlalchemy import or_
             all_unparsed = session.exec(
                 select(Match)
                 .where(Match.player_id == player.id)
-                .where(Match.is_parsed == False)
+                .where(Match.purchase_log == None)  # Deep parse data is missing
                 .where(Match.parse_failed_permanently == False)
                 .order_by(Match.match_id.desc())
                 .limit(50)

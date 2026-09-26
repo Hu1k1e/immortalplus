@@ -14,7 +14,7 @@ services:
       - DATA_DIR=/app/data
       - REPLAYS_DIR=/app/replays
       - FRONTEND_URL=http://localhost:9485
-      - REPLAY_PARSER_URL=http://replay_parser:8001
+      - REPLAY_PARSER_URL=http://replay_parser:5600
     restart: unless-stopped
 
   frontend:
