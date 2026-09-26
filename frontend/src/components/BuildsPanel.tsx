@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { HEROES } from '../lib/heroes';
-import { getHeroImage, getItemImage } from '../lib/dota';
+import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
 import { getPlayerPosition, POSITION_INFO } from '../lib/roles';
-import { getTalentTree } from '../lib/talents';
+import { getAbilityBuildOrder, getSkillBuildLabel } from '../lib/talents';
 import PositionIcon from './PositionIcon';
 
 function purchaseLogOf(p: any) {
@@ -35,18 +35,27 @@ function WardIcon({ type }: { type: 'obs' | 'sen' }) {
 function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number }) {
   const hero = HEROES[player.hero_id];
   const log = purchaseLogOf(player);
-  const talents = getTalentTree(hero?.name, player.ability_upgrades_arr);
+  // HEROES here is the legacy hardcoded map (`.name` is the display name,
+  // e.g. "Sven") — hero_abilities.json is keyed by the real npc name, so
+  // it has to be rebuilt from img_name instead of read off hero.name.
+  const heroNpcName = hero ? `npc_dota_hero_${hero.img_name}` : undefined;
+  const skillBuild = getSkillBuildLabel(heroNpcName, player.ability_upgrades_arr);
+  const abilityOrder = getAbilityBuildOrder(heroNpcName, player.ability_upgrades_arr);
   const obsCount = player.purchase_ward_observer || 0;
   const senCount = player.purchase_ward_sentry || 0;
 
   return (
-    <div className="glass-surface" style={{ padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-md)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+    <div className="glass-surface" style={{ padding: '0.55rem 0.7rem', borderRadius: 'var(--radius-md)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '36px', height: '36px', objectFit: 'cover', objectPosition: 'center 30%', borderRadius: '4px', flexShrink: 0 }} />}
-        <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {player.persona || player.personaname || 'Anonymous'}
-        </span>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>
+        <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {player.persona || player.personaname || 'Anonymous'}
+          </div>
+          {skillBuild && <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{skillBuild} build</div>}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>
           <span title="Observer wards purchased" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
             <WardIcon type="obs" /> {obsCount}
           </span>
@@ -56,10 +65,28 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
         </div>
       </div>
 
+      {abilityOrder.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginTop: '0.4rem' }}>
+          {abilityOrder.map((a, i) => (
+            <img
+              key={i}
+              src={getAbilityImage(a.name)}
+              alt={a.label}
+              title={a.label}
+              style={{
+                width: '15px', height: '15px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0,
+                border: a.isTalent ? '1px solid var(--accent-gold)' : '1px solid rgba(255,255,255,0.1)',
+              }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          ))}
+        </div>
+      )}
+
       {log.length === 0 ? (
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>No item timing data.</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>No item timing data.</div>
       ) : (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '0.5rem' }}>
           {log.map((entry: any, i: number) => {
             const taken = (entry.time || 0) <= scrubTime;
             return (
@@ -79,28 +106,6 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
                 <span style={{ fontSize: '0.55rem', color: taken ? 'var(--text-muted)' : 'rgba(255,255,255,0.25)', marginTop: '2px' }}>
                   {formatClock(entry.time || 0)}
                 </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {talents.length > 0 && (
-        <div style={{ display: 'flex', gap: '4px', marginTop: '0.5rem', paddingTop: '0.45rem', borderTop: '1px solid var(--border-color)' }}>
-          {talents.map((tier) => {
-            const chosen = tier.options.find((o) => o.chosen);
-            return (
-              <div
-                key={tier.level}
-                title={chosen ? chosen.label : 'No talent data at this tier'}
-                style={{
-                  flex: 1, fontSize: '0.58rem', textAlign: 'center', padding: '0.2rem 0.15rem', borderRadius: '3px',
-                  background: chosen ? 'rgba(226,183,66,0.12)' : 'rgba(255,255,255,0.03)',
-                  color: chosen ? 'var(--accent-gold)' : 'var(--text-muted)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}
-              >
-                {chosen ? chosen.label : '—'}
               </div>
             );
           })}

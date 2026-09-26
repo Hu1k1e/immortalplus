@@ -169,8 +169,8 @@ export default function MatchMap({
   // point/second) reads as smooth continuous movement without any special
   // casing, and the fallback degrades gracefully to its sparser real data.
   const heroWaypoints = useMemo(() => {
-    if (!matchData?.all_players) return new Map<number, { time: number; x: number; y: number }[]>();
-    const byPlayer = new Map<number, { time: number; x: number; y: number }[]>();
+    if (!matchData?.all_players) return new Map<number, { time: number; x: number; y: number; lifeState?: number }[]>();
+    const byPlayer = new Map<number, { time: number; x: number; y: number; lifeState?: number }[]>();
 
     const collect = (playerSlot: number, logArray: any[]) => {
       if (!Array.isArray(logArray)) return;
@@ -188,10 +188,10 @@ export default function MatchMap({
       if (typeof posT === 'string') { try { posT = JSON.parse(posT); } catch { posT = null; } }
 
       if (posT?.time?.length) {
-        const list: { time: number; x: number; y: number }[] = [];
+        const list: { time: number; x: number; y: number; lifeState?: number }[] = [];
         for (let i = 0; i < posT.time.length; i++) {
           if (posT.x[i] != null && posT.y[i] != null) {
-            list.push({ time: posT.time[i], x: posT.x[i], y: posT.y[i] });
+            list.push({ time: posT.time[i], x: posT.x[i], y: posT.y[i], lifeState: posT.life_state?.[i] });
           }
         }
         byPlayer.set(p.player_slot, list);
@@ -218,12 +218,19 @@ export default function MatchMap({
       if (!waypoints || waypoints.length === 0) return;
 
       // Find the bounding waypoints around currentTime
-      let before: { time: number; x: number; y: number } | null = null;
-      let after: { time: number; x: number; y: number } | null = null;
+      let before: { time: number; x: number; y: number; lifeState?: number } | null = null;
+      let after: { time: number; x: number; y: number; lifeState?: number } | null = null;
       for (const wp of waypoints) {
         if (wp.time <= currentTime) before = wp;
         else { after = wp; break; }
       }
+
+      // A dead hero shouldn't sit frozen on the map — take them out
+      // entirely until they respawn. life_state 0 = alive, 1/2 = dying/dead
+      // (same convention replay_compute.py's life_state_dead already uses).
+      // Only enforced when we actually have life_state data (pos_t path);
+      // the sparse ward/kill-log fallback never carries it.
+      if (before?.lifeState != null && before.lifeState > 0) return;
 
       let x: number | undefined;
       let y: number | undefined;

@@ -23,6 +23,48 @@ export function talentLabel(name: string): string {
   return name.replace('special_bonus_', '').replace(/_/g, ' ');
 }
 
+export interface AbilityBuildEntry {
+  name: string;
+  label: string;
+  isTalent: boolean;
+}
+
+/**
+ * Full taken-order sequence of every ability/talent level-up (used for the
+ * small icon strip on each Builds card), resolved from the same raw
+ * ability_upgrades_arr as the talent tree.
+ */
+export function getAbilityBuildOrder(heroName: string | undefined, abilityUpgradesArr: number[] | undefined): AbilityBuildEntry[] {
+  if (!heroName || !Array.isArray(abilityUpgradesArr)) return [];
+  const heroData = HERO_ABILITIES[heroName];
+  const talentNames = new Set((heroData?.talents || []).map((t) => t.name));
+  return abilityUpgradesArr
+    .map((id) => ABILITY_ID_TO_NAME[String(id)])
+    .filter((name): name is string => !!name)
+    .map((name) => ({ name, label: talentLabel(name), isTalent: talentNames.has(name) }));
+}
+
+/**
+ * "a-b-c" opening skill-build label (the convention most Dota stat sites
+ * use: how points were split across the hero's first three non-ultimate
+ * abilities over the first 5 level-ups, i.e. by character level 5 — not a
+ * full-game total, which is why it stays small even in a 40-minute game).
+ */
+export function getSkillBuildLabel(heroName: string | undefined, abilityUpgradesArr: number[] | undefined): string {
+  if (!heroName || !Array.isArray(abilityUpgradesArr)) return '';
+  const heroData = HERO_ABILITIES[heroName];
+  if (!heroData?.abilities) return '';
+  const coreSlots = heroData.abilities.filter((a) => a !== 'generic_hidden').slice(0, 3);
+  if (coreSlots.length === 0) return '';
+
+  const counts: Record<string, number> = {};
+  abilityUpgradesArr.slice(0, 5).forEach((id) => {
+    const name = ABILITY_ID_TO_NAME[String(id)];
+    if (name) counts[name] = (counts[name] || 0) + 1;
+  });
+  return coreSlots.map((n) => counts[n] || 0).join('-');
+}
+
 /**
  * Resolve a player's 4-tier talent tree (10/15/20/25) from their raw
  * ability_upgrades_arr (a flat list of numeric ability ids leveled up over
