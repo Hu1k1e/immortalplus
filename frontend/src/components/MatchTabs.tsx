@@ -1854,10 +1854,10 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
                         position: "absolute", left: `${avgPx}%`, top: `${avgPy}%`,
                         zIndex: isSelected ? 10 : 3, transform: "translate(-50%, -50%)",
                         display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer",
-                        opacity: isSelected ? 1 : 0.6,
-                        filter: isSelected ? "drop-shadow(0 0 10px rgba(255,255,255,0.8))" : "none",
+                        opacity: 1,
+                        filter: isSelected ? "drop-shadow(0 0 10px rgba(255,255,255,0.8))" : "drop-shadow(0 0 5px rgba(0,0,0,0.8))",
                     }} onClick={() => setSelectedTf(index)}>
-                        {isRadiantWon ? <IconRadiant style={{ width: isSelected ? 32 : 20, height: isSelected ? 32 : 20 }} /> : <IconDire style={{ width: isSelected ? 32 : 20, height: isSelected ? 32 : 20 }} />}
+                        {isRadiantWon ? <IconRadiant style={{ width: isSelected ? 32 : 24, height: isSelected ? 32 : 24 }} /> : <IconDire style={{ width: isSelected ? 32 : 24, height: isSelected ? 32 : 24 }} />}
                     </div>
                   );
               });
@@ -1889,14 +1889,17 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
                   return (
                       <div key={`active_death_${i}`} className="map-icon-hover" style={{
                         position: "absolute", left: `${px}%`, top: `${py}%`,
-                        width: "24px", height: "24px", zIndex: 15,
-                        transform: "translate(-50%, -50%)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", borderRadius: "50%",
-                        border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
-                        overflow: "hidden", background: "#000"
+                        zIndex: 15, transform: "translate(-50%, -50%)", cursor: "pointer"
                       }}>
-                        {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                        <div style={{
+                            width: "24px", height: "24px",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            borderRadius: "50%",
+                            border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
+                            overflow: "hidden", background: "#000"
+                        }}>
+                            {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                        </div>
                         <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
                           <PlayerCell p={m.player} />
                           <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
@@ -2478,6 +2481,7 @@ export function StoryTab({ matchData }: { matchData: any }) {
   // Teamfights
   if (Array.isArray(teamfights)) {
     teamfights.forEach((tf: any) => {
+      if (!tf) return;
       const goldDelta = tf.radiant_gold_advantage_delta || 0;
       const radWon = goldDelta > 0;
       const deadHeroes: React.ReactNode[] = [];
