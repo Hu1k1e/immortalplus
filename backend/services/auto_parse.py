@@ -167,17 +167,33 @@ async def _parse_one_match(match_id: int, settings):
         od_client = get_opendota_client(settings.opendota_api_key if settings else None)
 
         # --- Step 1: Get cluster/salt so we know the replay URL ---
+        # We always fetch directly from OpenDota (bypassing cache) to ensure we have
+        # fresh cluster/replay_salt — the in-memory cache may have a stale entry.
         cluster, salt = None, None
         try:
-            raw = None
+            # First try the already-stored opendota_raw in DB
             if match.opendota_raw:
-                raw = json.loads(match.opendota_raw)
-            if not raw or not raw.get("cluster"):
-                raw = await od_client.get_match(match_id)
-            cluster = raw.get("cluster")
-            salt = raw.get("replay_salt")
+                raw_db = json.loads(match.opendota_raw)
+                cluster = raw_db.get("cluster")
+                salt = raw_db.get("replay_salt")
+
+            # If not found in DB, fetch directly from OD API (bypass cache)
+            if not cluster or not salt:
+                from utils.cache import get_cached
+                # Bypass the in-memory cache by calling _request directly
+                fresh_data = await od_client._request("GET", f"/matches/{match_id}")
+                cluster = fresh_data.get("cluster")
+                salt = fresh_data.get("replay_salt")
+
+                # Store in DB so next attempt is faster
+                if fresh_data and (not match.opendota_raw):
+                    match.opendota_raw = json.dumps(fresh_data)
+                    session.commit()
+
+            logger.info(f"[{match_id}] cluster={cluster}, replay_salt={salt}")
         except Exception as e:
             logger.warning(f"[{match_id}] Could not get cluster/salt: {e}")
+
 
         # --- Step 2: Submit OpenDota parse request (for percentiles) ---
         try:

@@ -27,3 +27,6 @@ openai==1.47.0
 # Data processing
 pandas==2.2.2
 numpy==2.1.1
+
+# Replay decompression (Valve uses zstd since ~2024, was bz2 before)
+zstandard==0.23.0
