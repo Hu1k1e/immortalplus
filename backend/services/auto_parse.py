@@ -13,7 +13,6 @@ This runs as a completely independent background loop alongside the sync loop.
 """
 
 import asyncio
-import json
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -110,6 +109,8 @@ async def auto_parse_worker():
                 .limit(50)
             ).all()
 
+            steam_api_key = settings.steam_api_key if settings else None
+
             # Filter to those that are ready for a (re-)attempt
             ready = []
             for m in all_unparsed:
@@ -127,13 +128,13 @@ async def auto_parse_worker():
                     if now - last_attempt_utc >= delay:
                         ready.append(m)
 
-            # Extract the API key so we don't pass a detached SQLModel instance
+            # Extract the API keys so we don't pass a detached SQLModel instance
             od_api_key = settings.opendota_api_key if settings else None
             session.close()
 
             # Process up to MAX_PER_CYCLE per loop
             for match in ready[:MAX_PER_CYCLE]:
-                await _parse_one_match(match.match_id, od_api_key)
+                await _parse_one_match(match.match_id, od_api_key, steam_api_key)
 
         except Exception as e:
             logger.error(f"Auto-parse worker error: {e}", exc_info=True)
@@ -141,7 +142,7 @@ async def auto_parse_worker():
         await asyncio.sleep(PARSE_WORKER_INTERVAL)
 
 
-async def _parse_one_match(match_id: int, od_api_key: str = None):
+async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key: str = None):
     """
     Attempt to fully parse one match:
     1. Tell OpenDota to parse (for benchmarks/percentiles).
@@ -154,6 +155,7 @@ async def _parse_one_match(match_id: int, od_api_key: str = None):
     from services.opendota import get_opendota_client
     from services.local_parser import parse_match_locally
     from services.parser_aggregator import aggregate_parser_output
+    from services.steam import resolve_cluster_salt
     from services.sync import fetch_match_details
 
     session = SessionLocal()
@@ -172,32 +174,11 @@ async def _parse_one_match(match_id: int, od_api_key: str = None):
         od_client = get_opendota_client(od_api_key)
 
         # --- Step 1: Get cluster/salt so we know the replay URL ---
-        # We always fetch directly from OpenDota (bypassing cache) to ensure we have
-        # fresh cluster/replay_salt — the in-memory cache may have a stale entry.
-        cluster, salt = None, None
-        try:
-            # First try the already-stored opendota_raw in DB
-            if match.opendota_raw:
-                raw_db = json.loads(match.opendota_raw)
-                cluster = raw_db.get("cluster")
-                salt = raw_db.get("replay_salt")
-
-            # If not found in DB, fetch directly from OD API (bypass cache)
-            if not cluster or not salt:
-                from utils.cache import get_cached
-                # Bypass the in-memory cache by calling _request directly
-                fresh_data = await od_client._request("GET", f"/matches/{match_id}")
-                cluster = fresh_data.get("cluster")
-                salt = fresh_data.get("replay_salt")
-
-                # Store in DB so next attempt is faster
-                if fresh_data and (not match.opendota_raw):
-                    match.opendota_raw = json.dumps(fresh_data)
-                    session.commit()
-
-            logger.info(f"[{match_id}] cluster={cluster}, replay_salt={salt}")
-        except Exception as e:
-            logger.warning(f"[{match_id}] Could not get cluster/salt: {e}")
+        # Steam API is tried first (fast + reliable), falling back to OpenDota's
+        # own (often not-yet-populated) cluster/replay_salt fields.
+        cluster, salt = await resolve_cluster_salt(match, od_client, steam_api_key=steam_api_key)
+        session.commit()  # persist opendota_raw if resolve_cluster_salt fetched+stored it
+        logger.info(f"[{match_id}] cluster={cluster}, replay_salt={salt}")
 
 
         # --- Step 2: Submit OpenDota parse request (for percentiles) ---
@@ -234,14 +215,16 @@ async def _parse_one_match(match_id: int, od_api_key: str = None):
             return
 
         # --- Step 5: Fetch full OpenDota data (benchmarks, names) and merge ---
-        # Invalidate the OD cache so we re-fetch fresh data (OpenDota may now have parsed it)
+        # Invalidate the OD cache so we re-fetch fresh data (OpenDota may now have parsed it).
+        # Pass the local_data we just parsed so it's merged in directly instead of
+        # being silently discarded and re-derived (and potentially re-parsed) here.
         match.opendota_raw = None
         match.gold_t = None
         match.all_players = None
         session.commit()
 
         settings = session.exec(select(UserSettings).limit(1)).first()
-        success = await fetch_match_details(session, match, settings)
+        success = await fetch_match_details(session, match, settings, local_parse_data=local_data)
         if success:
             session.refresh(match)
             logger.info(f"[{match_id}] Auto-parse COMPLETE. is_parsed={match.is_parsed}, "

@@ -19,7 +19,7 @@ from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
 from services.local_parser import parse_match_locally
 from services.parser_aggregator import aggregate_parser_output
-from services.steam import SteamClient
+from services.steam import resolve_cluster_salt
 from models import MatchAnalysis
 
 logger = logging.getLogger(__name__)
@@ -144,12 +144,21 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
     return new_count
 
 
-async def fetch_match_details(session: Session, match: Match, settings: UserSettings):
+async def fetch_match_details(
+    session: Session,
+    match: Match,
+    settings: UserSettings,
+    local_parse_data: dict = None,
+):
     """
     Fetch full match details from chosen data source and enrich the stored match.
+
+    If `local_parse_data` is passed in (a caller already ran the replay through
+    the local odota/parser container and aggregated the output), it is used
+    directly instead of being re-derived/re-parsed here.
     """
     source = settings.data_source if settings else "both"
-    
+
     od_data = None
     stratz_data = None
 
@@ -174,39 +183,34 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
                     return False
 
     # Check if OpenDota is missing the parsed data (e.g., rate limits, missing parser output)
-    needs_local_parse = False
-    if od_data:
-        # If openDota doesn't have deep parse data (no players with purchase_log)
-        has_deep = any(p.get("purchase_log") for p in od_data.get("players", []))
-        if not has_deep:
-            needs_local_parse = True
-    elif stratz_data:
-        needs_local_parse = True
-
-    local_parse_data = None
+    needs_local_parse = local_parse_data is None
     if needs_local_parse:
-        cluster, salt = None, None
-        
-        # 1. Prefer Steam API directly if key is provided (most reliable)
-        if settings and settings.steam_api_key:
-            steam_client = SteamClient(settings.steam_api_key)
-            steam_data = await steam_client.get_match_details(match.match_id)
-            if steam_data:
-                cluster = steam_data.get("cluster")
-                salt = steam_data.get("replay_salt")
-                
-        # 2. Fallback to Stratz if Steam API wasn't available or failed
-        if not cluster or not salt:
-            if stratz_data:
-                cluster = stratz_data.get("clusterId")
-                salt = stratz_data.get("replaySalt")
-                
+        if od_data:
+            # If openDota doesn't have deep parse data (no players with purchase_log)
+            has_deep = any(p.get("purchase_log") for p in od_data.get("players", []))
+            needs_local_parse = not has_deep
+        elif stratz_data:
+            needs_local_parse = True
+        else:
+            needs_local_parse = False
+
+    if needs_local_parse:
+        od_client_for_lookup = get_opendota_client(settings.opendota_api_key if settings else None)
+        cluster, salt = await resolve_cluster_salt(
+            match,
+            od_client_for_lookup,
+            steam_api_key=settings.steam_api_key if settings else None,
+            stratz_data=stratz_data,
+        )
+
         if cluster and salt:
             logger.info(f"OpenDota parse missing. Bypassing rate limits via local parser for {match.match_id}")
             raw_lines = await parse_match_locally(match.match_id, cluster, salt)
             if raw_lines:
                 local_parse_data = aggregate_parser_output(raw_lines, {})
                 logger.info("Local parse aggregation complete.")
+        else:
+            logger.warning(f"[{match.match_id}] Could not resolve cluster/replay_salt — cannot local-parse")
 
     # Choose the primary data source (prefer OpenDota for deep stats, fallback to local parse, then stratz)
     if local_parse_data and od_data:
@@ -289,7 +293,7 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
         all_players.append(p_copy)
     match.all_players = json.dumps(all_players)
 
-    match.is_parsed = data.get("version") is not None
+    match.is_parsed = bool(player_data.get("purchase_log")) or data.get("version") is not None
     match.rank_tier = player_data.get("rank_tier")
     session.commit()
 
