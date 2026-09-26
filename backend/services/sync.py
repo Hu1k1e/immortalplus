@@ -171,6 +171,14 @@ async def fetch_match_details(
             if source == "opendota":
                 return False
 
+    # Stratz's get_match() hardcodes a fake "version" field on every response
+    # (see services/stratz.py) so its own downstream OD-format merging works,
+    # even when it only has a handful of sparse fields (no benchmarks, no
+    # killed/life_state/lane_pos/damage — none of what the deep tabs need).
+    # Capture whether OpenDota itself genuinely completed a parse *before*
+    # that fake marker can get mixed in, so is_parsed never lies about it.
+    od_data_genuinely_parsed = bool(od_data and od_data.get("version") is not None)
+
     if source in ["stratz", "both"]:
         from services.stratz import get_stratz_client
         stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
@@ -305,7 +313,10 @@ async def fetch_match_details(
         all_players.append(p_copy)
     match.all_players = json.dumps(all_players)
 
-    match.is_parsed = bool(player_data.get("purchase_log")) or data.get("version") is not None
+    # Only ever true from a genuine parse — our own local odota/parser run, or
+    # OpenDota's own official job actually completing. Never from Stratz's
+    # synthetic "version" marker, and never just because *some* data exists.
+    match.is_parsed = (local_parse_data is not None) or od_data_genuinely_parsed
     match.rank_tier = player_data.get("rank_tier")
     session.commit()
 
