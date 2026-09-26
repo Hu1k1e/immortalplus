@@ -151,6 +151,7 @@ async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key:
     from models import Match, UserSettings
     from services.opendota import get_opendota_client
     from services.local_parser import parse_match_locally
+    from services.position_parser import parse_hero_positions
     from services.steam import resolve_cluster_salt
     from services.stratz import get_stratz_client
     from services.sync import fetch_match_details
@@ -215,6 +216,18 @@ async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key:
             logger.warning(f"[{match_id}] Local parse returned no data")
             session.close()
             return
+
+        # /blob discards hero position data — fetch it separately from the raw
+        # event stream (see position_parser.py) and attach before merging.
+        try:
+            positions = await parse_hero_positions(match_id, cluster, salt)
+            if positions:
+                for p_local in local_data.get("players", []):
+                    pos_data = positions.get(p_local.get("player_slot"))
+                    if pos_data:
+                        p_local["pos_t"] = pos_data
+        except Exception as e:
+            logger.warning(f"[{match_id}] Position parse failed (non-fatal): {e}")
 
         # --- Step 5: Fetch full OpenDota data (benchmarks, names) and merge ---
         # Invalidate the OD cache so we re-fetch fresh data (OpenDota may now have parsed it).

@@ -96,27 +96,38 @@ export default function MatchNavBar({ matchData }: MatchNavBarProps) {
           const isCurrent = m.match_id === matchData.match_id;
           const isWin = m.result === 'win';
           return (
-            <img
+            <div
               key={m.match_id}
-              src={hero ? getHeroImage(hero.img_name) : ''}
-              alt={hero?.name || 'hero'}
-              title={`${hero?.name || 'Unknown'} — ${isWin ? 'Win' : 'Loss'}`}
               onClick={() => !isCurrent && navigate(`/matches/${m.match_id}`)}
+              title={`${hero?.name || 'Unknown'} — ${isWin ? 'Win' : 'Loss'}`}
               style={{
-                width: '36px',
-                height: '20px',
-                objectFit: 'cover',
-                borderRadius: '3px',
-                cursor: isCurrent ? 'default' : 'pointer',
+                position: 'relative',
                 flexShrink: 0,
-                border: `2px solid ${isCurrent ? 'var(--accent-gold)' : isWin ? 'var(--radiant-green)' : 'var(--dire-red)'}`,
+                cursor: isCurrent ? 'default' : 'pointer',
                 opacity: isCurrent ? 1 : 0.85,
-                transition: 'opacity 0.15s, transform 0.15s',
+                transition: 'opacity 0.15s',
+                border: isCurrent ? '2px solid var(--accent-gold)' : '2px solid transparent',
+                borderRadius: '3px',
+                lineHeight: 0,
               }}
               onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.opacity = '1'; }}
               onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.opacity = '0.85'; }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
+            >
+              <img
+                src={hero ? getHeroImage(hero.img_name) : ''}
+                alt={hero?.name || 'hero'}
+                style={{ width: '34px', height: '19px', objectFit: 'cover', borderRadius: '2px', display: 'block' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+              <span style={{
+                position: 'absolute', bottom: '-2px', right: '-2px',
+                fontSize: '0.55rem', fontWeight: 800, lineHeight: 1,
+                padding: '1px 3px', borderRadius: '2px',
+                color: '#fff', background: isWin ? 'var(--radiant-green)' : 'var(--dire-red)',
+              }}>
+                {isWin ? 'W' : 'L'}
+              </span>
+            </div>
           );
         })}
       </div>

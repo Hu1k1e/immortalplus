@@ -362,6 +362,7 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int):
     """Background task: parse the replay locally and update the match record."""
     from database import SessionLocal
     from services.local_parser import parse_match_locally
+    from services.position_parser import parse_hero_positions
     from services.sync import fetch_match_details
 
     logger.info(f"Background local parse starting for match {match_id} (cluster={cluster}, salt={salt})")
@@ -371,6 +372,18 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int):
         if not local_data:
             logger.error(f"Local parse returned no data for {match_id}")
             return
+
+        # /blob discards hero position data — fetch it separately from the raw
+        # event stream (see position_parser.py) and attach before merging.
+        try:
+            positions = await parse_hero_positions(match_id, cluster, salt)
+            if positions:
+                for p_local in local_data.get("players", []):
+                    pos_data = positions.get(p_local.get("player_slot"))
+                    if pos_data:
+                        p_local["pos_t"] = pos_data
+        except Exception as e:
+            logger.warning(f"[{match_id}] Position parse failed (non-fatal): {e}")
 
         # Fresh session + fresh settings fetch — the request's settings/session
         # are gone by the time this background task runs.

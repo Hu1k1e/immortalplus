@@ -18,6 +18,7 @@ from models import (
 from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
 from services.local_parser import parse_match_locally
+from services.position_parser import parse_hero_positions
 from services.steam import resolve_cluster_salt
 from services.replay_compute import apply_computed_fields
 from models import MatchAnalysis
@@ -214,6 +215,21 @@ async def fetch_match_details(
         if cluster and salt:
             logger.info(f"OpenDota parse missing. Bypassing rate limits via local parser for {match.match_id}")
             local_parse_data = await parse_match_locally(match.match_id, cluster, salt)
+
+            if local_parse_data:
+                # /blob discards hero position data (odota/parser's own
+                # CreateParsedDataBlob.java: `case "interval": break;`), so
+                # get it separately from the raw event stream, which emits a
+                # real x/y per hero every game-second — see position_parser.py.
+                try:
+                    positions = await parse_hero_positions(match.match_id, cluster, salt)
+                    if positions:
+                        for p_local in local_parse_data.get("players", []):
+                            pos_data = positions.get(p_local.get("player_slot"))
+                            if pos_data:
+                                p_local["pos_t"] = pos_data
+                except Exception as e:
+                    logger.warning(f"[{match.match_id}] Position parse failed (non-fatal): {e}")
         else:
             logger.warning(f"[{match.match_id}] Could not resolve cluster/replay_salt — cannot local-parse")
 
@@ -294,7 +310,11 @@ async def fetch_match_details(
     match.radiant_gold_adv = json.dumps(data.get("radiant_gold_adv")) if data.get("radiant_gold_adv") else None
     match.radiant_xp_adv = json.dumps(data.get("radiant_xp_adv")) if data.get("radiant_xp_adv") else None
     match.chat = json.dumps(data.get("chat")) if data.get("chat") else None
-    match.draft_timings = json.dumps(data.get("draft_timings")) if data.get("draft_timings") else None
+    # OpenDota's real field for draft picks/bans is "picks_bans"
+    # ({is_pick, hero_id, team, order} — team 0=Radiant, 1=Dire), not
+    # "draft_timings" (which doesn't exist in any of our data sources —
+    # confirmed against odota_core's own schema and sample responses).
+    match.draft_timings = json.dumps(data.get("picks_bans")) if data.get("picks_bans") else None
 
     # Item slots
     items = [player_data.get(f"item_{i}") for i in range(6)]

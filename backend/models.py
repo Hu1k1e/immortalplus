@@ -72,7 +72,7 @@ class Match(SQLModel, table=True):
     radiant_gold_adv: Optional[str] = None  # JSON array: team gold advantage per minute
     radiant_xp_adv: Optional[str] = None    # JSON array: team xp advantage per minute  
     chat: Optional[str] = None              # JSON array: match chat log
-    draft_timings: Optional[str] = None     # JSON array: draft pick/ban order
+    draft_timings: Optional[str] = None     # JSON array: draft picks/bans (OpenDota's picks_bans field: {is_pick, hero_id, team, order})
     opendota_raw: Optional[str] = None      # JSON: full OpenDota match response
 
     # Auto-parse tracking

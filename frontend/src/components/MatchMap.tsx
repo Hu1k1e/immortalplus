@@ -71,9 +71,10 @@ export default function MatchMap({
     else setInternalSpeed(s);
   }, []);
 
-  // Autoplay once on mount, only when this instance owns its own play state
+  // Autoplay once on mount (works for both controlled and uncontrolled
+  // clocks — setIsPlaying already routes to whichever one is active).
   useEffect(() => {
-    if (autoPlayOnMount && !autoPlayedRef.current && controlledIsPlaying === undefined && duration > 0) {
+    if (autoPlayOnMount && !autoPlayedRef.current && duration > 0) {
       autoPlayedRef.current = true;
       setIsPlaying(true);
     }
@@ -155,39 +156,94 @@ export default function MatchMap({
   const maxGold = Math.max(1, ...goldAdv.map((g: number) => Math.abs(g)));
   const currentMinute = Math.floor(currentTime / 60);
 
-  // Hero positions based on pos dict {"1": {"x": 123, "y": 123}} (per-minute
-  // samples). Linearly interpolate between the bounding minute samples for
-  // smooth movement instead of snapping once per minute; falls back to the
-  // nearest known minute (up to 5 back) on either side when a sample is
-  // sparse/missing.
-  const heroPositions = useMemo(() => {
-    if (!matchData?.all_players) return [];
-    const positions: any[] = [];
-    const minuteFloor = Math.floor(currentTime / 60);
-    const frac = (currentTime % 60) / 60;
+  // Hero movement. Preferred source: `pos_t` — a real x/y sampled every
+  // game-second per hero, extracted server-side from the raw parser event
+  // stream's "interval" entries (backend/services/position_parser.py).
+  // These aren't in odota/parser's aggregated /blob output (its own
+  // CreateParsedDataBlob.java discards them), so matches parsed before that
+  // extraction existed won't have `pos_t` yet — for those, fall back to a
+  // sparse waypoint trail built from whichever event logs happen to carry
+  // real x/y (ward placements reliably; kills/runes on some parser
+  // versions), interpolated between the nearest known points. Both paths
+  // feed the same {time,x,y}[] shape below, so `pos_t` (already ~1
+  // point/second) reads as smooth continuous movement without any special
+  // casing, and the fallback degrades gracefully to its sparser real data.
+  const heroWaypoints = useMemo(() => {
+    if (!matchData?.all_players) return new Map<number, { time: number; x: number; y: number }[]>();
+    const byPlayer = new Map<number, { time: number; x: number; y: number }[]>();
 
-    const findPos = (p: any, minute: number): { x: number; y: number } | null => {
-      if (!p.pos || minute < 0) return null;
-      if (p.pos[String(minute)]) return p.pos[String(minute)];
-      for (let back = minute - 1; back >= Math.max(0, minute - 5); back--) {
-        if (p.pos[String(back)]) return p.pos[String(back)];
-      }
-      return null;
+    const collect = (playerSlot: number, logArray: any[]) => {
+      if (!Array.isArray(logArray)) return;
+      logArray.forEach((log) => {
+        if (log?.x && log?.y && log?.time != null) {
+          const list = byPlayer.get(playerSlot) || [];
+          list.push({ time: log.time, x: log.x, y: log.y });
+          byPlayer.set(playerSlot, list);
+        }
+      });
     };
 
     matchData.all_players.forEach((p: any) => {
-      const posA = findPos(p, minuteFloor);
-      const posB = findPos(p, minuteFloor + 1);
+      let posT = p.pos_t;
+      if (typeof posT === 'string') { try { posT = JSON.parse(posT); } catch { posT = null; } }
+
+      if (posT?.time?.length) {
+        const list: { time: number; x: number; y: number }[] = [];
+        for (let i = 0; i < posT.time.length; i++) {
+          if (posT.x[i] != null && posT.y[i] != null) {
+            list.push({ time: posT.time[i], x: posT.x[i], y: posT.y[i] });
+          }
+        }
+        byPlayer.set(p.player_slot, list);
+      } else {
+        // Sparse fallback — obs_log/sen_log already carry player_slot;
+        // kills_log/runes_log don't always, so tag them before collecting.
+        collect(p.player_slot, p.obs_log);
+        collect(p.player_slot, p.sen_log);
+        collect(p.player_slot, p.kills_log);
+        collect(p.player_slot, p.runes_log);
+      }
+    });
+
+    byPlayer.forEach((list) => list.sort((a, b) => a.time - b.time));
+    return byPlayer;
+  }, [matchData]);
+
+  const hasDensePositions = useMemo(
+    () => (matchData?.all_players || []).some((p: any) => {
+      let posT = p.pos_t;
+      if (typeof posT === 'string') { try { posT = JSON.parse(posT); } catch { return false; } }
+      return !!posT?.time?.length;
+    }),
+    [matchData]
+  );
+
+  const heroPositions = useMemo(() => {
+    if (!matchData?.all_players) return [];
+    const positions: any[] = [];
+
+    matchData.all_players.forEach((p: any) => {
+      const waypoints = heroWaypoints.get(p.player_slot);
+      if (!waypoints || waypoints.length === 0) return;
+
+      // Find the bounding waypoints around currentTime
+      let before: { time: number; x: number; y: number } | null = null;
+      let after: { time: number; x: number; y: number } | null = null;
+      for (const wp of waypoints) {
+        if (wp.time <= currentTime) before = wp;
+        else { after = wp; break; }
+      }
 
       let x: number | undefined;
       let y: number | undefined;
-      if (posA && posB) {
-        x = posA.x + (posB.x - posA.x) * frac;
-        y = posA.y + (posB.y - posA.y) * frac;
-      } else if (posA) {
-        x = posA.x; y = posA.y;
-      } else if (posB) {
-        x = posB.x; y = posB.y;
+      if (before && after) {
+        const frac = (currentTime - before.time) / Math.max(1, after.time - before.time);
+        x = before.x + (after.x - before.x) * frac;
+        y = before.y + (after.y - before.y) * frac;
+      } else if (before) {
+        x = before.x; y = before.y;
+      } else if (after) {
+        x = after.x; y = after.y;
       }
 
       if (x != null && y != null) {
@@ -202,7 +258,7 @@ export default function MatchMap({
       }
     });
     return positions;
-  }, [matchData, currentTime]);
+  }, [matchData, heroWaypoints, currentTime]);
 
   const mapSize = compact ? '320px' : '100%';
 
@@ -292,21 +348,12 @@ export default function MatchMap({
             <div key={`dt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--dire-red)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
           ))}
 
-          {/* Events overlay */}
-          <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}>
-            {visibleEvents.length > 1 && (
-              <polyline 
-                points={visibleEvents.sort((a,b) => a.time - b.time).map(e => `${e.left},${e.top}`).join(' ')} 
-                fill="none" 
-                stroke="var(--accent-gold)" 
-                strokeWidth="0.5" 
-                strokeDasharray="2,2" 
-                opacity="0.6" 
-              />
-            )}
-          </svg>
-
-          {visibleEvents.map((evt, i) => (
+          {/* Ward/event markers — secondary to hero portraits; these are the
+              only fields with confirmed real position data (see heroWaypoints
+              comment above), so they're kept small and muted rather than a
+              connecting trail (which would misleadingly link unrelated
+              players' events in time order). */}
+          {visibleEvents.filter(e => e.type !== 'kill').map((evt, i) => (
             <div
               key={`evt-${i}`}
               style={{
@@ -314,14 +361,14 @@ export default function MatchMap({
                 left: `${evt.left}%`,
                 top: `${evt.top}%`,
                 transform: 'translate(-50%, -50%)',
-                width: evt.type === 'kill' ? '10px' : '8px',
-                height: evt.type === 'kill' ? '10px' : '8px',
-                borderRadius: evt.type === 'obs' ? '50%' : evt.type === 'sen' ? '2px' : '50%',
+                width: '7px',
+                height: '7px',
+                borderRadius: evt.type === 'obs' ? '50%' : '2px',
                 background: evt.color,
-                boxShadow: `0 0 4px ${evt.color}`,
-                opacity: (currentTime - evt.time < 120) ? 1 : 0.4,
+                border: '1px solid rgba(0,0,0,0.6)',
+                opacity: (currentTime - evt.time < 120) ? 0.9 : 0.35,
                 transition: 'opacity 0.3s',
-                zIndex: evt.type === 'kill' ? 10 : 5,
+                zIndex: 4,
               }}
               title={`[${formatTime(evt.time)}] ${evt.type}`}
             />
@@ -342,11 +389,11 @@ export default function MatchMap({
                   left: `${hp.left}%`,
                   top: `${hp.top}%`,
                   transform: 'translate(-50%, -50%)',
-                  width: isSelected ? '32px' : '24px',
-                  height: isSelected ? '32px' : '24px',
+                  width: isSelected ? '40px' : '30px',
+                  height: isSelected ? '40px' : '30px',
                   borderRadius: '50%',
-                  border: `2px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}`,
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.5)',
+                  border: `2.5px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}`,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.7)',
                   backgroundImage: hero ? `url(${getHeroImage(hero.img_name)})` : 'none',
                   backgroundSize: 'cover',
                   backgroundPosition: 'center',
@@ -454,9 +501,13 @@ export default function MatchMap({
 
       {/* Legend */}
       <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />Obs</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#eab308', display: 'inline-block' }} />Sen</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--radiant-green)', display: 'inline-block' }} />Kills</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />Obs Ward</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#eab308', display: 'inline-block' }} />Sentry Ward</span>
+      </div>
+      <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+        {hasDensePositions
+          ? 'Hero positions sampled once per game-second from the replay.'
+          : 'Hero positions are approximated from ward-placement timestamps (this match was parsed before per-second tracking was added — re-parse to get full movement).'}
       </div>
     </div>
   );
