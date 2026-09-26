@@ -74,8 +74,15 @@ class Match(SQLModel, table=True):
     chat: Optional[str] = None              # JSON array: match chat log
     draft_timings: Optional[str] = None     # JSON array: draft pick/ban order
     opendota_raw: Optional[str] = None      # JSON: full OpenDota match response
+
+    # Auto-parse tracking
+    parse_attempts: int = Field(default=0)          # How many times we've tried to parse
+    last_parse_attempt: Optional[datetime] = None   # When we last tried
+    parse_failed_permanently: bool = Field(default=False)  # Give up flag (replay expired)
+
     played_at: Optional[datetime] = None
     synced_at: datetime = Field(default_factory=datetime.utcnow)
+
 
 
 class ParsedReplay(SQLModel, table=True):

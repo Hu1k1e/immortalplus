@@ -23,15 +23,15 @@ logger = logging.getLogger("immortalplus")
 
 async def background_sync_loop():
     """
-    Background task that periodically syncs data.
-    Runs match sync, progress snapshots, and meta updates.
+    Background task: periodically syncs match history and meta data.
+    Replay parsing is handled by the separate auto_parse_worker task.
     """
     from sqlmodel import select
     from database import SessionLocal
-    from models import Player, UserSettings, Match
+    from models import Player, UserSettings
     from services.sync import (
         sync_player_matches, create_progress_snapshot,
-        sync_hero_meta, sync_hero_matchups, fetch_match_details
+        sync_hero_meta,
     )
 
     # Wait for app to fully start
@@ -41,34 +41,22 @@ async def background_sync_loop():
     meta_synced = False
 
     while True:
+        settings = None
         try:
             session = SessionLocal()
             settings = session.exec(select(UserSettings).limit(1)).first()
             player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
 
             if player and settings and settings.auto_sync_matches:
-                # Sync matches
+                # Sync new matches from OpenDota into DB
                 new_count = await sync_player_matches(session, player, settings)
-                
-                # Fetch detailed parsed data for matches that don't have it yet
-                unparsed = session.exec(
-                    select(Match)
-                    .where(Match.player_id == player.id)
-                    .where(Match.opendota_raw == None)
-                    .order_by(Match.match_id.desc())
-                    .limit(10)
-                ).all()
-
-                for m in unparsed:
-                    logger.info(f"Background fetching parsed details for {m.match_id}")
-                    success = await fetch_match_details(session, m, settings)
-                    if success:
-                        session.commit()
+                if new_count:
+                    logger.info(f"Synced {new_count} new matches — auto-parse worker will process them")
 
                 # Create daily snapshot
                 await create_progress_snapshot(session, player)
 
-            # Sync meta data (less frequently)
+            # Sync meta data once per app restart
             if not meta_synced and settings:
                 await sync_hero_meta(session, settings)
                 meta_synced = True
@@ -76,13 +64,14 @@ async def background_sync_loop():
             session.close()
 
         except Exception as e:
-            logger.error(f"Background sync error: {e}")
+            logger.error(f"Background sync error: {e}", exc_info=True)
 
         # Wait for configured interval (default 30 minutes)
         interval = 30
         if settings:
             interval = settings.sync_interval_minutes or 30
         await asyncio.sleep(interval * 60)
+
 
 
 @asynccontextmanager
@@ -94,13 +83,18 @@ async def lifespan(app: FastAPI):
     auto_migrate()
     logger.info("Database initialized")
 
-    # Start background sync
+    # Start background sync (match history, progress snapshots, meta)
     sync_task = asyncio.create_task(background_sync_loop())
+
+    # Start dedicated auto-parse worker (replay downloading + local parsing + OD requests)
+    from services.auto_parse import auto_parse_worker
+    parse_task = asyncio.create_task(auto_parse_worker())
 
     yield
 
     # Shutdown
     sync_task.cancel()
+    parse_task.cancel()
     logger.info("Immortal+ Backend shutting down")
 
 
