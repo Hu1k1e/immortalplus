@@ -183,7 +183,7 @@ export default function MatchDetail() {
             onClick={handleRequestParse}
             disabled={parseState === 'requesting' || parseState === 'requested'}
           >
-            {parseState === 'idle' && '⬇ Parse Replay'}
+            {parseState === 'idle' && 'Parse Replay'}
             {parseState === 'requesting' && 'Requesting...'}
             {parseState === 'requested' && '✓ Parse Requested'}
             {parseState === 'error' && '✗ Parse Failed'}
@@ -195,7 +195,7 @@ export default function MatchDetail() {
             disabled={refetching}
             title="Refetch latest match data from OpenDota/Stratz"
           >
-            {refetching ? '🔄 Syncing...' : '🔄 Sync Data'}
+            {refetching ? 'Syncing...' : 'Sync Data'}
           </button>
         </div>
       </header>

@@ -209,7 +209,22 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
                 logger.info("Local parse aggregation complete.")
 
     # Choose the primary data source (prefer OpenDota for deep stats, fallback to local parse, then stratz)
-    data = od_data if (od_data and not needs_local_parse) else (local_parse_data if local_parse_data else stratz_data)
+    if local_parse_data and od_data:
+        # Merge local parse deep logs into od_data to preserve benchmarks/names
+        for p_od in od_data.get("players", []):
+            p_local = next((p for p in local_parse_data.get("players", []) if p.get("player_slot") == p_od.get("player_slot")), None)
+            if p_local:
+                for key in ["purchase_log", "kills_log", "runes_log", "obs_log", "sen_log", "gold_t", "xp_t", "lh_t", "dn_t", "deaths_pos", "killed_by", "killed", "damage", "damage_taken", "stuns", "camps_stacked", "life_state_dead", "buyback_count", "pings", "max_hero_hit"]:
+                    if p_local.get(key) is not None:
+                        p_od[key] = p_local[key]
+        
+        for key in ["teamfights", "objectives", "chat", "radiant_gold_adv", "radiant_xp_adv", "draft_timings"]:
+            if local_parse_data.get(key) is not None:
+                od_data[key] = local_parse_data[key]
+        data = od_data
+    else:
+        data = od_data if od_data else (local_parse_data if local_parse_data else stratz_data)
+
     if not data:
         return False
         
