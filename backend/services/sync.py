@@ -371,6 +371,7 @@ async def fetch_match_details(session: Session, match: Match, settings: UserSett
             "obs_left_log": p.get("obs_left_log", []),
             "sen_left_log": p.get("sen_left_log", []),
             # Actions tab
+            "actions": p.get("actions"),
             "life_state": p.get("life_state"),
             "life_state_dead": p.get("life_state_dead"),
             # Cosmetics
