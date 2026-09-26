@@ -148,6 +148,19 @@ const PlayerCell = ({ p }: { p: any }) => {
   );
 };
 
+const PercentBar = ({ value, max, color = 'var(--radiant-green)' }: { value: number; max: number; color?: string }) => {
+  if (!max || max <= 0) return <span>{value}</span>;
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', minWidth: '40px' }}>
+      <span style={{ fontSize: '0.85rem' }}>{value}</span>
+      <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.1)', marginTop: '4px', borderRadius: '2px' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: '2px' }} />
+      </div>
+    </div>
+  );
+};
+
 const th: React.CSSProperties = { padding: '0.5rem 0.8rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.05)' };
 
@@ -1579,28 +1592,41 @@ export function ActionsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radi
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
-  const actionCols = [
-    { key: 'apm', label: 'APM', sortFn: (a: any, b: any) => (a.actions_per_min || 0) - (b.actions_per_min || 0), render: (p: any) => p.actions_per_min || '-' },
-    { key: 'pings', label: 'PINGS', sortFn: (a: any, b: any) => (a.pings || 0) - (b.pings || 0), render: (p: any) => p.pings || '-' },
-    { key: 'runes', label: 'RUNE PICKUPS', sortFn: (a: any, b: any) => (a.rune_pickups || 0) - (b.rune_pickups || 0), render: (p: any) => p.rune_pickups || '-' },
-    { key: 'stacked', label: 'CAMPS STACKED', sortFn: (a: any, b: any) => (a.camps_stacked || 0) - (b.camps_stacked || 0), render: (p: any) => p.camps_stacked || '-' },
-    { key: 'creeps', label: 'CREEPS STACKED', sortFn: (a: any, b: any) => (a.creeps_stacked || 0) - (b.creeps_stacked || 0), render: (p: any) => p.creeps_stacked || '-' },
+  const ACTION_TYPES = [
+    { key: '1', label: 'MV [P]' },
+    { key: '2', label: 'MV [T]' },
+    { key: '3', label: 'ATK [P]' },
+    { key: '4', label: 'ATK [T]' },
+    { key: '5', label: 'CST [P]' },
+    { key: '6', label: 'CST [T]' },
+    { key: '8', label: 'CST [N]' },
+    { key: '10', label: 'HLD' },
+    { key: '24', label: 'GLYPH' },
+    { key: '31', label: 'SCN' }
   ];
 
-  const getTotals = (teamPlayers: any[]) => {
-    return {
-      apm: Math.round(teamPlayers.reduce((acc, p) => acc + (p.actions_per_min || 0), 0) / teamPlayers.length) || '-',
-      pings: teamPlayers.reduce((acc, p) => acc + (p.pings || 0), 0) || '-',
-      runes: teamPlayers.reduce((acc, p) => acc + (p.rune_pickups || 0), 0) || '-',
-      stacked: teamPlayers.reduce((acc, p) => acc + (p.camps_stacked || 0), 0) || '-',
-      creeps: teamPlayers.reduce((acc, p) => acc + (p.creeps_stacked || 0), 0) || '-',
-    };
-  };
+  const actionCols: any[] = ([
+    { 
+      key: 'apm', 
+      label: 'APM', 
+      sortFn: (a: any, b: any) => (a.actions_per_min || 0) - (b.actions_per_min || 0), 
+      render: (p: any) => <PercentBar value={p.actions_per_min || 0} max={Math.max(...allPlayers.map((x:any)=>x.actions_per_min||0))} /> 
+    }
+  ] as any[]).concat(ACTION_TYPES.map(act => ({
+    key: `act_${act.key}`,
+    label: act.label,
+    sortFn: (a: any, b: any) => (a.actions?.[act.key] || 0) - (b.actions?.[act.key] || 0),
+    render: (p: any) => {
+      const val = p.actions?.[act.key] || 0;
+      const maxVal = Math.max(...allPlayers.map((x:any) => x.actions?.[act.key] || 0));
+      return val > 0 ? <PercentBar value={val} max={maxVal} /> : '-';
+    }
+  })));
 
   return (
     <div className="animation-fade-in">
-      <TeamTable title="Radiant - Actions" players={radiant} columns={actionCols} winner={radiantWin} totals={getTotals(radiant)} />
-      <TeamTable title="Dire - Actions" players={dire} columns={actionCols} winner={!radiantWin} totals={getTotals(dire)} />
+      <TeamTable title="Radiant - Actions" players={radiant} columns={actionCols} winner={radiantWin} />
+      <TeamTable title="Dire - Actions" players={dire} columns={actionCols} winner={!radiantWin} />
     </div>
   );
 }

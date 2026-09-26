@@ -202,7 +202,7 @@ export default function MatchDetail() {
 
       {/* Main Tabs Navigation */}
       <div className="glass-surface" style={{ display: 'flex', gap: '0.5rem', padding: '0.5rem 1rem', marginBottom: '2rem', overflowX: 'auto', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border-color)' }}>
-        {['Overview', 'Benchmarks', 'Performances', 'Laning', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Fantasy', 'Chat', 'Story', 'Log', 'Cosmetics', 'Playback'].map((tab) => (
+        {['Overview', 'Benchmarks', 'Performances', 'Laning', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log', 'Playback'].map((tab) => (
           <button
             key={tab}
             className={`btn ${mainTab === tab ? 'btn-primary' : 'btn-secondary'}`}
@@ -496,7 +496,7 @@ export default function MatchDetail() {
       {mainTab === 'Log' && <LogTab allPlayers={allPlayers} matchData={matchData} />}
 
       {mainTab === 'Graphs' && <GraphsTab matchData={matchData} allPlayers={allPlayers} />}
-      {['Fantasy', 'Story', 'Cosmetics'].includes(mainTab) && (
+      {mainTab === 'Story' && (
         <div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
           <h3>{mainTab} Data</h3>
           <p>This tab will be available in a future update.</p>
