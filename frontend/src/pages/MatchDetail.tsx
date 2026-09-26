@@ -496,7 +496,7 @@ export default function MatchDetail() {
       {mainTab === 'Log' && <LogTab allPlayers={allPlayers} matchData={matchData} />}
 
       {mainTab === 'Graphs' && <GraphsTab matchData={matchData} allPlayers={allPlayers} />}
-      {mainTab === 'Story' && <StoryTab matchData={matchData} allPlayers={allPlayers} />}
+      {mainTab === 'Story' && <StoryTab matchData={matchData} />}
 
       {mainTab === 'Playback' && (
         <div className="animation-fade-in" style={{ padding: '1rem 0' }}>

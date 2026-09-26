@@ -1779,12 +1779,10 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
             >
               <div style={{
                 color: color,
-                fontSize: isSelected || isHovered ? "24px" : "16px",
-                fontWeight: "bold",
                 transition: "all 0.2s",
-                textShadow: isSelected ? `0 0 10px ${color}` : "none"
+                filter: isSelected ? `drop-shadow(0 0 10px ${color})` : "none"
               }}>
-                ✖
+                {isRadiantWon ? <IconRadiant style={{ width: isSelected || isHovered ? 24 : 16, height: isSelected || isHovered ? 24 : 16, fill: color }} /> : <IconDire style={{ width: isSelected || isHovered ? 24 : 16, height: isSelected || isHovered ? 24 : 16, fill: color }} />}
               </div>
 
               {/* TIMELINE TOOLTIP */}
@@ -1828,56 +1826,84 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
           <div style={{ position: "relative", width: "350px", height: "350px", borderRadius: "4px", overflow: "hidden", border: "1px solid var(--border-color)", background: "#222" }}>
             <img src="/assets/images/dota2/Game_map_7.41.jpg" alt="Map" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             
-            {/* Average Teamfight Position */}
+            {/* Map Markers */}
             {(() => {
-              if (!tf.deaths_pos || tf.deaths_pos.length === 0) return null;
-              const avgX = tf.deaths_pos.reduce((acc: number, m: any) => acc + m.x, 0) / tf.deaths_pos.length;
-              const avgY = tf.deaths_pos.reduce((acc: number, m: any) => acc + m.y, 0) / tf.deaths_pos.length;
-              const px = Math.min(100, Math.max(0, (avgX / 127) * 100));
-              const py = Math.min(100, Math.max(0, (avgY / 127) * 100));
+              // Extract deaths position from player dict
+              let deathsPos: any[] = [];
+              if (tf && tf.players) {
+                tf.players.forEach((p: any) => {
+                  if (p && p.deaths_pos) {
+                    if (typeof p.deaths_pos === "object" && !Array.isArray(p.deaths_pos)) {
+                      Object.keys(p.deaths_pos).forEach(x => {
+                        Object.keys(p.deaths_pos[x]).forEach(y => {
+                          deathsPos.push({
+                            x: parseInt(x, 10),
+                            y: parseInt(y, 10),
+                            player: p,
+                            isRadiant: p.player_slot < 128,
+                            killer: tf.players.find((k: any) => k?.killed && HEROES[p.hero_id as keyof typeof HEROES] && k.killed[HEROES[p.hero_id as keyof typeof HEROES]?.name])
+                          });
+                        });
+                      });
+                    } else if (Array.isArray(p.deaths_pos)) {
+                        // Already flat
+                        deathsPos = deathsPos.concat(p.deaths_pos);
+                    }
+                  }
+                });
+              }
+
+              if (deathsPos.length === 0) return null;
+
+              const avgX = deathsPos.reduce((acc: number, m: any) => acc + m.x, 0) / deathsPos.length;
+              const avgY = deathsPos.reduce((acc: number, m: any) => acc + m.y, 0) / deathsPos.length;
+              const avgPx = Math.min(100, Math.max(0, (avgX / 127) * 100));
+              const avgPy = Math.min(100, Math.max(0, 100 - (avgY / 127) * 100));
               const isRadiantWon = tf.radiant_gold_advantage_delta > 0;
+
               return (
-                <div style={{
-                  position: "absolute", left: `${px}%`, top: `${py}%`,
-                  zIndex: 4, transform: "translate(-50%, -50%)",
-                  display: "flex", flexDirection: "column", alignItems: "center", pointerEvents: "none"
-                }}>
-                  {isRadiantWon ? <IconRadiant style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(102,187,106,0.8))" }} /> : <IconDire style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(244,67,54,0.8))" }} />}
-                  <div style={{ color: "var(--accent-gold)", fontWeight: "bold", fontSize: "0.85rem", textShadow: "0 0 4px #000", marginTop: "2px" }}>
-                    {Math.abs(tf.radiant_gold_advantage_delta)}
+                <>
+                  <div style={{
+                    position: "absolute", left: `${avgPx}%`, top: `${avgPy}%`,
+                    zIndex: 4, transform: "translate(-50%, -50%)",
+                    display: "flex", flexDirection: "column", alignItems: "center", pointerEvents: "none"
+                  }}>
+                    {isRadiantWon ? <IconRadiant style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(102,187,106,0.8))" }} /> : <IconDire style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(244,67,54,0.8))" }} />}
+                    <div style={{ color: "var(--accent-gold)", fontWeight: "bold", fontSize: "0.85rem", textShadow: "0 0 4px #000", marginTop: "2px" }}>
+                      {Math.abs(tf.radiant_gold_advantage_delta || 0)}
+                    </div>
                   </div>
-                </div>
+
+                  {deathsPos.map((m: any, i: number) => {
+                    const px = Math.min(100, Math.max(0, (m.x / 127) * 100));
+                    const py = Math.min(100, Math.max(0, 100 - (m.y / 127) * 100));
+                    const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
+                    
+                    return (
+                      <div key={i} className="map-icon-hover" style={{
+                        position: "absolute", left: `${px}%`, top: `${py}%`,
+                        width: "24px", height: "24px", zIndex: 5,
+                        transform: "translate(-50%, -50%)",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        cursor: "pointer",
+                        borderRadius: "50%",
+                        border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
+                        overflow: "hidden",
+                        background: "#000"
+                      }}>
+                        {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "8px", height: "8px", background: m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)", borderRadius: "50%" }} />}
+                        
+                        <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
+                          <PlayerCell p={m.player} />
+                          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
+                          {m.killer ? <PlayerCell p={m.killer} /> : <span style={{ color: "var(--text-muted)" }}>Unknown</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
               );
             })()}
-
-            {/* Individual Deaths */}
-            {tf.deaths_pos.map((m: any, i: number) => {
-               const px = Math.min(100, Math.max(0, (m.x / 127) * 100));
-               const py = Math.min(100, Math.max(0, (m.y / 127) * 100));
-               const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
-               
-               return (
-                 <div key={i} className="map-icon-hover" style={{
-                   position: "absolute", left: `${px}%`, top: `${py}%`,
-                   width: "24px", height: "24px", zIndex: 5,
-                   transform: "translate(-50%, -50%)",
-                   display: "flex", alignItems: "center", justifyContent: "center",
-                   cursor: "pointer",
-                   borderRadius: "50%",
-                   border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
-                   overflow: "hidden",
-                   background: "#000"
-                 }}>
-                   {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "8px", height: "8px", background: m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)", borderRadius: "50%" }} />}
-                   
-                   <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
-                     <PlayerCell p={m.player} />
-                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
-                     {m.killer ? <PlayerCell p={m.killer} /> : <span style={{ color: "var(--text-muted)" }}>Unknown</span>}
-                   </div>
-                 </div>
-               );
-            })}
           </div>
           
           <div style={{ textAlign: "center" }}>
@@ -1926,7 +1952,10 @@ export function ChatTab({ chat, allPlayers }: { chat: any[]; allPlayers: any[] }
 
   const getPlayer = (slot: number) => allPlayers.find((p: any) => p.player_slot === slot);
   const isRadiant = (slot: number) => (slot ?? 0) < 128;
-  const getCW = (id: string) => chatWheel[id] || {};
+  const getCW = (id: string) => {
+    if (chatWheel[id]) return chatWheel[id];
+    return Object.values(chatWheel).find((v: any) => v.message === id || v.id?.toString() === id?.toString() || v.name === id) || {};
+  };
 
   // Spam detection
   const processed = useMemo(() => {
@@ -2030,7 +2059,11 @@ export function ChatTab({ chat, allPlayers }: { chat: any[]; allPlayers: any[] }
           let messageContent: React.ReactNode = msg.key;
           if (msg.type === 'chatwheel') {
             const cw = getCW(msg.key);
-            messageContent = <><span style={{ marginRight: '5px' }}>🔊</span> {cw.message || cw.label || `dota_chatwheel_message_${msg.key}`}</>;
+            let text = cw.name || msg.key;
+            text = text.replace('dota_chatwheel_message_', '');
+            text = text.replace(/([A-Z])/g, ' $1').trim();
+            text = text.charAt(0).toUpperCase() + text.slice(1);
+            messageContent = <><span style={{ marginRight: '5px' }}>🔊</span> {text}</>;
           }
 
           // Target
@@ -2327,136 +2360,143 @@ export function LogTab({ allPlayers, matchData }: { allPlayers: any[]; matchData
 }
 
 // ================ STORY TAB ================
-export function StoryTab({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
-  const formatTime = (t: number) => {
-    const neg = t < 0; const abs = Math.abs(t);
-    return `${neg ? '-' : ''}${Math.floor(abs / 60)}:${(abs % 60).toString().padStart(2, '0')}`;
+export function StoryTab({ matchData }: { matchData: any }) {
+  const { match, players } = matchData;
+  const allPlayers = match.players || players || [];
+  const duration = match.duration || 0;
+  const gameDate = new Date((match.start_time || 0) * 1000).toLocaleDateString();
+  const durMins = Math.floor(duration / 60);
+
+  const getHeroImage = (img_name: string) => `/assets/images/dota2/heroes/${img_name}.png`;
+  const formatTime = (seconds: number) => {
+    const absSeconds = Math.abs(seconds);
+    const m = Math.floor(absSeconds / 60);
+    const s = Math.floor(absSeconds % 60);
+    return `${seconds < 0 ? '-' : ''}${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  const getHero = (slot: number) => {
-    const p = allPlayers.find((x: any) => x.player_slot === slot);
-    return p ? HEROES[p.hero_id as keyof typeof HEROES] : null;
+  const HeroInline = ({ heroId, slot }: { heroId: number, slot: number }) => {
+    const hero = Object.values(HEROES).find((h: any) => h.id === heroId) as any;
+    const isRadiant = slot < 128;
+    return <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontWeight: 'bold', color: isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
+      {hero && <img src={getHeroImage(hero.img_name)} style={{ width: 24, height: 14, objectFit: 'cover', borderRadius: 2 }} />}
+      {hero ? hero.name : 'Unknown Hero'}
+    </span>;
   };
-  const getHeroByIdx = (idx: number) => {
-    const p = allPlayers[idx];
-    return p ? HEROES[p.hero_id as keyof typeof HEROES] : null;
-  };
-  const isRadiantSlot = (slot: number) => (slot ?? 0) < 128;
-
-  const HeroInline = ({ heroId, slot }: { heroId?: number; slot?: number }) => {
-    const hero = heroId ? HEROES[heroId as keyof typeof HEROES] : (slot !== undefined ? getHero(slot) : null);
-    if (!hero) return <span style={{ color: 'var(--text-muted)' }}>Unknown</span>;
-    const rad = slot !== undefined ? isRadiantSlot(slot) : heroId !== undefined && allPlayers.find((p: any) => p.hero_id === heroId)?.player_slot < 128;
-    return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
-        <img src={getHeroImage(hero.img_name || '')} style={{ width: 20, height: 20, borderRadius: '50%', verticalAlign: 'middle' }} />
-        <span style={{ color: rad ? 'var(--radiant-green)' : 'var(--dire-red)', fontWeight: 600 }}>{hero.name}</span>
-      </span>
-    );
-  };
-
-  const GoldInline = ({ amount }: { amount: number }) => (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
-      <span style={{ color: '#ffd700' }}>💰</span>
-      <span style={{ color: '#ffd700', fontWeight: 'bold' }}>{amount.toLocaleString()}</span>
-    </span>
-  );
 
   const TeamInline = ({ isRadiant }: { isRadiant: boolean }) => (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-      {isRadiant ? <IconRadiant style={{ width: 16, height: 16 }} /> : <IconDire style={{ width: 16, height: 16 }} />}
-      <span style={{ color: isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)', fontWeight: 600 }}>{isRadiant ? 'Radiant' : 'Dire'}</span>
+    <span style={{ fontWeight: 'bold', color: isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
+      {isRadiant ? 'Radiant' : 'Dire'}
     </span>
   );
 
-  // Parse data
-  const duration = matchData.duration || 0;
-  const radiantWin = matchData.radiant_win;
-  const startTime = matchData.start_time;
-  const objectives = matchData.objectives || [];
-  const teamfights = matchData.teamfights || [];
-  const chat = matchData.chat || [];
-  const radGoldAdv = matchData.radiant_gold_adv ? (typeof matchData.radiant_gold_adv === 'string' ? JSON.parse(matchData.radiant_gold_adv) : matchData.radiant_gold_adv) : [];
-
-  // Events
-  const storyElements: React.ReactNode[] = [];
-  let keyIdx = 0;
-
-  // Intro
-  const gameDate = startTime ? new Date(startTime * 1000).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'an unknown date';
-  const durMins = Math.floor(duration / 60);
-  storyElements.push(
-    <div key={keyIdx++} className="glass-surface" style={{ padding: '1.5rem', marginBottom: '1rem', fontSize: '0.95rem', lineHeight: 1.8 }}>
-      On {gameDate}, two teams decided to play a game of Dota 2. Little did they know, the game would last about {durMins} minutes.
-    </div>
+  const GoldInline = ({ amount }: { amount: number }) => (
+    <span style={{ fontWeight: 'bold', color: 'var(--accent-gold)' }}>
+      {amount.toLocaleString()} 🪙
+    </span>
   );
 
-  // First blood
-  const fb = objectives.find((o: any) => o.type === 'CHAT_MESSAGE_FIRSTBLOOD');
-  if (fb) {
-    const killer = allPlayers.find((p: any) => p.player_slot === fb.player_slot);
-    const killerHero = killer ? HEROES[killer.hero_id as keyof typeof HEROES] : null;
-    // Try to find victim from kills_log
-    let victim: any = null;
-    if (killer?.kills_log?.length) {
-      const firstKill = killer.kills_log[0];
-      const victimHeroObj = Object.values(HEROES).find((h: any) => `npc_dota_hero_${h.img_name}` === firstKill.key || h.img_name === firstKill.key);
-      if (victimHeroObj) {
-        victim = allPlayers.find((p: any) => p.hero_id === (victimHeroObj as any).id);
-      }
-    }
-    storyElements.push(
-      <div key={keyIdx++} style={{ padding: '0.5rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
-        First blood was drawn when {killerHero ? <HeroInline heroId={killer.hero_id} slot={killer.player_slot} /> : 'a hero'} killed {victim ? <HeroInline heroId={victim.hero_id} slot={victim.player_slot} /> : 'an enemy'} at {formatTime(fb.time)}.
+  const storyEvents: any[] = [];
+
+  // Intro
+  storyEvents.push({
+    time: -90,
+    render: () => (
+      <div className="glass-surface" style={{ padding: '1.5rem', marginBottom: '1rem', fontSize: '0.95rem', lineHeight: 1.8 }}>
+        On {gameDate}, two teams decided to play a game of Dota 2. Little did they know, the game would last about {durMins} minutes.
       </div>
-    );
-  }
+    )
+  });
+
+  // Parse objectives
+  const objectives = typeof match.objectives === 'string' ? JSON.parse(match.objectives) : (match.objectives || []);
+  const teamfights = typeof match.teamfights === 'string' ? JSON.parse(match.teamfights) : (match.teamfights || []);
+  const radGoldAdv = typeof match.radiant_gold_adv === 'string' ? JSON.parse(match.radiant_gold_adv) : (match.radiant_gold_adv || []);
+
+  objectives.forEach((obj: any) => {
+    if (obj.type === 'CHAT_MESSAGE_FIRSTBLOOD') {
+      const killer = allPlayers.find((p: any) => p.player_slot === obj.player_slot);
+      let victim: any = null;
+      if (killer?.kills_log?.length) {
+        const firstKill = killer.kills_log[0];
+        const victimHeroObj = Object.values(HEROES).find((h: any) => `npc_dota_hero_${h.img_name}` === firstKill.key || h.img_name === firstKill.key);
+        if (victimHeroObj) victim = allPlayers.find((p: any) => p.hero_id === (victimHeroObj as any).id);
+      }
+      storyEvents.push({
+        time: obj.time || 0,
+        render: () => (
+          <div style={{ padding: '0.5rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+            First blood was drawn when {killer ? <HeroInline heroId={killer.hero_id} slot={killer.player_slot} /> : 'a hero'} killed {victim ? <HeroInline heroId={victim.hero_id} slot={victim.player_slot} /> : 'an enemy'} at {formatTime(obj.time || 0)}.
+          </div>
+        )
+      });
+    } else if (obj.type === 'building_kill' || obj.type === 'CHAT_MESSAGE_TOWER_KILL' || obj.type === 'CHAT_MESSAGE_TOWER_DENY') {
+      const key = obj.key || '';
+      const isGood = key.indexOf('goodguys') !== -1 || obj.team === 2;
+      const isDeny = obj.type === 'CHAT_MESSAGE_TOWER_DENY';
+      const part = key ? (key.split('guys_')[1] || '').replace(/_/g, ' ') : 'a tower';
+      storyEvents.push({
+        time: obj.time || 0,
+        render: () => (
+          <div style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+             {isDeny ? 'A' : <TeamInline isRadiant={isGood} />} {isDeny ? 'tower' : part} was {isDeny ? 'denied' : 'destroyed'} at {formatTime(obj.time || 0)}.
+          </div>
+        )
+      });
+    } else if (obj.type === 'CHAT_MESSAGE_ROSHAN_KILL') {
+      const isGood = obj.team === 2;
+      storyEvents.push({
+        time: obj.time || 0,
+        render: () => (
+          <div style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+             Roshan fell to <TeamInline isRadiant={isGood} /> at {formatTime(obj.time || 0)}.
+          </div>
+        )
+      });
+    } else if (obj.type === 'CHAT_MESSAGE_AEGIS') {
+      const player = allPlayers.find((p: any) => p.player_slot === obj.player_slot);
+      storyEvents.push({
+        time: obj.time || 0,
+        render: () => (
+          <div style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+             The Aegis was picked up by {player ? <HeroInline heroId={player.hero_id} slot={player.player_slot} /> : 'a hero'} at {formatTime(obj.time || 0)}.
+          </div>
+        )
+      });
+    }
+  });
 
   // Teamfights
-  const parsedTf = typeof teamfights === 'string' ? JSON.parse(teamfights) : teamfights;
-  if (Array.isArray(parsedTf)) {
-    parsedTf.forEach((tf: any) => {
+  if (Array.isArray(teamfights)) {
+    teamfights.forEach((tf: any) => {
       const goldDelta = tf.radiant_gold_advantage_delta || 0;
       const radWon = goldDelta > 0;
-
-      // Get dead heroes
-      const deadHeroes: string[] = [];
-      const killerHeroes: string[] = [];
+      const deadHeroes: React.ReactNode[] = [];
       (tf.players || []).forEach((p: any, i: number) => {
         if (p && p.deaths > 0) {
-          const h = getHeroByIdx(i);
-          if (h) deadHeroes.push(h.name);
-        }
-        if (p && (p.damage || 0) > 0) {
-          const h = getHeroByIdx(i);
-          if (h) killerHeroes.push(h.name);
+          const slot = i < 5 ? i : i - 5 + 128;
+          const playerInfo = allPlayers.find((pObj: any) => pObj.player_slot === slot);
+          if (playerInfo) {
+              deadHeroes.push(<HeroInline key={i} heroId={playerInfo.hero_id} slot={playerInfo.player_slot} />);
+          }
         }
       });
 
-      storyElements.push(
-        <div key={keyIdx++} style={{ padding: '0.5rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
-          <TeamInline isRadiant={radWon} /> won a teamfight ({formatTime(tf.start)} - {formatTime(tf.end)}),
-          resulting in a net worth increase of <GoldInline amount={Math.abs(goldDelta)} />.
-          {deadHeroes.length > 0 && <> {deadHeroes.join(', ')} died in the fight.</>}
-        </div>
-      );
+      storyEvents.push({
+        time: tf.start,
+        render: () => (
+          <div style={{ padding: '0.5rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
+            <TeamInline isRadiant={radWon} /> won a teamfight ({formatTime(tf.start)} - {formatTime(tf.end)}),
+            resulting in a net worth increase of <GoldInline amount={Math.abs(goldDelta)} />.
+            {deadHeroes.length > 0 && <> {deadHeroes.map((el, idx) => <React.Fragment key={idx}>{idx > 0 && ", "}{el}</React.Fragment>)} died in the fight.</>}
+          </div>
+        )
+      });
     });
   }
 
-  // Building kills
-  objectives.filter((o: any) => o.type === 'building_kill').forEach((o: any) => {
-    const key = o.key || '';
-    const isGood = key.indexOf('goodguys') !== -1;
-    const part = (key.split('guys_')[1] || '').replace(/_/g, ' ');
-    storyElements.push(
-      <div key={keyIdx++} style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8 }}>
-        <TeamInline isRadiant={isGood} />'s {part} was destroyed at {formatTime(o.time)}.
-      </div>
-    );
-  });
-
-  // Gold bars at 10 min intervals
-  const intervals = [10, 20, 30, 40];
+  // Intervals
+  const intervals = [10, 20, 30, 40, 50, 60].filter(m => m * 60 <= duration);
   intervals.forEach(min => {
     const idx = min;
     if (radGoldAdv.length > idx) {
@@ -2472,55 +2512,70 @@ export function StoryTab({ matchData, allPlayers }: { matchData: any; allPlayers
       const total = radTotal + direTotal || 1;
       const radPct = (radTotal / total) * 100;
 
-      storyElements.push(
-        <div key={keyIdx++} style={{ margin: '1.5rem 0' }}>
-          <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{min} Minutes In</div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <span><GoldInline amount={radTotal} /></span>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{Math.round(Math.abs(diff) / total * 100)}% / <GoldInline amount={Math.abs(diff)} /> Diff</span>
-            <span><GoldInline amount={direTotal} /></span>
-          </div>
-          <div style={{ width: '100%', height: '8px', background: 'var(--dire-red)', borderRadius: '4px', overflow: 'hidden' }}>
-            <div style={{ width: `${radPct}%`, height: '100%', background: 'var(--radiant-green)', borderRadius: '4px 0 0 4px', position: 'relative' }}>
-              <div style={{ position: 'absolute', right: 0, top: '-3px', width: '3px', height: '14px', background: '#fff', borderRadius: '2px' }} />
+      storyEvents.push({
+        time: min * 60,
+        render: () => (
+          <div style={{ margin: '1.5rem 0' }}>
+            <div style={{ fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '0.5rem' }}>{min} Minutes In</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <span><GoldInline amount={radTotal} /></span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{Math.round(Math.abs(diff) / total * 100)}% / <GoldInline amount={Math.abs(diff)} /> Diff</span>
+              <span><GoldInline amount={direTotal} /></span>
+            </div>
+            <div style={{ width: '100%', height: '8px', background: 'var(--dire-red)', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ width: `${radPct}%`, height: '100%', background: 'var(--radiant-green)', borderRadius: '4px 0 0 4px', position: 'relative' }}>
+                <div style={{ position: 'absolute', right: 0, top: '-3px', width: '3px', height: '14px', background: '#fff', borderRadius: '2px' }} />
+              </div>
             </div>
           </div>
-        </div>
-      );
+        )
+      });
     }
   });
 
-  // Match result
+  // End of match
   const radKills = allPlayers.filter((p: any) => p.player_slot < 128).reduce((a: number, p: any) => a + (p.kills || 0), 0);
   const direKills = allPlayers.filter((p: any) => p.player_slot >= 128).reduce((a: number, p: any) => a + (p.kills || 0), 0);
 
-  storyElements.push(
-    <div key={keyIdx++} style={{ padding: '1rem 0', fontSize: '1rem', lineHeight: 1.8 }}>
-      The match ended in a <TeamInline isRadiant={radiantWin} /> victory at {formatTime(duration)} with a score of{' '}
-      <span style={{ color: 'var(--radiant-green)', fontWeight: 'bold' }}>{radKills}</span>{' '}to{' '}
-      <span style={{ color: 'var(--dire-red)', fontWeight: 'bold' }}>{direKills}</span>.
-    </div>
-  );
-
-  // Chat messages (sample last few)
-  const textChats = (typeof chat === 'string' ? JSON.parse(chat) : (chat || [])).filter((c: any) => c.type === 'chat');
-  const endChats = textChats.filter((c: any) => c.time > duration - 60);
-  endChats.forEach((c: any) => {
-    const player = allPlayers.find((p: any) => p.player_slot === c.player_slot);
-    const hero = player ? HEROES[player.hero_id as keyof typeof HEROES] : null;
-    storyElements.push(
-      <div key={keyIdx++} style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8, fontStyle: 'italic' }}>
-        "{c.key}", {hero ? <HeroInline heroId={player.hero_id} slot={player.player_slot} /> : 'someone'} said.
+  storyEvents.push({
+    time: duration,
+    render: () => (
+      <div className="glass-surface" style={{ padding: '1.5rem', marginTop: '1rem', fontSize: '0.95rem', lineHeight: 1.8, borderLeft: `4px solid ${match.radiant_win ? 'var(--radiant-green)' : 'var(--dire-red)'}` }}>
+        <div style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '0.5rem', color: match.radiant_win ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
+          {match.radiant_win ? 'Radiant' : 'Dire'} Victory
+        </div>
+        The game ended at {durMins} minutes with a final score of <span style={{ color: 'var(--radiant-green)' }}>{radKills}</span> to <span style={{ color: 'var(--dire-red)' }}>{direKills}</span>.
       </div>
-    );
+    )
   });
+
+  const chat = match.chat || [];
+  const textChats = (typeof chat === 'string' ? JSON.parse(chat) : chat).filter((c: any) => c.type === 'chat');
+  textChats.forEach((c: any) => {
+    const player = allPlayers.find((p: any) => p.player_slot === c.player_slot);
+    storyEvents.push({
+      time: c.time || duration,
+      render: () => (
+        <div style={{ padding: '0.3rem 0', fontSize: '0.95rem', lineHeight: 1.8, fontStyle: 'italic' }}>
+          "{c.key}", {player ? <HeroInline heroId={player.hero_id} slot={player.player_slot} /> : 'someone'} said.
+        </div>
+      )
+    });
+  });
+
+  storyEvents.sort((a, b) => a.time - b.time);
 
   return (
     <div className="animation-fade-in" style={{ padding: '1rem 0', maxWidth: '900px' }}>
-      {storyElements}
+      {storyEvents.map((evt, idx) => (
+        <React.Fragment key={idx}>
+          {evt.render()}
+        </React.Fragment>
+      ))}
     </div>
   );
 }
+
 
 // ================ GRAPHS TAB ================
 export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
