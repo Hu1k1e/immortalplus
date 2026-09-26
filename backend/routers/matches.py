@@ -5,7 +5,7 @@ Match history and match detail endpoints.
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlmodel import select
 
@@ -283,26 +283,103 @@ async def test_stratz(match_id: int, session: Session = Depends(get_session)):
 
 
 @router.post("/{match_id}/request-parse")
-async def request_parse(match_id: int, session: Session = Depends(get_session)):
-    """Request OpenDota and Stratz to parse a match replay."""
+async def request_parse(match_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    """
+    Request a replay parse for this match.
+    Strategy:
+    1. Immediately submits to OpenDota (for their queue, low priority without API key).
+    2. If the match has cluster/replay_salt data (from OpenDota API), also kicks off a
+       local parse in the background using the odota/parser container — this is FAST
+       (usually 10-30 seconds) and doesn't depend on OpenDota's queue.
+    """
     settings = session.exec(select(UserSettings)).first()
+    match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+
+    # Ensure we have cluster/salt from OpenDota to attempt a local parse
+    cluster, salt = None, None
     od_client = get_opendota_client(settings.opendota_api_key if settings else None)
-    
-    from services.stratz import get_stratz_client
-    stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
 
     try:
-        od_job = None
-        if od_client:
-            od_job = await od_client.request_parse(match_id)
-            
-        stratz_job = False
-        if stratz_client:
-            stratz_job = await stratz_client.request_parse(match_id)
-            
-        return {"status": "parse_requested", "opendota_job": od_job, "stratz_requested": stratz_job}
+        # Always submit to OpenDota too (they'll handle it eventually or with API key = fast)
+        od_job = await od_client.request_parse(match_id)
+        logger.info(f"Submitted parse request to OpenDota for {match_id}: {od_job}")
     except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.warning(f"OpenDota parse request failed for {match_id}: {e}")
+        od_job = None
+
+    # Get cluster/salt: prefer from opendota_raw in DB, fallback to fresh API call
+    try:
+        import json as _json
+        raw = None
+        if match and match.opendota_raw:
+            raw = _json.loads(match.opendota_raw)
+        
+        if not raw:
+            raw = await od_client.get_match(match_id)
+        
+        cluster = raw.get("cluster")
+        salt = raw.get("replay_salt")
+    except Exception as e:
+        logger.warning(f"Could not get cluster/salt for {match_id}: {e}")
+
+    if cluster and salt:
+        # Kick off local parse in background — results update the DB
+        background_tasks.add_task(_do_local_parse_and_update, match_id, cluster, salt, settings)
+        return {
+            "status": "parse_started",
+            "method": "local_parser",
+            "opendota_job": od_job,
+            "message": "Local parse started — check back in ~30 seconds"
+        }
+    else:
+        return {
+            "status": "parse_requested",
+            "method": "opendota_queue",
+            "opendota_job": od_job,
+            "message": "Queued on OpenDota — may take a few minutes"
+        }
+
+
+async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int, settings):
+    """Background task: parse the replay locally and update the match record."""
+    from database import SessionLocal
+    from services.local_parser import parse_match_locally
+    from services.parser_aggregator import aggregate_parser_output
+    from services.sync import fetch_match_details
+    
+    logger.info(f"Background local parse starting for match {match_id} (cluster={cluster}, salt={salt})")
+    
+    try:
+        raw_lines = await parse_match_locally(match_id, cluster, salt)
+        if not raw_lines:
+            logger.error(f"Local parse returned no data for {match_id}")
+            return
+        
+        local_data = aggregate_parser_output(raw_lines, {})
+        if not local_data:
+            logger.error(f"Aggregator returned no data for {match_id}")
+            return
+        
+        # Now re-fetch from OpenDota to merge with local parse data
+        session = SessionLocal()
+        try:
+            match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+            if match:
+                # Mark as parsed so the frontend polling detects completion
+                match.is_parsed = True
+                session.commit()
+                # Now run full fetch_match_details which will merge local parse with OD data
+                await fetch_match_details(session, match, settings)
+                session.refresh(match)
+                logger.info(f"Local parse complete for {match_id} — is_parsed={match.is_parsed}")
+            else:
+                logger.warning(f"Match {match_id} not found in DB after local parse")
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.error(f"Background local parse failed for {match_id}: {e}", exc_info=True)
+
 
 
 @router.post("/{match_id}/refetch")

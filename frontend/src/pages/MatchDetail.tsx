@@ -54,22 +54,26 @@ export default function MatchDetail() {
   };
 
   useEffect(() => {
-    let interval: any;
-    
     if (!matchId || matchId === 'undefined') return;
 
-    const load = async () => {
-      const data = await fetchMatchData();
-      if (data && !data.is_parsed && (parseState === 'requested' || parseState === 'requesting')) {
-        interval = setInterval(() => fetchMatchData(true), 5000);
+    // Initial load
+    fetchMatchData();
+  }, [matchId]);
+
+  // Separate effect for polling when parse is in progress
+  useEffect(() => {
+    if (parseState !== 'requested' && parseState !== 'requesting') return;
+    if (!matchId || matchId === 'undefined') return;
+
+    const interval = setInterval(async () => {
+      const data = await fetchMatchData(true);
+      // fetchMatchData already clears parseState and localStorage when is_parsed=true
+      if (data && data.is_parsed) {
+        clearInterval(interval);
       }
-    };
-    
-    load();
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    }, 5000);
+
+    return () => clearInterval(interval);
   }, [matchId, parseState]);
 
   const handleRequestParse = async () => {
