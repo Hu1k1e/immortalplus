@@ -35,12 +35,25 @@ export const POSITION_INFO: Record<number, PositionInfo> = {
 };
 
 /**
- * Estimate positions 1-5 for one team's 5 players. No draft-order or
- * explicit position field exists anywhere in this app's data pipeline, so
- * this is a documented heuristic, not a real reconstruction: the unique
- * lane_role===2 (Mid Lane) player is Position 2; the remaining four are
- * ranked by end-of-game net worth, highest to lowest, and assigned Carry (1)
- * > Offlane (3) > Soft Support (4) > Hard Support (5) in that order — the
+ * Real position (1-5), when OpenDota has computed it for this player —
+ * `position_est` is a genuine field in the stored player data (not
+ * something this app derives), so it's preferred whenever present.
+ */
+export function getPlayerPosition(player: any, teamPlayers: any[]): number | undefined {
+  if (player?.position_est >= 1 && player?.position_est <= 5) return player.position_est;
+  const estimated = estimateTeamPositions(teamPlayers);
+  return estimated.get(player.player_slot);
+}
+
+/**
+ * Estimate positions 1-5 for one team's 5 players. Fallback only for when
+ * `position_est` isn't populated (e.g. matches synced before OpenDota
+ * computed it, or never fully parsed) — no draft-order or explicit position
+ * field exists anywhere else in this app's data pipeline, so this is a
+ * documented heuristic, not a real reconstruction: the unique lane_role===2
+ * (Mid Lane) player is Position 2; the remaining four are ranked by
+ * end-of-game net worth, highest to lowest, and assigned Carry (1) >
+ * Offlane (3) > Soft Support (4) > Hard Support (5) in that order — the
  * same convention many stat sites fall back to without real position data.
  */
 export function estimateTeamPositions(teamPlayers: any[]): Map<number, number> {

@@ -5,6 +5,7 @@ import MatchMap from './MatchMap';
 import MatchupGrid from './MatchupGrid';
 import TowersLaneRow from './TowersLaneRow';
 import DraftBuildsKillsRow from './DraftBuildsKillsRow';
+import BuildsPanel from './BuildsPanel';
 import PlaybackSection from './PlaybackSection';
 
 interface MatchOverviewProps {
@@ -42,6 +43,7 @@ export default function MatchOverview({
       <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} />
       <TowersLaneRow matchData={matchData} allPlayers={allPlayers} />
       <DraftBuildsKillsRow matchData={matchData} allPlayers={allPlayers} />
+      <BuildsPanel matchData={matchData} allPlayers={allPlayers} />
       <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} />
     </div>
   );
