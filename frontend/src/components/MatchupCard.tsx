@@ -1,31 +1,31 @@
+import { useState } from 'react';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
 import { getRankBadge } from '../lib/rank';
-import { getRoleInfo } from '../lib/roles';
+import { POSITION_INFO, estimateTeamPositions } from '../lib/roles';
 import { computePerformanceScore } from '../lib/performanceIndicator';
 
 interface MatchupCardProps {
   player: any;
   allPlayers: any[];
-  netWorthDelta: number; // this player's net worth minus their lane opponent's
-  maxDelta: number; // for bar scaling within the whole matchup grid
   onClick?: () => void;
 }
 
-// Minimal glyphs standing in for Stratz's role/attack-type badges — not a
-// literal asset match, just a same-shape-language approximation per lane role.
-const ROLE_ICON_PATHS: Record<string, string> = {
-  SAFE: 'M4 20 L16 8 M16 8 L13 8 M16 8 L16 11', // sword slash
+// Minimal glyphs standing in for Stratz's position badges — not a literal
+// asset match, just a same-shape-language approximation per position.
+const POSITION_ICON_PATHS: Record<string, string> = {
+  CARRY: 'M4 20 L16 8 M16 8 L13 8 M16 8 L16 11', // sword slash
   MID: 'M12 4 L14 10 L20 10 L15 14 L17 20 L12 16 L7 20 L9 14 L4 10 L10 10 Z', // star
   OFF: 'M12 3 L20 6 V11 C20 16 16.5 19.5 12 21 C7.5 19.5 4 16 4 11 V6 Z', // shield
-  JNG: 'M12 3 C8 6 6 10 6 13 A6 6 0 0 0 18 13 C18 10 16 6 12 3 Z', // leaf/jungle
+  SOFT4: 'M12 3 C8 6 6 10 6 13 A6 6 0 0 0 18 13 C18 10 16 6 12 3 Z', // leaf
+  HARD5: 'M2 12 C2 12 6 5 12 5 C18 5 22 12 22 12 C22 12 18 19 12 19 C6 19 2 12 2 12 Z M12 9 a3 3 0 1 0 0 6 a3 3 0 1 0 0 -6 Z', // eye/ward
 };
 
-function RoleIcon({ role, size = 11 }: { role: { short: string; color: string }; size?: number }) {
-  const path = ROLE_ICON_PATHS[role.short];
-  if (!path) return <span style={{ width: size, height: size, borderRadius: '50%', background: role.color, display: 'inline-block' }} />;
+function PositionIcon({ short, size = 11 }: { short: string; size?: number }) {
+  const path = POSITION_ICON_PATHS[short];
+  if (!path) return null;
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={role.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d={path} />
     </svg>
   );
@@ -40,16 +40,22 @@ function GoldIcon({ size = 10 }: { size?: number }) {
   );
 }
 
-export default function MatchupCard({ player, allPlayers, netWorthDelta, maxDelta, onClick }: MatchupCardProps) {
+export default function MatchupCard({ player, allPlayers, onClick }: MatchupCardProps) {
+  const [hovered, setHovered] = useState(false);
   const hero = HEROES[player.hero_id];
   const isRadiant = player.player_slot < 128;
   const netWorth = player.net_worth ?? player.networth ?? 0;
   const rankBadge = getRankBadge(player.rank_tier);
-  const role = getRoleInfo(player.lane_role);
-  const perf = computePerformanceScore(player, allPlayers);
 
-  const barPct = maxDelta > 0 ? Math.min(100, (Math.abs(netWorthDelta) / maxDelta) * 100) : 0;
-  const barColor = netWorthDelta >= 0 ? (isRadiant ? 'var(--radiant-green)' : '#a855f7') : 'rgba(255,255,255,0.3)';
+  const teamPlayers = allPlayers.filter((p) => (p.player_slot < 128) === isRadiant);
+  const positions = estimateTeamPositions(teamPlayers);
+  const posNum = positions.get(player.player_slot);
+  const posInfo = posNum ? POSITION_INFO[posNum] : null;
+
+  const perf = computePerformanceScore(player, allPlayers);
+  const maxAbsScore = 50;
+  const barPct = Math.min(100, (Math.abs(perf.score) / maxAbsScore) * 100);
+  const barColor = perf.score >= 0 ? (isRadiant ? 'var(--radiant-green)' : '#a855f7') : 'rgba(255,255,255,0.3)';
 
   return (
     <div
@@ -74,18 +80,32 @@ export default function MatchupCard({ player, allPlayers, netWorthDelta, maxDelt
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.4rem 0.15rem' }}>
-        <span style={{ fontSize: '0.62rem', color: netWorthDelta >= 0 ? (isRadiant ? 'var(--radiant-green)' : '#a855f7') : 'var(--text-muted)', flexShrink: 0 }}>
-          {netWorthDelta >= 0 ? '+' : ''}{Math.round(netWorthDelta)}
+      <div
+        style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.35rem 0.4rem 0.15rem' }}
+        onMouseEnter={(e) => { e.stopPropagation(); setHovered(true); }}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <span style={{ fontSize: '0.62rem', color: perf.score >= 0 ? (isRadiant ? 'var(--radiant-green)' : '#a855f7') : 'var(--text-muted)', flexShrink: 0 }}>
+          {perf.score >= 0 ? '+' : ''}{perf.score}
         </span>
         <div style={{ flex: 1, height: '3px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
           <div style={{ width: `${barPct}%`, height: '100%', background: barColor }} />
         </div>
+        {hovered && (
+          <div style={{
+            position: 'absolute', bottom: '100%', marginBottom: '4px',
+            ...(isRadiant ? { left: 0 } : { right: 0 }),
+            background: 'rgba(20,20,24,0.97)', border: '1px solid var(--border-color)', borderRadius: '4px',
+            padding: '0.3rem 0.5rem', fontSize: '0.68rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', zIndex: 30,
+          }}>
+            {perf.label}
+          </div>
+        )}
       </div>
 
-      {role && (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.1rem 0' }} title={role.label}>
-          <RoleIcon role={role} />
+      {posInfo && (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '0.1rem 0' }} title={posInfo.label}>
+          <PositionIcon short={posInfo.short} />
         </div>
       )}
 
@@ -106,7 +126,7 @@ export default function MatchupCard({ player, allPlayers, netWorthDelta, maxDelt
         {rankBadge ? (
           <img src={rankBadge} alt="rank" style={{ width: '12px', height: '12px', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         ) : (
-          <span title={`Performance percentile: ${perf.percentile}`} style={{ width: '6px', height: '6px', borderRadius: '50%', background: perf.color, flexShrink: 0 }} />
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: perf.color, flexShrink: 0 }} />
         )}
         <span style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '70px' }}>
           {player.persona || player.personaname || 'Anonymous'}

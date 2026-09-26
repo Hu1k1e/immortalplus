@@ -4,44 +4,86 @@ import AdvantageGraph from './AdvantageGraph';
 
 const LANE_NAMES: Record<number, string> = { 1: 'Bottom Lane', 2: 'Middle Lane', 3: 'Top Lane' };
 
-/** Small static snapshot map: every ward placed over the whole match, as a
- * compact visual summary (matching Stratz's cluster-of-markers mini-map)
- * rather than an interactive/controllable view. */
-function MiniMap({ allPlayers }: { allPlayers: any[] }) {
-  const markers: { left: number; top: number; type: 'obs' | 'sen' }[] = [];
-  const collect = (log: any, type: 'obs' | 'sen') => {
-    let arr = log;
-    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
-    if (Array.isArray(arr)) {
-      arr.forEach((e: any) => {
-        if (e?.x && e?.y) {
-          markers.push({
-            left: Math.min(100, Math.max(0, ((e.x - 64) / 128) * 100)),
-            top: Math.min(100, Math.max(0, (1 - ((e.y - 64) / 128)) * 100)),
-            type,
-          });
-        }
-      });
-    }
-  };
-  allPlayers.forEach((p) => { collect(p.obs_log, 'obs'); collect(p.sen_log, 'sen'); });
+// Real tower screen positions (top%/left% on a square map view), taken
+// straight from OpenDota's own frontend building-map data — not guessed.
+const RADIANT_TOWERS: { id: string; top: number; left: number }[] = [
+  { id: 't4br', top: 82, left: 12 },
+  { id: 't4tr', top: 79, left: 8 },
+  { id: 't3br', top: 83.5, left: 23 },
+  { id: 't2br', top: 85, left: 46 },
+  { id: 't1br', top: 83, left: 78 },
+  { id: 't3mr', top: 71, left: 18 },
+  { id: 't2mr', top: 63, left: 27 },
+  { id: 't1mr', top: 54, left: 38 },
+  { id: 't3tr', top: 68, left: 7 },
+  { id: 't2tr', top: 51, left: 8 },
+  { id: 't1tr', top: 35, left: 8 },
+];
+const DIRE_TOWERS: { id: string; top: number; left: number }[] = [
+  { id: 't4bd', top: 16, left: 84 },
+  { id: 't4td', top: 13, left: 81 },
+  { id: 't3bd', top: 28, left: 86 },
+  { id: 't2bd', top: 45, left: 86 },
+  { id: 't1bd', top: 60, left: 86 },
+  { id: 't3md', top: 24, left: 73 },
+  { id: 't2md', top: 34, left: 63 },
+  { id: 't1md', top: 44, left: 53 },
+  { id: 't3td', top: 11, left: 70 },
+  { id: 't2td', top: 10, left: 44 },
+  { id: 't1td', top: 10, left: 15 },
+];
+
+function towerLabel(id: string): string {
+  const tier = id[1];
+  const laneChar = id[2];
+  if (tier === '4') return laneChar === 'b' ? 'Bottom Base Tower' : 'Top Base Tower';
+  const laneName = laneChar === 't' ? 'Top' : laneChar === 'm' ? 'Mid' : 'Bottom';
+  return `Tier ${tier} ${laneName} Tower`;
+}
+
+// Bit i = 1 means the tower is still standing (Valve's tower_status
+// convention) — same slice-from-bit-5-of-16 logic OpenDota's own frontend
+// uses to line the bitmask up with the building position list above.
+function towerStatusBits(status: number | null | undefined): string {
+  if (status == null) return '1'.repeat(11);
+  return status.toString(2).padStart(16, '0').slice(5);
+}
+
+/** Real map geometry (Stratz's own asset) with each of the 22 towers
+ * plotted at its true position and colored by standing/destroyed status
+ * from the match's tower_status bitmasks. */
+function MiniMap({ matchData }: { matchData: any }) {
+  let raw: any = {};
+  try {
+    raw = typeof matchData?.opendota_raw === 'string' ? JSON.parse(matchData.opendota_raw) : (matchData?.opendota_raw || {});
+  } catch { raw = {}; }
+
+  const radiantBits = towerStatusBits(raw.tower_status_radiant);
+  const direBits = towerStatusBits(raw.tower_status_dire);
+
+  const renderTower = (t: { id: string; top: number; left: number }, standing: boolean, isRadiant: boolean) => (
+    <div
+      key={t.id}
+      title={`${towerLabel(t.id)} — ${isRadiant ? 'Radiant' : 'Dire'} — ${standing ? 'Standing' : 'Destroyed'}`}
+      style={{
+        position: 'absolute', top: `${t.top}%`, left: `${t.left}%`, transform: 'translate(-50%,-50%)',
+        width: '7px', height: '7px', borderRadius: '2px',
+        background: standing ? (isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)') : 'rgba(255,255,255,0.15)',
+        border: '1px solid rgba(0,0,0,0.6)',
+      }}
+    />
+  );
 
   return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#0a0a0a' }}>
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#0a0d12' }}>
       <img
-        src="/assets/images/dota2/Game_map_7.41.jpg"
+        src="/assets/images/dota2/minimap_geometry_current.png"
         alt="Map"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.75 }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(1) hue-rotate(180deg) brightness(0.88) saturate(1.1)' }}
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
-      {markers.map((m, i) => (
-        <div key={i} style={{
-          position: 'absolute', left: `${m.left}%`, top: `${m.top}%`, transform: 'translate(-50%,-50%)',
-          width: '6px', height: '6px', borderRadius: m.type === 'obs' ? '50%' : '1px',
-          background: m.type === 'obs' ? '#3b82f6' : '#eab308',
-          border: '1px solid rgba(0,0,0,0.7)',
-        }} />
-      ))}
+      {RADIANT_TOWERS.map((t, i) => renderTower(t, radiantBits[i] === '1', true))}
+      {DIRE_TOWERS.map((t, i) => renderTower(t, direBits[i] === '1', false))}
     </div>
   );
 }
@@ -93,7 +135,7 @@ export default function TowersLaneRow({ matchData, allPlayers }: { matchData: an
   return (
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'stretch', marginTop: '1.5rem' }}>
       <div style={{ flex: '1 1 220px', maxWidth: '260px' }}>
-        <MiniMap allPlayers={allPlayers} />
+        <MiniMap matchData={matchData} />
       </div>
       <div className="glass-surface" style={{ padding: '1rem', flex: '2 1 420px', minWidth: '340px' }}>
         <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={240} />

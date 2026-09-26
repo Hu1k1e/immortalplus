@@ -1,13 +1,15 @@
 /**
- * Client-side approximation of a per-player "how well did they do relative
- * to the other 9 people in this match" indicator, inspired by Stratz's
- * colored performance dot. This is NOT a port of Stratz's real (proprietary,
- * unpublished) algorithm — it's a documented heuristic blending KDA,
- * GPM/XPM, and net worth, all already available per player in `all_players`.
- * Returns a percentile within the match (0-100) and a color to render it.
+ * Client-side approximation of Stratz's per-player "Performance Score"
+ * badge (the signed number + bar shown on each Matchup card, e.g. "+30"
+ * with a "Very High Performance" hover label). Stratz's real algorithm is
+ * proprietary and unreachable (Cloudflare-protected API) — this is a
+ * documented heuristic blending KDA, GPM/XPM, and net worth into a
+ * percentile among the 10 players, rescaled to roughly Stratz's observed
+ * -50..+50 range, with matching tier labels.
  */
 export interface PerformanceResult {
-  percentile: number;
+  score: number; // roughly -50..+50, centered on 0
+  label: string;
   color: string;
 }
 
@@ -22,20 +24,33 @@ function rawScore(p: any): number {
   return kda * 8 + gpm * 0.05 + xpm * 0.03 + netWorth * 0.002;
 }
 
+export function getPerformanceLabel(score: number): string {
+  if (score >= 30) return 'Very High Performance';
+  if (score >= 15) return 'High Performance';
+  if (score >= 5) return 'Above Average Performance';
+  if (score > -5) return 'Average Performance';
+  if (score > -15) return 'Below Average Performance';
+  if (score > -30) return 'Low Performance';
+  return 'Very Low Performance';
+}
+
 export function computePerformanceScore(player: any, allPlayers: any[]): PerformanceResult {
   if (!player || !allPlayers || allPlayers.length < 2) {
-    return { percentile: 50, color: 'var(--text-muted)' };
+    return { score: 0, label: 'Average Performance', color: 'var(--text-muted)' };
   }
 
   const scored = allPlayers.map((p) => ({ slot: p.player_slot, score: rawScore(p) }));
   scored.sort((a, b) => a.score - b.score);
   const idx = scored.findIndex((s) => s.slot === player.player_slot);
-  if (idx === -1) return { percentile: 50, color: 'var(--text-muted)' };
+  if (idx === -1) return { score: 0, label: 'Average Performance', color: 'var(--text-muted)' };
 
   const percentile = (idx / (scored.length - 1)) * 100;
-  let color = 'var(--accent-gold)';
-  if (percentile >= 65) color = 'var(--radiant-green)';
-  else if (percentile <= 35) color = 'var(--dire-red)';
+  const score = Math.round(percentile - 50);
+  const label = getPerformanceLabel(score);
 
-  return { percentile: Math.round(percentile), color };
+  let color = 'var(--text-muted)';
+  if (score >= 15) color = 'var(--radiant-green)';
+  else if (score <= -15) color = 'var(--dire-red)';
+
+  return { score, label, color };
 }
