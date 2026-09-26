@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { HEROES } from '../lib/heroes';
 import abilitiesData from '../lib/constants/abilities.json';
 import itemsData from '../lib/constants/items.json';
 import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar, AreaChart, Area, ReferenceLine } from 'recharts';
 import { Trophy } from 'lucide-react';
-import MatchMap from './MatchMap';
+
 
 
 
@@ -1271,25 +1271,275 @@ export function ObjectivesTab({ allPlayers }: { allPlayers: any[] }) {
 export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchData: any }) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
+  const duration = matchData?.duration || 0;
+  
+  const [timeFilter, setTimeFilter] = useState(duration);
+  const [radHeroFilters, setRadHeroFilters] = useState<Record<string, {obs: boolean, sen: boolean}>>(
+    Object.fromEntries(radiant.map((p: any) => [p.hero_id, {obs: true, sen: true}]))
+  );
+  const [direHeroFilters, setDireHeroFilters] = useState<Record<string, {obs: boolean, sen: boolean}>>(
+    Object.fromEntries(dire.map((p: any) => [p.hero_id, {obs: true, sen: true}]))
+  );
+  
+  const toggleRadHero = (heroId: string, type: 'obs'|'sen', val: boolean) => {
+    setRadHeroFilters(prev => ({...prev, [heroId]: {...prev[heroId], [type]: val}}));
+  };
+  const toggleDireHero = (heroId: string, type: 'obs'|'sen', val: boolean) => {
+    setDireHeroFilters(prev => ({...prev, [heroId]: {...prev[heroId], [type]: val}}));
+  };
+
+  const getAvgLifespan = (placedLog: any[], leftLog: any[], maxDur: number) => {
+    if (!placedLog || placedLog.length === 0) return '-';
+    let total = 0;
+    let count = 0;
+    placedLog.forEach((placed: any) => {
+      const left = leftLog?.find((l: any) => l.ehandle === placed.ehandle);
+      if (left) {
+        total += (left.time - placed.time);
+      } else {
+        total += Math.min(maxDur, duration - placed.time);
+      }
+      count++;
+    });
+    if (count === 0) return '-';
+    const avg = Math.round(total / count);
+    return `${Math.floor(avg / 60)}:${(avg % 60).toString().padStart(2, '0')}`;
+  };
 
   const visionCols = [
-    { key: 'obs', label: 'OBS PLACED', render: (p: any) => p.obs_placed || 0 },
-    { key: 'sen', label: 'SEN PLACED', render: (p: any) => p.sen_placed || 0 },
-    { key: 'obs_log', label: 'OBS COUNT', render: (p: any) => p.obs_log?.length || 0 },
-    { key: 'sen_log', label: 'SEN COUNT', render: (p: any) => p.sen_log?.length || 0 },
+    { key: 'player', label: 'PLAYER', render: (p: any) => <PlayerCell p={p} /> },
+    { key: 'obs_pur', label: <span title="Observer Wards Purchased" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/ward_observer.png" style={{ height: '20px' }} /> PUR</span>, render: (p: any) => {
+      const pLog = p.purchase_log || [];
+      const pur = pLog.filter((i: any) => i.key === 'ward_observer').length;
+      return pur || '-';
+    }},
+    { key: 'obs_use', label: <span title="Observer Wards Placed" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/ward_observer.png" style={{ height: '20px' }} /> USE</span>, render: (p: any) => p.obs_placed || '-' },
+    { key: 'obs_dur', label: <span title="Observer Wards Average Lifespan" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/ward_observer.png" style={{ height: '20px' }} /> DUR</span>, render: (p: any) => getAvgLifespan(p.obs_log, p.obs_left_log, 360) },
+    { key: 'sen_pur', label: <span title="Sentry Wards Purchased" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/ward_sentry.png" style={{ height: '20px' }} /> PUR</span>, render: (p: any) => {
+      const pLog = p.purchase_log || [];
+      const pur = pLog.filter((i: any) => i.key === 'ward_sentry').length;
+      return pur || '-';
+    }},
+    { key: 'sen_use', label: <span title="Sentry Wards Placed" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/ward_sentry.png" style={{ height: '20px' }} /> USE</span>, render: (p: any) => p.sen_placed || '-' },
+    { key: 'sen_dur', label: <span title="Sentry Wards Average Lifespan" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/ward_sentry.png" style={{ height: '20px' }} /> DUR</span>, render: (p: any) => getAvgLifespan(p.sen_log, p.sen_left_log, 420) },
+    { key: 'dust_pur', label: <span title="Dust Purchased" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/dust.png" style={{ height: '20px' }} /> PUR</span>, render: (p: any) => {
+      const pLog = p.purchase_log || [];
+      const pur = pLog.filter((i: any) => i.key === 'dust').length;
+      return pur || '-';
+    }},
+    { key: 'dust_use', label: <span title="Dust Used" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/dust.png" style={{ height: '20px' }} /> USE</span>, render: (p: any) => p.item_uses?.dust || '-' },
+    { key: 'smoke_pur', label: <span title="Smoke Purchased" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/smoke_of_deceit.png" style={{ height: '20px' }} /> PUR</span>, render: (p: any) => {
+      const pLog = p.purchase_log || [];
+      const pur = pLog.filter((i: any) => i.key === 'smoke_of_deceit').length;
+      return pur || '-';
+    }},
+    { key: 'smoke_use', label: <span title="Smoke Used" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/smoke_of_deceit.png" style={{ height: '20px' }} /> USE</span>, render: (p: any) => p.item_uses?.smoke_of_deceit || '-' },
+    { key: 'gem_pur', label: <span title="Gem Purchased" style={{ cursor: 'help' }}><img src="https://www.opendota.com/assets/images/dota2/items/gem.png" style={{ height: '20px' }} /> PUR</span>, render: (p: any) => {
+      const pLog = p.purchase_log || [];
+      const pur = pLog.filter((i: any) => i.key === 'gem').length;
+      return pur || '-';
+    }}
   ];
 
+  const wardLog = useMemo(() => {
+    let logs: any[] = [];
+    allPlayers.forEach(p => {
+      const addLogs = (type: string, placed: any[], left: any[]) => {
+        if (!placed) return;
+        placed.forEach(pl => {
+          const l = left?.find((x: any) => x.ehandle === pl.ehandle);
+          logs.push({ type, player: p, placed: pl, left: l });
+        });
+      };
+      addLogs('obs', p.obs_log, p.obs_left_log);
+      addLogs('sen', p.sen_log, p.sen_left_log);
+    });
+    logs.sort((a, b) => a.placed.time - b.placed.time);
+    return logs;
+  }, [allPlayers]);
+
+  const wardLogCols = [
+    { key: 'type', label: 'TYPE', render: (w: any) => <img src={`https://www.opendota.com/assets/images/dota2/items/ward_${w.type === 'obs' ? 'observer' : 'sentry'}.png`} style={{ height: '20px' }} /> },
+    { key: 'owner', label: 'OWNER', render: (w: any) => <PlayerCell p={w.player} /> },
+    { key: 'placed', label: 'PLACED', render: (w: any) => `${Math.floor(w.placed.time / 60)}:${Math.floor(w.placed.time % 60).toString().padStart(2, '0')}` },
+    { key: 'left', label: 'LEFT', render: (w: any) => {
+      if (!w.left) return '-';
+      return `${Math.floor(w.left.time / 60)}:${Math.floor(w.left.time % 60).toString().padStart(2, '0')}`;
+    }},
+    { key: 'lifespan', label: 'LIFESPAN', render: (w: any) => {
+      const end = w.left ? w.left.time : Math.min(w.placed.time + (w.type === 'obs' ? 360 : 420), duration);
+      const dur = end - w.placed.time;
+      return `${Math.floor(dur / 60)}:${Math.floor(dur % 60).toString().padStart(2, '0')}`;
+    }},
+    { key: 'killed_by', label: 'KILLED BY', render: (w: any) => {
+      if (!w.left || !w.left.attackername) return '-';
+      const killerStr = w.left.attackername.replace('npc_dota_hero_', '');
+      const killerObj = Object.values(HEROES).find((h: any) => h.img_name === killerStr);
+      if (!killerObj) return killerStr;
+      const killerP = allPlayers.find((p: any) => p.hero_id === killerObj.id);
+      if (killerP) return <PlayerCell p={killerP} />;
+      return <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><img src={getHeroImage(killerObj.img_name)} style={{ width: '24px' }}/> {killerObj.name}</div>;
+    }},
+    { key: 'placement', label: 'PLACEMENT', render: (w: any) => {
+      const left = Math.min(100, Math.max(0, ((w.placed.x - 64) / 128) * 100));
+      const top = Math.min(100, Math.max(0, (1 - ((w.placed.y - 64) / 128)) * 100));
+      return (
+        <div style={{ position: 'relative', display: 'inline-block' }} className="ward-hover-container">
+          <img src="/assets/images/dota2/Game_map_7.41.jpg" style={{ width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', opacity: 0.8 }} />
+          <div className="ward-hover-map" style={{ position: 'absolute', zIndex: 100, bottom: '30px', right: 0, width: '200px', height: '200px', border: '2px solid #333', display: 'none', background: '#000' }}>
+             <img src="/assets/images/dota2/Game_map_7.41.jpg" style={{ width: '100%', height: '100%' }} />
+             <div style={{ position: 'absolute', left: `${left}%`, top: `${top}%`, width: '16px', height: '16px', border: '2px solid red', borderRadius: '50%', transform: 'translate(-50%, -50%)' }} />
+          </div>
+        </div>
+      );
+    }}
+  ];
+
+  const activeWards = useMemo(() => {
+    let wards: any[] = [];
+    allPlayers.forEach(p => {
+      const isRad = p.player_slot < 128;
+      const filters = isRad ? radHeroFilters[p.hero_id] : direHeroFilters[p.hero_id];
+      if (!filters) return;
+      
+      const addWards = (type: string, placed: any[], left: any[], show: boolean, maxDur: number) => {
+        if (!show || !placed) return;
+        placed.forEach(pl => {
+          if (pl.time > timeFilter) return;
+          const l = left?.find((x: any) => x.ehandle === pl.ehandle);
+          const endTime = l ? l.time : pl.time + maxDur;
+          if (endTime >= timeFilter) {
+            const leftPos = Math.min(100, Math.max(0, ((pl.x - 64) / 128) * 100));
+            const topPos = Math.min(100, Math.max(0, (1 - ((pl.y - 64) / 128)) * 100));
+            wards.push({ type, left: leftPos, top: topPos, owner: p, isRad, placed: pl, leftLog: l, maxDur });
+          }
+        });
+      };
+      addWards('obs', p.obs_log, p.obs_left_log, filters.obs, 360);
+      addWards('sen', p.sen_log, p.sen_left_log, filters.sen, 420);
+    });
+    return wards;
+  }, [allPlayers, timeFilter, radHeroFilters, direHeroFilters]);
+
   return (
-    <div className="animation-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-      <div style={{ display: 'flex', gap: '2rem' }}>
-        <div style={{ flex: '1' }}>
-          <TeamTable title="Radiant - Vision" players={radiant} columns={visionCols} winner={matchData?.radiant_win} />
-          <TeamTable title="Dire - Vision" players={dire} columns={visionCols} winner={!matchData?.radiant_win} />
+    <div className="animation-fade-in">
+      <style>
+        {`
+           .hero-filter-table th, .hero-filter-table td { padding: 8px; text-align: center; }
+           .ward-hover-container:hover .ward-hover-map { display: block !important; }
+           .ward-marker { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; opacity: 0.8; }
+           .ward-marker:hover { z-index: 50 !important; opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+           .ward-marker-tooltip { position: absolute; background: rgba(0,0,0,0.9); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; pointer-events: none; z-index: 100; min-width: 200px; display: none; margin-top: -100px; margin-left: 20px; }
+           .ward-marker:hover .ward-marker-tooltip { display: block; }
+        `}
+      </style>
+
+      {/* Top Section: Map & Timeline/Filters */}
+      <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
+        
+        {/* Map */}
+        <div style={{ width: '400px', height: '400px', position: 'relative', border: '1px solid var(--border-color)', background: '#0a0a0a', borderRadius: '8px', overflow: 'hidden' }}>
+          <img src="/assets/images/dota2/Game_map_7.41.jpg" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
+          {activeWards.map((w: any, i: number) => (
+             <div key={i} className="ward-marker" style={{
+                left: `${w.left}%`, top: `${w.top}%`,
+                width: '16px', height: '16px',
+                background: w.type === 'obs' ? (w.isRad ? '#22c55e' : '#ef4444') : '#3b82f6',
+                border: '1px solid #000',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10
+             }}>
+               <span style={{ fontSize: '8px', color: '#fff' }}>👁</span>
+               <div className="ward-marker-tooltip">
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <img src={getHeroImage(HEROES[w.owner.hero_id as keyof typeof HEROES]?.img_name)} style={{ width: '24px' }} />
+                    <span style={{ color: w.isRad ? 'var(--radiant-green)' : 'var(--dire-red)' }}>{w.owner.personaname || 'Unknown'}</span>
+                    <span>placed {w.type === 'obs' ? 'Observer' : 'Sentry'}</span>
+                 </div>
+                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                   Placed at: {Math.floor(w.placed.time / 60)}:{Math.floor(w.placed.time % 60).toString().padStart(2, '0')}
+                 </div>
+                 {w.leftLog && w.leftLog.time <= duration ? (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Destroyed after {Math.floor((w.leftLog.time - w.placed.time) / 60)}:{Math.floor((w.leftLog.time - w.placed.time) % 60).toString().padStart(2, '0')}
+                    </div>
+                 ) : (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      Expires after {Math.floor(w.maxDur / 60)}:00
+                    </div>
+                 )}
+               </div>
+             </div>
+          ))}
         </div>
-        <div style={{ flex: '1' }}>
-          <h3 className="gold-text-gradient" style={{ marginBottom: '1rem' }}>Interactive Vision Map</h3>
-          <MatchMap matchData={matchData} selectedPlayer={null} compact={false} />
+        
+        {/* Timeline & Hero Filters */}
+        <div style={{ flex: '1', display: 'flex', flexDirection: 'column' }}>
+           <div style={{ marginBottom: '1.5rem', background: 'var(--bg-surface)', padding: '1rem', borderRadius: '8px' }}>
+             <h4 style={{ color: 'var(--text-primary)', marginBottom: '1rem' }}>All time</h4>
+             <input type="range" min="0" max={duration} value={timeFilter} onChange={e => setTimeFilter(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-gold)' }} />
+             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+               <span>0:00</span>
+               <span>{Math.floor(timeFilter/60)}:{(timeFilter%60).toString().padStart(2, '0')}</span>
+               <span>{Math.floor(duration/60)}:{(duration%60).toString().padStart(2, '0')}</span>
+             </div>
+           </div>
+           
+           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: '8px' }}>
+                 <h4 style={{ marginBottom: '0.5rem', color: 'var(--radiant-green)' }}>Radiant</h4>
+                 <table className="hero-filter-table" style={{ width: '100%' }}>
+                    <thead>
+                       <tr>
+                         <th></th>
+                         {radiant.map((p: any) => <th key={p.hero_id}><img src={getHeroImage(HEROES[p.hero_id as keyof typeof HEROES]?.img_name)} style={{ height: '30px', borderRadius: '2px' }} title={p.personaname} /></th>)}
+                       </tr>
+                    </thead>
+                    <tbody>
+                       <tr>
+                         <td><img src="https://www.opendota.com/assets/images/dota2/items/ward_observer.png" style={{ height: '24px' }} title="Observer Wards" /></td>
+                         {radiant.map((p: any) => <td key={p.hero_id}><input type="checkbox" checked={radHeroFilters[p.hero_id]?.obs || false} onChange={e => toggleRadHero(p.hero_id, 'obs', e.target.checked)} /></td>)}
+                       </tr>
+                       <tr>
+                         <td><img src="https://www.opendota.com/assets/images/dota2/items/ward_sentry.png" style={{ height: '24px' }} title="Sentry Wards" /></td>
+                         {radiant.map((p: any) => <td key={p.hero_id}><input type="checkbox" checked={radHeroFilters[p.hero_id]?.sen || false} onChange={e => toggleRadHero(p.hero_id, 'sen', e.target.checked)} /></td>)}
+                       </tr>
+                    </tbody>
+                 </table>
+              </div>
+              <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: '8px' }}>
+                 <h4 style={{ marginBottom: '0.5rem', color: 'var(--dire-red)' }}>Dire</h4>
+                 <table className="hero-filter-table" style={{ width: '100%' }}>
+                    <thead>
+                       <tr>
+                         <th></th>
+                         {dire.map((p: any) => <th key={p.hero_id}><img src={getHeroImage(HEROES[p.hero_id as keyof typeof HEROES]?.img_name)} style={{ height: '30px', borderRadius: '2px' }} title={p.personaname} /></th>)}
+                       </tr>
+                    </thead>
+                    <tbody>
+                       <tr>
+                         <td><img src="https://www.opendota.com/assets/images/dota2/items/ward_observer.png" style={{ height: '24px' }} title="Observer Wards" /></td>
+                         {dire.map((p: any) => <td key={p.hero_id}><input type="checkbox" checked={direHeroFilters[p.hero_id]?.obs || false} onChange={e => toggleDireHero(p.hero_id, 'obs', e.target.checked)} /></td>)}
+                       </tr>
+                       <tr>
+                         <td><img src="https://www.opendota.com/assets/images/dota2/items/ward_sentry.png" style={{ height: '24px' }} title="Sentry Wards" /></td>
+                         {dire.map((p: any) => <td key={p.hero_id}><input type="checkbox" checked={direHeroFilters[p.hero_id]?.sen || false} onChange={e => toggleDireHero(p.hero_id, 'sen', e.target.checked)} /></td>)}
+                       </tr>
+                    </tbody>
+                 </table>
+              </div>
+           </div>
         </div>
+      </div>
+      
+      {/* Player Tables */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginBottom: '2rem' }}>
+        <TeamTable title="Radiant - Vision" players={radiant} columns={visionCols} winner={matchData?.radiant_win} />
+        <TeamTable title="Dire - Vision" players={dire} columns={visionCols} winner={!matchData?.radiant_win} />
+      </div>
+      
+      {/* Ward Log Table */}
+      <div>
+         <TeamTable title="Ward Log" players={wardLog} columns={wardLogCols} />
       </div>
     </div>
   );
