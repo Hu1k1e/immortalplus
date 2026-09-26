@@ -151,7 +151,7 @@ const PlayerCell = ({ p }: { p: any }) => {
 const th: React.CSSProperties = { padding: '0.5rem 0.8rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' };
 const td: React.CSSProperties = { padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.05)' };
 
-const TeamTable = ({ title, players, columns, winner, totals }: { title: string; players: any[]; columns: { key: string; label: any; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any }) => {
+const TeamTable = ({ title, players, columns, winner, totals, noOverflow }: { title: string; players: any[]; columns: { key: string; label: any; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any, noOverflow?: boolean }) => {
   const [sortConfig, setSortConfig] = useState<{key: string | null, direction: 'asc' | 'desc'}>({ key: null, direction: 'desc' });
   
   const sortedPlayers = [...players].sort((a, b) => {
@@ -174,7 +174,7 @@ const TeamTable = ({ title, players, columns, winner, totals }: { title: string;
       <h3 style={{ color: title.includes('Radiant') ? 'var(--radiant-green)' : 'var(--dire-red)', marginBottom: '0.5rem' }}>
         {title} {winner && <span style={{ background: 'var(--radiant-green)', color: '#000', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', marginLeft: '0.5rem' }}>WINNER</span>}
       </h3>
-      <div className="glass-surface" style={{ overflowX: 'auto' }}>
+      <div className="glass-surface" style={{ overflowX: noOverflow ? 'visible' : 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
@@ -1568,7 +1568,7 @@ export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchD
       
       {/* Ward Log Table */}
       <div>
-         <TeamTable title="Ward Log" players={wardLog} columns={wardLogCols} />
+         <TeamTable title="Ward Log" players={wardLog} columns={wardLogCols} noOverflow={true} />
       </div>
     </div>
   );
