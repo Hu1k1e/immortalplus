@@ -71,10 +71,6 @@ async def auto_parse_worker():
     from sqlmodel import select
     from database import SessionLocal
     from models import Match, Player, UserSettings
-    from services.opendota import get_opendota_client
-    from services.local_parser import parse_match_locally
-    from services.parser_aggregator import aggregate_parser_output
-    from services.sync import fetch_match_details
 
     # Wait for app to fully start
     await asyncio.sleep(15)
@@ -154,7 +150,6 @@ async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key:
     from models import Match, UserSettings
     from services.opendota import get_opendota_client
     from services.local_parser import parse_match_locally
-    from services.parser_aggregator import aggregate_parser_output
     from services.steam import resolve_cluster_salt
     from services.sync import fetch_match_details
 
@@ -202,15 +197,9 @@ async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key:
 
         # --- Step 4: Local parse ---
         logger.info(f"[{match_id}] Replay available — starting local parse (cluster={cluster})")
-        raw_lines = await parse_match_locally(match_id, cluster, salt)
-        if not raw_lines:
-            logger.warning(f"[{match_id}] Local parse returned no data")
-            session.close()
-            return
-
-        local_data = aggregate_parser_output(raw_lines, {})
+        local_data = await parse_match_locally(match_id, cluster, salt)
         if not local_data:
-            logger.warning(f"[{match_id}] Aggregator returned no data")
+            logger.warning(f"[{match_id}] Local parse returned no data")
             session.close()
             return
 

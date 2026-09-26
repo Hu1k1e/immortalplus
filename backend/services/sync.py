@@ -18,7 +18,6 @@ from models import (
 from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
 from services.local_parser import parse_match_locally
-from services.parser_aggregator import aggregate_parser_output
 from services.steam import resolve_cluster_salt
 from models import MatchAnalysis
 
@@ -205,10 +204,7 @@ async def fetch_match_details(
 
         if cluster and salt:
             logger.info(f"OpenDota parse missing. Bypassing rate limits via local parser for {match.match_id}")
-            raw_lines = await parse_match_locally(match.match_id, cluster, salt)
-            if raw_lines:
-                local_parse_data = aggregate_parser_output(raw_lines, {})
-                logger.info("Local parse aggregation complete.")
+            local_parse_data = await parse_match_locally(match.match_id, cluster, salt)
         else:
             logger.warning(f"[{match.match_id}] Could not resolve cluster/replay_salt — cannot local-parse")
 

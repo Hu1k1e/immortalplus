@@ -20,7 +20,7 @@ REPLAYS_DIR.mkdir(parents=True, exist_ok=True)
 # Server
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:9485")
-REPLAY_PARSER_URL = os.getenv("REPLAY_PARSER_URL", "http://replay-parser:8001")
+REPLAY_PARSER_URL = os.getenv("REPLAY_PARSER_URL", "http://localhost:5600")
 
 # GSI
 GSI_PORT = int(os.getenv("GSI_PORT", "9487"))

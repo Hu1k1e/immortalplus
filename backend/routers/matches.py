@@ -342,22 +342,16 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int, set
     """Background task: parse the replay locally and update the match record."""
     from database import SessionLocal
     from services.local_parser import parse_match_locally
-    from services.parser_aggregator import aggregate_parser_output
     from services.sync import fetch_match_details
-    
+
     logger.info(f"Background local parse starting for match {match_id} (cluster={cluster}, salt={salt})")
-    
+
     try:
-        raw_lines = await parse_match_locally(match_id, cluster, salt)
-        if not raw_lines:
+        local_data = await parse_match_locally(match_id, cluster, salt)
+        if not local_data:
             logger.error(f"Local parse returned no data for {match_id}")
             return
-        
-        local_data = aggregate_parser_output(raw_lines, {})
-        if not local_data:
-            logger.error(f"Aggregator returned no data for {match_id}")
-            return
-        
+
         # Now re-fetch from OpenDota to merge with local parse data
         session = SessionLocal()
         try:

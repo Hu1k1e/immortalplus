@@ -1,18 +1,22 @@
 """
 Local replay parser service.
 
-Downloads the replay file from Valve's CDN and sends the decompressed
-.dem bytes to the local odota/parser Docker container.
-
-IMPORTANT: Valve switched from bz2 → zstd compression around 2024.
-The file is still named .dem.bz2 but magic bytes 28 B5 2F FD = zstd.
-We auto-detect compression by magic bytes and decompress accordingly.
+Asks the local odota/parser Docker container to parse a match's replay via
+its `/blob?replay_url=<url>` endpoint — the same approach OpenDota's own
+backend uses (see odota/core's svc/fetcher/ParsedFetcher.ts). The parser
+downloads the replay itself (handling both legacy bz2 and the zstd
+compression Valve switched to in 2024), parses it, and returns the fully
+aggregated match JSON in one response — players[].purchase_log, kills_log,
+obs_log, gold_t, teamfights, etc. There is no raw event stream to reassemble
+on our end; POSTing raw .dem bytes to the parser's root `/` endpoint (the
+old approach here) returns an unaggregated low-level event log instead and
+was the wrong API for this.
 """
 
-import bz2
-import io
+import asyncio
 import logging
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
@@ -20,115 +24,70 @@ from config import REPLAY_PARSER_URL
 
 logger = logging.getLogger(__name__)
 
-# zstd magic bytes: 0x28 0xB5 0x2F 0xFD
-_ZSTD_MAGIC = b'\x28\xb5\x2f\xfd'
-# bz2 magic bytes: 0x42 0x5A 0x68 (BZh)
-_BZ2_MAGIC = b'BZh'
+# Coalesce concurrent parse requests for the same match_id onto a single
+# in-flight parse — multiple entry points (auto-parse worker, "Parse Replay"
+# button, polling GETs that find missing deep data) can all decide to locally
+# parse the same match around the same time; without this they each
+# independently re-download and re-parse the full replay in parallel.
+_inflight: dict[int, asyncio.Task] = {}
 
 
-def _decompress(data: bytes) -> Optional[bytes]:
+async def parse_match_locally(match_id: int, cluster_id: int, replay_salt: int) -> Optional[dict]:
     """
-    Auto-detect compression format by magic bytes and decompress.
-    Returns raw .dem bytes, or None on failure.
+    Ask the local odota/parser container to parse this match's replay.
+
+    Returns the parsed match dict (OpenDota-shaped: a "players" array with
+    purchase_log/kills_log/obs_log/etc. per player, plus top-level
+    teamfights/objectives/chat/radiant_gold_adv/etc.), or None on failure.
     """
-    if data[:4] == _ZSTD_MAGIC:
-        # zstd — use streaming decompressor (handles unknown content size)
+    existing = _inflight.get(match_id)
+    if existing is not None and not existing.done():
+        logger.info(f"[{match_id}] Parse already in progress — waiting on it instead of starting a duplicate")
+        return await existing
+
+    task = asyncio.ensure_future(_parse_match_locally_impl(match_id, cluster_id, replay_salt))
+    _inflight[match_id] = task
+    try:
+        return await task
+    finally:
+        if _inflight.get(match_id) is task:
+            _inflight.pop(match_id, None)
+
+
+async def _parse_match_locally_impl(match_id: int, cluster_id: int, replay_salt: int) -> Optional[dict]:
+    replay_url = f"http://replay{cluster_id}.valve.net/570/{match_id}_{replay_salt}.dem.bz2"
+
+    parser_base = (REPLAY_PARSER_URL or "http://replay_parser:5600").rstrip("/")
+    blob_url = f"{parser_base}/blob?replay_url={quote(replay_url, safe='')}"
+
+    logger.info(f"[{match_id}] Requesting local parse via {blob_url}")
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
         try:
-            import zstandard
-            dctx = zstandard.ZstdDecompressor()
-            with dctx.stream_reader(io.BytesIO(data)) as reader:
-                return reader.read()
-        except Exception as e:
-            logger.error(f"zstd decompression failed: {e}")
-            return None
-
-    elif data[:3] == _BZ2_MAGIC:
-        # Legacy bz2 format
-        try:
-            return bz2.decompress(data)
-        except Exception as e:
-            logger.error(f"bz2 decompression failed: {e}")
-            return None
-
-    else:
-        # Unknown — assume already decompressed or raw .dem
-        logger.warning(f"Unknown compression magic: {data[:4].hex()} — trying raw")
-        return data
-
-
-async def parse_match_locally(match_id: int, cluster_id: int, replay_salt: int) -> Optional[str]:
-    """
-    Downloads the replay from Valve CDN, decompresses it, and sends
-    the raw .dem bytes to the local odota/parser container.
-
-    Returns the parser's raw JSONL output string, or None on any failure.
-    """
-    url = f"http://replay{cluster_id}.valve.net/570/{match_id}_{replay_salt}.dem.bz2"
-    logger.info(f"Downloading replay for {match_id} from {url}")
-
-    # Use separate clients with different timeouts
-    async with httpx.AsyncClient(timeout=180.0) as download_client:
-        try:
-            response = await download_client.get(
-                url,
-                headers={"User-Agent": "ImmortalPlus/1.0"},
-            )
-            if response.status_code != 200:
-                logger.error(f"[{match_id}] Valve CDN returned {response.status_code}")
-                return None
-
-            compressed = response.content
-            compression_type = "zstd" if compressed[:4] == _ZSTD_MAGIC else "bz2"
-            logger.info(
-                f"[{match_id}] Downloaded {len(compressed):,} bytes "
-                f"(format: {compression_type}). Decompressing..."
-            )
-
-            dem_data = _decompress(compressed)
-            if not dem_data:
-                logger.error(f"[{match_id}] Decompression returned no data")
-                return None
-
-            logger.info(
-                f"[{match_id}] Decompressed to {len(dem_data):,} bytes. "
-                f"Sending to local parser..."
-            )
-
-        except Exception as e:
-            logger.error(f"[{match_id}] Download/decompress failed: {e}")
-            return None
-
-    # Send decompressed .dem bytes to the odota/parser container
-    # Use a fresh client with a generous timeout (large replays take time)
-    parser_url = REPLAY_PARSER_URL or "http://replay-parser:5600/"
-    # Ensure URL has trailing slash / correct path
-    if not parser_url.endswith("/"):
-        parser_url = parser_url + "/"
-
-    async with httpx.AsyncClient(timeout=300.0) as parse_client:
-        try:
-            parse_response = await parse_client.post(
-                parser_url,
-                content=dem_data,
-                headers={"Content-Type": "application/octet-stream"},
-            )
-
-            if parse_response.status_code != 200:
-                logger.error(
-                    f"[{match_id}] Parser container returned {parse_response.status_code}: "
-                    f"{parse_response.text[:200]}"
-                )
-                return None
-
-            logger.info(f"[{match_id}] Local parse successful")
-            return parse_response.text
-
+            resp = await client.get(blob_url)
         except httpx.ConnectError as e:
             logger.error(
-                f"[{match_id}] Cannot connect to parser container at {parser_url}. "
+                f"[{match_id}] Cannot connect to parser container at {parser_base}. "
                 f"Is odota/parser running? Error: {e}"
             )
             return None
         except Exception as e:
             logger.error(f"[{match_id}] Parser request failed: {e}")
             return None
+
+    if resp.status_code != 200:
+        logger.error(f"[{match_id}] Parser container returned {resp.status_code}: {resp.text[:300]}")
+        return None
+
+    try:
+        data = resp.json()
+    except Exception as e:
+        logger.error(f"[{match_id}] Parser response was not valid JSON: {e}")
+        return None
+
+    if not isinstance(data, dict) or not data.get("players"):
+        logger.error(f"[{match_id}] Parser response missing a players array")
+        return None
+
+    logger.info(f"[{match_id}] Local parse successful — {len(data['players'])} players")
+    return data
