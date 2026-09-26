@@ -321,8 +321,11 @@ async def request_parse(match_id: int, background_tasks: BackgroundTasks, sessio
     session.commit()  # persist opendota_raw if resolve_cluster_salt fetched+stored it
 
     if cluster and salt:
-        # Kick off local parse in background — results update the DB
-        background_tasks.add_task(_do_local_parse_and_update, match_id, cluster, salt, settings)
+        # Kick off local parse in background — results update the DB.
+        # Don't pass the `settings` ORM object across: the request's session
+        # closes once this handler returns (and the commit() above already
+        # expires it), so the background task fetches its own fresh copy.
+        background_tasks.add_task(_do_local_parse_and_update, match_id, cluster, salt)
         return {
             "status": "parse_started",
             "method": "local_parser",
@@ -338,7 +341,7 @@ async def request_parse(match_id: int, background_tasks: BackgroundTasks, sessio
         }
 
 
-async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int, settings):
+async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int):
     """Background task: parse the replay locally and update the match record."""
     from database import SessionLocal
     from services.local_parser import parse_match_locally
@@ -352,10 +355,12 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int, set
             logger.error(f"Local parse returned no data for {match_id}")
             return
 
-        # Now re-fetch from OpenDota to merge with local parse data
+        # Fresh session + fresh settings fetch — the request's settings/session
+        # are gone by the time this background task runs.
         session = SessionLocal()
         try:
             match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+            settings = session.exec(select(UserSettings)).first()
             if match:
                 # Merge the local_data we already parsed above instead of discarding it —
                 # fetch_match_details sets is_parsed based on whether deep data actually landed.

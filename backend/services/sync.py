@@ -19,6 +19,7 @@ from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
 from services.local_parser import parse_match_locally
 from services.steam import resolve_cluster_salt
+from services.replay_compute import apply_computed_fields
 from models import MatchAnalysis
 
 logger = logging.getLogger(__name__)
@@ -208,19 +209,34 @@ async def fetch_match_details(
         else:
             logger.warning(f"[{match.match_id}] Could not resolve cluster/replay_salt — cannot local-parse")
 
+    if local_parse_data:
+        # Add the derived stats OpenDota's own backend computes from raw parser
+        # output (hero_kills/tower_kills/etc from `killed`, buyback_count,
+        # lane_efficiency_pct, lane, ...) — see replay_compute.py.
+        duration = (od_data or {}).get("duration") or match.duration
+        radiant_win = (od_data or {}).get("radiant_win")
+        if radiant_win is None:
+            radiant_win = match.radiant_win
+        apply_computed_fields(local_parse_data.get("players", []), duration=duration, radiant_win=radiant_win)
+
     # Choose the primary data source (prefer OpenDota for deep stats, fallback to local parse, then stratz)
     if local_parse_data and od_data:
-        # Merge local parse deep logs into od_data to preserve benchmarks/names
+        # Merge every raw+computed field the local parse has into od_data,
+        # preserving od_data's own identity/benchmark/name fields (the local
+        # parser never has those). A full merge — rather than a hand-picked
+        # whitelist — is what actually gets every tab's data populated,
+        # since each tab reads a different subset of the ~50 raw parser
+        # fields and any one left off the list silently shows blank.
         for p_od in od_data.get("players", []):
             p_local = next((p for p in local_parse_data.get("players", []) if p.get("player_slot") == p_od.get("player_slot")), None)
             if p_local:
-                for key in ["purchase_log", "kills_log", "runes_log", "obs_log", "sen_log", "gold_t", "xp_t", "lh_t", "dn_t", "deaths_pos", "killed_by", "killed", "damage", "damage_taken", "stuns", "camps_stacked", "life_state_dead", "buyback_count", "pings", "max_hero_hit"]:
-                    if p_local.get(key) is not None:
-                        p_od[key] = p_local[key]
-        
-        for key in ["teamfights", "objectives", "chat", "radiant_gold_adv", "radiant_xp_adv", "draft_timings"]:
-            if local_parse_data.get(key) is not None:
-                od_data[key] = local_parse_data[key]
+                for key, value in p_local.items():
+                    if value is not None:
+                        p_od[key] = value
+
+        for key, value in local_parse_data.items():
+            if key != "players" and value is not None:
+                od_data[key] = value
         data = od_data
     else:
         data = od_data if od_data else (local_parse_data if local_parse_data else stratz_data)
