@@ -16,6 +16,19 @@ interface MatchNavBarProps {
   matchData: any;
 }
 
+function timeAgo(dateStr?: string): string {
+  if (!dateStr) return '';
+  const then = new Date(dateStr).getTime();
+  if (isNaN(then)) return '';
+  const seconds = Math.max(0, (Date.now() - then) / 1000);
+  const days = Math.floor(seconds / 86400);
+  if (days >= 1) return `${days}d ago`;
+  const hours = Math.floor(seconds / 3600);
+  if (hours >= 1) return `${hours}h ago`;
+  const minutes = Math.floor(seconds / 60);
+  return `${Math.max(1, minutes)}m ago`;
+}
+
 /**
  * Page-level chrome above the tab bar: a filter dropdown (All Matches / Same
  * Hero / Same Position) plus a horizontal strip of recent games to jump
@@ -101,31 +114,40 @@ export default function MatchNavBar({ matchData }: MatchNavBarProps) {
               onClick={() => !isCurrent && navigate(`/matches/${m.match_id}`)}
               title={`${hero?.name || 'Unknown'} — ${isWin ? 'Win' : 'Loss'}`}
               style={{
-                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '2px',
                 flexShrink: 0,
                 cursor: isCurrent ? 'default' : 'pointer',
                 opacity: isCurrent ? 1 : 0.85,
                 transition: 'opacity 0.15s',
-                border: isCurrent ? '2px solid var(--accent-gold)' : '2px solid transparent',
-                borderRadius: '3px',
-                lineHeight: 0,
               }}
               onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.opacity = '1'; }}
               onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.opacity = '0.85'; }}
             >
-              <img
-                src={hero ? getHeroImage(hero.img_name) : ''}
-                alt={hero?.name || 'hero'}
-                style={{ width: '34px', height: '19px', objectFit: 'cover', borderRadius: '2px', display: 'block' }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
-              <span style={{
-                position: 'absolute', bottom: '-2px', right: '-2px',
-                fontSize: '0.55rem', fontWeight: 800, lineHeight: 1,
-                padding: '1px 3px', borderRadius: '2px',
-                color: '#fff', background: isWin ? 'var(--radiant-green)' : 'var(--dire-red)',
+              <div style={{
+                position: 'relative', lineHeight: 0,
+                border: isCurrent ? '2px solid var(--accent-gold)' : '2px solid transparent',
+                borderRadius: '3px',
               }}>
-                {isWin ? 'W' : 'L'}
+                <img
+                  src={hero ? getHeroImage(hero.img_name) : ''}
+                  alt={hero?.name || 'hero'}
+                  style={{ width: '34px', height: '19px', objectFit: 'cover', borderRadius: '2px', display: 'block' }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+                <span style={{
+                  position: 'absolute', bottom: '-2px', right: '-2px',
+                  fontSize: '0.55rem', fontWeight: 800, lineHeight: 1,
+                  padding: '1px 3px', borderRadius: '2px',
+                  color: '#fff', background: isWin ? 'var(--radiant-green)' : 'var(--dire-red)',
+                }}>
+                  {isWin ? 'W' : 'L'}
+                </span>
+              </div>
+              <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                {timeAgo(m.played_at)}
               </span>
             </div>
           );

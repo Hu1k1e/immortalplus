@@ -209,15 +209,6 @@ export default function MatchMap({
     return byPlayer;
   }, [matchData]);
 
-  const hasDensePositions = useMemo(
-    () => (matchData?.all_players || []).some((p: any) => {
-      let posT = p.pos_t;
-      if (typeof posT === 'string') { try { posT = JSON.parse(posT); } catch { return false; } }
-      return !!posT?.time?.length;
-    }),
-    [matchData]
-  );
-
   const heroPositions = useMemo(() => {
     if (!matchData?.all_players) return [];
     const positions: any[] = [];
@@ -499,16 +490,6 @@ export default function MatchMap({
         </div>
       )}
 
-      {/* Legend */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />Obs Ward</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#eab308', display: 'inline-block' }} />Sentry Ward</span>
-      </div>
-      <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
-        {hasDensePositions
-          ? 'Hero positions sampled once per game-second from the replay.'
-          : 'Hero positions are approximated from ward-placement timestamps (this match was parsed before per-second tracking was added — re-parse to get full movement).'}
-      </div>
     </div>
   );
 }

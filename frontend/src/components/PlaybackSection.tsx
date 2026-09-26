@@ -30,7 +30,7 @@ export default function PlaybackSection({ matchData, allPlayers, selectedPlayer 
     <div style={{ marginTop: '2rem' }}>
       <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Match Playback</h3>
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
-        <div style={{ flex: '1 1 380px', minWidth: '320px', maxWidth: '520px' }}>
+        <div style={{ flex: '1 1 320px', minWidth: '300px', maxWidth: '420px' }}>
           <MatchMap
             matchData={matchData}
             selectedPlayer={selectedPlayer}
@@ -44,14 +44,14 @@ export default function PlaybackSection({ matchData, allPlayers, selectedPlayer 
             autoPlayOnMount
           />
         </div>
-        <div style={{ flex: '2 1 500px', minWidth: '0' }}>
+        <div style={{ flex: '3 1 640px', minWidth: '0' }}>
           <LiveScoreboardPanel allPlayers={allPlayers} currentTime={playback.currentTime} />
         </div>
       </div>
 
       <div className="glass-surface" style={{ padding: '1rem', marginTop: '1.5rem' }}>
         <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem' }}>Net Worth / XP Advantage</h4>
-        <AdvantageGraph matchData={matchData} height={260} />
+        <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={260} />
       </div>
     </div>
   );

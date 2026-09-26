@@ -233,6 +233,46 @@ async def fetch_match_details(
         else:
             logger.warning(f"[{match.match_id}] Could not resolve cluster/replay_salt — cannot local-parse")
 
+    # Hero position data (pos_t) only ever comes from our own local parser —
+    # OpenDota's API never provides it. So even when OD's own official parse
+    # already has everything else we need (purchase_log etc, meaning
+    # needs_local_parse was False above and we skipped local parsing
+    # entirely), still make sure positions get fetched at least once.
+    already_has_positions = False
+    if match.all_players:
+        try:
+            already_has_positions = any(p.get("pos_t") for p in json.loads(match.all_players))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    local_parse_has_positions = local_parse_data and any(p.get("pos_t") for p in local_parse_data.get("players", []))
+
+    # Only bother when we have real od_data to merge positions into — if
+    # od_data is missing, a positions-only stub could otherwise become the
+    # *primary* data source below (data = local_parse_data fallback), losing
+    # everything else instead of just adding to it.
+    if od_data and not already_has_positions and not local_parse_has_positions:
+        od_client_for_positions = get_opendota_client(settings.opendota_api_key if settings else None)
+        pos_cluster, pos_salt = await resolve_cluster_salt(
+            match,
+            od_client_for_positions,
+            steam_api_key=settings.steam_api_key if settings else None,
+            stratz_data=stratz_data,
+        )
+        if pos_cluster and pos_salt:
+            try:
+                positions = await parse_hero_positions(match.match_id, pos_cluster, pos_salt)
+                if positions:
+                    if not local_parse_data:
+                        local_parse_data = {"players": []}
+                    for player_slot, pos_data in positions.items():
+                        p_local = next((p for p in local_parse_data["players"] if p.get("player_slot") == player_slot), None)
+                        if p_local:
+                            p_local["pos_t"] = pos_data
+                        else:
+                            local_parse_data["players"].append({"player_slot": player_slot, "pos_t": pos_data})
+            except Exception as e:
+                logger.warning(f"[{match.match_id}] Position parse failed (non-fatal): {e}")
+
     if local_parse_data:
         # Add the derived stats OpenDota's own backend computes from raw parser
         # output (hero_kills/tower_kills/etc from `killed`, buyback_count,

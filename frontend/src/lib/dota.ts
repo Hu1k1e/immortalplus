@@ -33,6 +33,28 @@ export function getHeroImage(heroIdOrName: string | number): string {
 }
 
 /**
+ * Get the small square hero "icon" crop (headshot, not the wide splash-art
+ * crop `getHeroImage` returns) — used for map markers and small badges,
+ * same asset heroes.json already stores under the `icon` field.
+ */
+export function getHeroIcon(heroIdOrName: string | number): string {
+  if (!heroIdOrName) return '';
+
+  if (HEROES[heroIdOrName]) {
+    return CDN_BASE + HEROES[heroIdOrName].icon;
+  }
+
+  const nameStr = String(heroIdOrName).replace('npc_dota_hero_', '');
+  for (const key in HEROES) {
+    if (HEROES[key].name.replace('npc_dota_hero_', '') === nameStr) {
+      return CDN_BASE + HEROES[key].icon;
+    }
+  }
+
+  return `${CDN_BASE}/apps/dota2/images/dota_react/heroes/icons/${nameStr}.png`;
+}
+
+/**
  * Get item image URL by item name.
  */
 export function getItemImage(itemName: string): string {

@@ -1,6 +1,5 @@
 import { HEROES } from '../lib/heroes';
 import { getHeroImage, getItemImage } from '../lib/dota';
-import { TeamTable } from './MatchTabs';
 
 function DraftGrid({ matchData }: { matchData: any }) {
   let draft = matchData?.draft_timings;
@@ -71,54 +70,67 @@ function DraftGrid({ matchData }: { matchData: any }) {
   );
 }
 
-function BuildTimeline({ allPlayers }: { allPlayers: any[] }) {
-  const rows = allPlayers.map((p) => {
-    let log = p.purchase_log;
-    if (typeof log === 'string') {
-      try { log = JSON.parse(log); } catch { log = []; }
-    }
-    log = Array.isArray(log) ? log.filter((e: any) => e.key && !e.key.startsWith('recipe_') && e.key !== 'ward_dispenser').slice(0, 10) : [];
-    return { player: p, log };
-  });
+function purchaseLogOf(p: any) {
+  let log = p.purchase_log;
+  if (typeof log === 'string') {
+    try { log = JSON.parse(log); } catch { log = []; }
+  }
+  return Array.isArray(log) ? log.filter((e: any) => e.key && !e.key.startsWith('recipe_') && e.key !== 'ward_dispenser').slice(0, 8) : [];
+}
 
-  const hasAny = rows.some((r) => r.log.length > 0);
+function BuildRow({ player }: { player: any }) {
+  const hero = HEROES[player.hero_id];
+  const log = purchaseLogOf(player);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '32px', height: '18px', objectFit: 'cover', borderRadius: '3px', flexShrink: 0 }} />}
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {player.persona || player.personaname || 'Anonymous'}
+        </span>
+      </div>
+      {log.length === 0 ? (
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '2.2rem' }}>No item timing data.</span>
+      ) : (
+        <div style={{ display: 'flex', gap: '4px', marginLeft: '2.2rem', overflowX: 'auto', paddingBottom: '2px' }}>
+          {log.map((entry: any, i: number) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+              <img
+                src={getItemImage(entry.key)}
+                alt={entry.key}
+                title={entry.key.replace(/_/g, ' ')}
+                style={{ width: '24px', height: '17px', objectFit: 'cover', borderRadius: '3px' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+              <span style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {Math.floor((entry.time || 0) / 60)}:{((entry.time || 0) % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuildTimeline({ allPlayers }: { allPlayers: any[] }) {
+  const radiant = allPlayers.filter((p) => p.player_slot < 128);
+  const dire = allPlayers.filter((p) => p.player_slot >= 128);
+  const hasAny = allPlayers.some((p) => purchaseLogOf(p).length > 0);
 
   return (
-    <div className="glass-surface" style={{ padding: '1rem', flex: '2 1 480px', minWidth: '360px' }}>
+    <div className="glass-surface" style={{ padding: '1rem', flex: '2 1 560px', minWidth: '420px' }}>
       <h4 style={{ margin: '0 0 0.75rem', fontSize: '0.9rem' }}>Builds</h4>
       {!hasAny ? (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Item timing data not available.</div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '420px', overflowY: 'auto' }}>
-          {rows.map(({ player, log }) => {
-            const hero = HEROES[player.hero_id];
-            return (
-              <div key={player.player_slot} style={{ display: 'grid', gridTemplateColumns: '130px 1fr', alignItems: 'center', gap: '0.6rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
-                  {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '36px', height: '20px', objectFit: 'cover', borderRadius: '3px', flexShrink: 0 }} />}
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {player.persona || player.personaname || 'Anonymous'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: '4px', overflowX: 'auto', paddingBottom: '2px' }}>
-                  {log.map((entry: any, i: number) => (
-                    <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-                      <img
-                        src={getItemImage(entry.key)}
-                        alt={entry.key}
-                        title={entry.key.replace(/_/g, ' ')}
-                        style={{ width: '26px', height: '19px', objectFit: 'cover', borderRadius: '3px' }}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                      <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {Math.floor((entry.time || 0) / 60)}:{((entry.time || 0) % 60).toString().padStart(2, '0')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem 1rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+            {radiant.map((p) => <BuildRow key={p.player_slot} player={p} />)}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+            {dire.map((p) => <BuildRow key={p.player_slot} player={p} />)}
+          </div>
         </div>
       )}
     </div>
@@ -133,28 +145,54 @@ const KILL_CATEGORIES: { key: string; label: string; color: string }[] = [
   { key: 'neutral_kills', label: 'Neutral', color: '#42a5f5' },
 ];
 
-function KillBreakdownTable({ allPlayers }: { allPlayers: any[] }) {
-  const columns = KILL_CATEGORIES.map((cat) => ({
-    key: cat.key,
-    label: cat.label.toUpperCase(),
-    sortFn: (a: any, b: any) => (a[cat.key] || 0) - (b[cat.key] || 0),
-    render: (p: any) => {
-      const val = p[cat.key] || 0;
-      return (
-        <span style={{ color: val > 0 ? cat.color : 'var(--text-muted)', fontWeight: val > 0 ? 700 : 400 }}>
-          {val}
-        </span>
-      );
-    },
-  }));
+function KillBreakdownColumn({ title, color, players }: { title: string; color: string; players: any[] }) {
+  return (
+    <div style={{ flex: 1 }}>
+      <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', color }}>{title}</h4>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <th style={{ textAlign: 'left', padding: '0.35rem 0.3rem', color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase' }}>Player</th>
+            {KILL_CATEGORIES.map((c) => (
+              <th key={c.key} style={{ textAlign: 'center', padding: '0.35rem 0.3rem', color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase' }}>{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((p) => {
+            const hero = HEROES[p.hero_id];
+            return (
+              <tr key={p.player_slot} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                <td style={{ padding: '0.4rem 0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '28px', height: '16px', objectFit: 'cover', borderRadius: '2px' }} />}
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px' }}>{p.persona || p.personaname || 'Anonymous'}</span>
+                </td>
+                {KILL_CATEGORIES.map((c) => {
+                  const val = p[c.key] || 0;
+                  return (
+                    <td key={c.key} style={{ textAlign: 'center', padding: '0.4rem 0.3rem', color: val > 0 ? c.color : 'var(--text-muted)', fontWeight: val > 0 ? 700 : 400 }}>
+                      {val}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
+function KillBreakdownTable({ allPlayers }: { allPlayers: any[] }) {
   const radiant = allPlayers.filter((p) => p.player_slot < 128);
   const dire = allPlayers.filter((p) => p.player_slot >= 128);
 
   return (
-    <div style={{ flex: '1 1 100%' }}>
-      <TeamTable title="Radiant - Kill Breakdown" players={radiant} columns={columns} noOverflow />
-      <TeamTable title="Dire - Kill Breakdown" players={dire} columns={columns} noOverflow />
+    <div className="glass-surface" style={{ padding: '1rem', flex: '1 1 100%', display: 'flex', gap: '1.5rem' }}>
+      <KillBreakdownColumn title="Radiant - Kill Breakdown" color="var(--radiant-green)" players={radiant} />
+      <div style={{ width: '1px', background: 'var(--border-color)' }} />
+      <KillBreakdownColumn title="Dire - Kill Breakdown" color="var(--dire-red)" players={dire} />
     </div>
   );
 }
