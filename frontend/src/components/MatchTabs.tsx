@@ -1473,7 +1473,7 @@ export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchD
            .ward-hover-container:hover .ward-hover-map { display: block !important; }
            .ward-marker { position: absolute; transform: translate(-50%, -50%); border-radius: 50%; opacity: 0.8; }
            .ward-marker:hover { z-index: 50 !important; opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-           .ward-marker-tooltip { position: absolute; background: rgba(0,0,0,0.9); border: 1px solid var(--border-color); padding: 8px; border-radius: 4px; pointer-events: none; z-index: 100; min-width: 200px; display: none; margin-top: -100px; margin-left: 20px; }
+           .ward-marker-tooltip { position: absolute; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; pointer-events: none; z-index: 100; min-width: 240px; display: none; margin-top: -120px; margin-left: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.8); overflow: hidden; }
            .ward-marker:hover .ward-marker-tooltip { display: block; }
         `}
       </style>
@@ -1492,23 +1492,27 @@ export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchD
              }}>
                <img src={w.type === 'obs' ? 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ward_observer.png' : 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ward_sentry.png'} style={{ width: '100%', height: '100%', filter: `drop-shadow(0 0 2px ${w.isRad ? '#22c55e' : '#ef4444'})` }} />
                <div className="ward-marker-tooltip">
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <img src={getHeroImage(HEROES[w.owner.hero_id as keyof typeof HEROES]?.img_name)} style={{ width: '24px' }} />
-                    <span style={{ color: w.isRad ? 'var(--radiant-green)' : 'var(--dire-red)' }}>{w.owner.personaname || 'Unknown'}</span>
-                    <span>placed {w.type === 'obs' ? 'Observer' : 'Sentry'}</span>
+                 <div style={{ background: w.isRad ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', padding: '0.8rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <PlayerCell p={w.owner} />
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>placed {w.type === 'obs' ? 'Observer' : 'Sentry'}</span>
                  </div>
-                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                   Placed at: {Math.floor(w.placed.time / 60)}:{Math.floor(w.placed.time % 60).toString().padStart(2, '0')}
+                 <div style={{ padding: '0.8rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+                     <span>Placed at</span>
+                     <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{Math.floor(w.placed.time / 60)}:{Math.floor(w.placed.time % 60).toString().padStart(2, '0')}</span>
+                   </div>
+                   {w.leftLog && w.leftLog.time <= duration ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Destroyed after</span>
+                        <span style={{ color: 'var(--dire-red)', fontWeight: 'bold' }}>{Math.floor((w.leftLog.time - w.placed.time) / 60)}:{Math.floor((w.leftLog.time - w.placed.time) % 60).toString().padStart(2, '0')}</span>
+                      </div>
+                   ) : (
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Expires after</span>
+                        <span style={{ color: 'var(--radiant-green)', fontWeight: 'bold' }}>{Math.floor(w.maxDur / 60)}:00</span>
+                      </div>
+                   )}
                  </div>
-                 {w.leftLog && w.leftLog.time <= duration ? (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Destroyed after {Math.floor((w.leftLog.time - w.placed.time) / 60)}:{Math.floor((w.leftLog.time - w.placed.time) % 60).toString().padStart(2, '0')}
-                    </div>
-                 ) : (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Expires after {Math.floor(w.maxDur / 60)}:00
-                    </div>
-                 )}
                </div>
              </div>
           ))}
