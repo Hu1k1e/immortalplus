@@ -7,6 +7,8 @@ import TowersLaneRow from './TowersLaneRow';
 import DraftBuildsKillsRow from './DraftBuildsKillsRow';
 import BuildsPanel from './BuildsPanel';
 import PlaybackSection from './PlaybackSection';
+import GlobalPlaybackBar from './GlobalPlaybackBar';
+import { useMatchPlayback } from '../hooks/useMatchPlayback';
 
 interface MatchOverviewProps {
   matchData: any;
@@ -38,14 +40,51 @@ export default function MatchOverview({
     );
   }
 
+  return <OverviewBody matchData={matchData} allPlayers={allPlayers} setSelectedPlayer={setSelectedPlayer} />;
+}
+
+/**
+ * Split out so the shared playback clock (useMatchPlayback) is only ever
+ * instantiated while actually viewing the grid — PlayerDetailView returns
+ * early above this point and has its own map instance untouched by it.
+ * Every scrub-reactive section below (Towers, Advantage graph, Builds,
+ * Matchup K/D) reads the same currentTime as the fixed GlobalPlaybackBar,
+ * so scrubbing anywhere updates the whole page at once, and the bar stays
+ * reachable while scrolling since it's fixed to the viewport, not the
+ * Playback section's own container.
+ */
+function OverviewBody({ matchData, allPlayers, setSelectedPlayer }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void }) {
+  const playback = useMatchPlayback();
+  const isParsed = !!matchData?.is_parsed;
+
   return (
-    <div className="animate-fade-in">
-      <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} />
-      <TowersLaneRow matchData={matchData} allPlayers={allPlayers} />
-      <DraftBuildsKillsRow matchData={matchData} allPlayers={allPlayers} />
-      <BuildsPanel matchData={matchData} allPlayers={allPlayers} />
-      <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} />
-    </div>
+    <>
+      {/* NOT inside .animate-fade-in on purpose — that class's keyframes set
+          a `transform`, which makes its element a new containing block for
+          any position:fixed descendant (a CSS quirk: transform/filter/
+          perspective on an ancestor traps fixed children inside it instead
+          of the viewport). GlobalPlaybackBar has to be a sibling, not a
+          child, to actually stay fixed to the viewport bottom while
+          scrolling. */}
+      <div className="animate-fade-in" style={{ paddingBottom: isParsed ? '76px' : 0 }}>
+        <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} currentTime={isParsed ? playback.currentTime : undefined} />
+        <TowersLaneRow matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
+        <DraftBuildsKillsRow matchData={matchData} allPlayers={allPlayers} />
+        <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
+        <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} playback={playback} />
+      </div>
+      {isParsed && (
+        <GlobalPlaybackBar
+          duration={matchData?.duration || 0}
+          currentTime={playback.currentTime}
+          isPlaying={playback.isPlaying}
+          playbackSpeed={playback.playbackSpeed}
+          setCurrentTime={playback.setCurrentTime}
+          setIsPlaying={playback.setIsPlaying}
+          setPlaybackSpeed={playback.setPlaybackSpeed}
+        />
+      )}
+    </>
   );
 }
 

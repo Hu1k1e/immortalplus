@@ -7,6 +7,11 @@ interface PlaybackSectionProps {
   matchData: any;
   allPlayers: any[];
   selectedPlayer: any;
+  // Shared clock lifted to MatchOverview so the page-level GlobalPlaybackBar
+  // and every other scrub-reactive section (Towers, Builds, Matchup grid)
+  // read/drive the exact same currentTime as this map. Falls back to an
+  // internal clock when omitted, so this component still works standalone.
+  playback?: ReturnType<typeof useMatchPlayback>;
 }
 
 /**
@@ -15,8 +20,9 @@ interface PlaybackSectionProps {
  * scrubber companion. Lives at the bottom of the Overview tab (replaces the
  * old standalone "Playback" tab) and autoplays on mount.
  */
-export default function PlaybackSection({ matchData, allPlayers, selectedPlayer }: PlaybackSectionProps) {
-  const playback = useMatchPlayback();
+export default function PlaybackSection({ matchData, allPlayers, selectedPlayer, playback: externalPlayback }: PlaybackSectionProps) {
+  const ownPlayback = useMatchPlayback();
+  const playback = externalPlayback || ownPlayback;
 
   if (!matchData?.is_parsed) {
     return (
@@ -41,6 +47,7 @@ export default function PlaybackSection({ matchData, allPlayers, selectedPlayer 
             onControlledTimeChange={playback.setCurrentTime}
             onControlledPlayingChange={playback.setIsPlaying}
             onControlledSpeedChange={playback.setPlaybackSpeed}
+            hideControls={!!externalPlayback}
             autoPlayOnMount
           />
         </div>
@@ -51,7 +58,7 @@ export default function PlaybackSection({ matchData, allPlayers, selectedPlayer 
 
       <div className="glass-surface" style={{ padding: '1rem', marginTop: '1.5rem' }}>
         <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem' }}>Net Worth / XP Advantage</h4>
-        <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={260} />
+        <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={260} currentTime={playback.currentTime} />
       </div>
     </div>
   );

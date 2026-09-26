@@ -10,6 +10,19 @@ interface MatchupCardProps {
   player: any;
   allPlayers: any[];
   onClick?: () => void;
+  // Page's shared playback clock — when given, K/D read live-as-of-that-time
+  // instead of the final total (counted from kills_log/deaths_log, both
+  // timestamped). Assists stay at the final total: no assist-specific
+  // timestamped log exists in any data source available here.
+  currentTime?: number;
+}
+
+function countLogUpTo(log: any, currentTime?: number): number | null {
+  if (currentTime == null) return null;
+  let arr = log;
+  if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
+  if (!Array.isArray(arr)) return null;
+  return arr.filter((e: any) => (e?.time ?? 0) <= currentTime).length;
 }
 
 function GoldIcon({ size = 10 }: { size?: number }) {
@@ -21,7 +34,7 @@ function GoldIcon({ size = 10 }: { size?: number }) {
   );
 }
 
-export default function MatchupCard({ player, allPlayers, onClick }: MatchupCardProps) {
+export default function MatchupCard({ player, allPlayers, onClick, currentTime }: MatchupCardProps) {
   const [hovered, setHovered] = useState(false);
   const hero = HEROES[player.hero_id];
   const isRadiant = player.player_slot < 128;
@@ -33,6 +46,8 @@ export default function MatchupCard({ player, allPlayers, onClick }: MatchupCard
   const posInfo = posNum ? POSITION_INFO[posNum] : null;
 
   const perf = computePerformanceScore(player, allPlayers);
+  const liveKills = countLogUpTo(player.kills_log, currentTime);
+  const liveDeaths = countLogUpTo(player.deaths_log, currentTime);
   const maxAbsScore = 50;
   const barPct = Math.min(100, (Math.abs(perf.score) / maxAbsScore) * 100);
   const barColor = perf.score >= 0 ? (isRadiant ? 'var(--radiant-green)' : '#a855f7') : 'rgba(255,255,255,0.3)';
@@ -94,9 +109,9 @@ export default function MatchupCard({ player, allPlayers, onClick }: MatchupCard
       )}
 
       <div style={{ textAlign: 'center', fontSize: '0.76rem', padding: '0.15rem 0' }}>
-        <span style={{ color: 'var(--text-primary)' }}>{player.kills ?? 0}</span>
+        <span style={{ color: 'var(--text-primary)' }}>{liveKills ?? player.kills ?? 0}</span>
         <span style={{ color: 'var(--text-muted)' }}> / </span>
-        <span style={{ color: 'var(--dire-red)' }}>{player.deaths ?? 0}</span>
+        <span style={{ color: 'var(--dire-red)' }}>{liveDeaths ?? player.deaths ?? 0}</span>
         <span style={{ color: 'var(--text-muted)' }}> / </span>
         <span style={{ color: 'var(--text-secondary)' }}>{player.assists ?? 0}</span>
       </div>

@@ -20,13 +20,17 @@ interface MatchMapProps {
   // Start playing automatically once, on mount (only meaningful when this
   // instance owns its own clock, i.e. controlledIsPlaying is not passed).
   autoPlayOnMount?: boolean;
+  // Suppress the built-in scrub/play/speed UI when a parent renders its own
+  // transport controls driving the same controlled clock (e.g. a
+  // page-level sticky bar) — avoids two redundant, easy-to-desync controls.
+  hideControls?: boolean;
 }
 
 export default function MatchMap({
   matchData, selectedPlayer, compact,
   controlledTime, controlledIsPlaying, controlledSpeed,
   onControlledTimeChange, onControlledPlayingChange, onControlledSpeedChange,
-  autoPlayOnMount,
+  autoPlayOnMount, hideControls,
 }: MatchMapProps) {
   const duration = matchData?.duration || 0;
   const [internalTime, setInternalTime] = useState(0);
@@ -415,7 +419,7 @@ export default function MatchMap({
       </div>
 
       {/* Playback Controls */}
-      <div style={{ marginTop: '0.75rem', padding: compact ? '0' : '0 0.5rem' }}>
+      {!hideControls && <div style={{ marginTop: '0.75rem', padding: compact ? '0' : '0 0.5rem' }}>
         {/* Timeline slider */}
         <input 
           type="range" 
@@ -467,7 +471,7 @@ export default function MatchMap({
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
         </div>
-      </div>
+      </div>}
 
       {/* Gold Advantage Mini-Graph */}
       {goldAdv.length > 0 && !compact && (

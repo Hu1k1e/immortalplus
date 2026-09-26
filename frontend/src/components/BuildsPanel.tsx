@@ -126,10 +126,14 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
  * available to this app timestamps individual talent picks (only the flat
  * ability_upgrades_arr order, unlike purchase_log's real timestamps).
  */
-export default function BuildsPanel({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
+export default function BuildsPanel({ matchData, allPlayers, currentTime }: { matchData: any; allPlayers: any[]; currentTime?: number }) {
   const maxPurchaseTime = Math.max(0, ...allPlayers.flatMap((p) => purchaseLogOf(p).map((e: any) => e.time || 0)));
   const duration = matchData?.duration || maxPurchaseTime || 1;
-  const [scrubTime, setScrubTime] = useState(duration);
+  // Driven by the page's shared playback clock when given (the global
+  // sticky bar at the bottom of Overview); falls back to its own local
+  // scrubber so this panel still works when rendered standalone.
+  const [localScrubTime, setLocalScrubTime] = useState(duration);
+  const scrubTime = currentTime != null ? currentTime : localScrubTime;
 
   const radiant = allPlayers.filter((p) => p.player_slot < 128);
   const dire = allPlayers.filter((p) => p.player_slot >= 128);
@@ -162,20 +166,22 @@ export default function BuildsPanel({ matchData, allPlayers }: { matchData: any;
             </div>
           </div>
 
-          <div style={{
-            position: 'sticky', bottom: 0, marginTop: '1rem', padding: '0.6rem 1rem',
-            background: '#0f1115', border: '1px solid var(--border-color)',
-            borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.75rem', zIndex: 10,
-          }}>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: '85px', flexShrink: 0 }}>
-              {formatClock(scrubTime)} / {formatClock(duration)}
-            </span>
-            <input
-              type="range" min={0} max={duration} value={scrubTime}
-              onChange={(e) => setScrubTime(Number(e.target.value))}
-              style={{ flex: 1, accentColor: 'var(--accent-gold)' }}
-            />
-          </div>
+          {currentTime == null && (
+            <div style={{
+              position: 'sticky', bottom: 0, marginTop: '1rem', padding: '0.6rem 1rem',
+              background: '#0f1115', border: '1px solid var(--border-color)',
+              borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.75rem', zIndex: 10,
+            }}>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', minWidth: '85px', flexShrink: 0 }}>
+                {formatClock(scrubTime)} / {formatClock(duration)}
+              </span>
+              <input
+                type="range" min={0} max={duration} value={scrubTime}
+                onChange={(e) => setLocalScrubTime(Number(e.target.value))}
+                style={{ flex: 1, accentColor: 'var(--accent-gold)' }}
+              />
+            </div>
+          )}
         </>
       )}
     </div>

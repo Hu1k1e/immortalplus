@@ -3,9 +3,10 @@ import MatchupCard from './MatchupCard';
 interface MatchupGridProps {
   allPlayers: any[];
   onSelectPlayer?: (player: any) => void;
+  currentTime?: number;
 }
 
-export default function MatchupGrid({ allPlayers, onSelectPlayer }: MatchupGridProps) {
+export default function MatchupGrid({ allPlayers, onSelectPlayer, currentTime }: MatchupGridProps) {
   if (!allPlayers || allPlayers.length < 10) {
     return <div style={{ padding: '1rem', color: 'var(--text-muted)' }}>Matchup data not available.</div>;
   }
@@ -18,13 +19,13 @@ export default function MatchupGrid({ allPlayers, onSelectPlayer }: MatchupGridP
       <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Matchup</h3>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px', overflowX: 'auto' }}>
         {radiant.map((p) => (
-          <MatchupCard key={p.player_slot} player={p} allPlayers={allPlayers} onClick={() => onSelectPlayer?.(p)} />
+          <MatchupCard key={p.player_slot} player={p} allPlayers={allPlayers} onClick={() => onSelectPlayer?.(p)} currentTime={currentTime} />
         ))}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px', flexShrink: 0, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 700 }}>
           vs
         </div>
         {dire.map((p) => (
-          <MatchupCard key={p.player_slot} player={p} allPlayers={allPlayers} onClick={() => onSelectPlayer?.(p)} />
+          <MatchupCard key={p.player_slot} player={p} allPlayers={allPlayers} onClick={() => onSelectPlayer?.(p)} currentTime={currentTime} />
         ))}
       </div>
     </div>

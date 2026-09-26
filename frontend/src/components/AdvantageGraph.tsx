@@ -85,7 +85,7 @@ function KillDot({ time, label, pct, color, anchorLeft }: { time: number; label:
  * GraphsTab (which still renders it unchanged) so it can also be reused
  * next to the embedded Overview playback panel.
  */
-export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: { matchData: any; allPlayers?: any[]; height?: number }) {
+export default function AdvantageGraph({ matchData, allPlayers, height = 400, currentTime }: { matchData: any; allPlayers?: any[]; height?: number; currentTime?: number }) {
   if (!matchData?.radiant_gold_adv || !matchData?.radiant_xp_adv) {
     return <div style={{ padding: '1rem', color: 'var(--text-muted)' }}>Graph data not available.</div>;
   }
@@ -176,6 +176,9 @@ export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: 
             <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => Math.abs(val) > 1000 ? (Math.abs(val) / 1000).toFixed(1) + 'k' : Math.abs(val).toString()} domain={[-maxAdvVal, maxAdvVal]} />
             <Tooltip content={<CustomTooltip />} isAnimationActive={false} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
+            {currentTime != null && (
+              <ReferenceLine x={currentTime / 60} stroke="var(--accent-gold)" strokeWidth={2} strokeDasharray="4 3" />
+            )}
             <defs>
               <linearGradient id="goldFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--accent-gold)" stopOpacity={0.55} />

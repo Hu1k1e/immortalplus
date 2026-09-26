@@ -73,8 +73,10 @@ function buildingKey(id: string): string {
  * match's `objectives` building_kill log (reliably populated) rather than
  * the OpenDota summary's tower_status bitmask (often missing for
  * locally-parsed matches). Destroyed buildings are simply omitted,
- * matching Stratz's sparse marker look. */
-function MiniMap({ matchData }: { matchData: any }) {
+ * matching Stratz's sparse marker look. When `currentTime` is given (the
+ * page's shared playback clock), only buildings destroyed by that point
+ * count as gone — scrubbing back earlier in the match brings them back. */
+function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: number }) {
   let objectives: any[] = [];
   try {
     objectives = typeof matchData?.objectives === 'string' ? JSON.parse(matchData.objectives) : (matchData?.objectives || []);
@@ -82,7 +84,7 @@ function MiniMap({ matchData }: { matchData: any }) {
 
   const destroyedCounts: Record<string, number> = {};
   objectives.forEach((o: any) => {
-    if (o?.type === 'building_kill' && o.key) {
+    if (o?.type === 'building_kill' && o.key && (currentTime == null || (o.time || 0) <= currentTime)) {
       destroyedCounts[o.key] = (destroyedCounts[o.key] || 0) + 1;
     }
   });
@@ -169,14 +171,14 @@ function LaneMatchupCards({ allPlayers }: { allPlayers: any[] }) {
   );
 }
 
-export default function TowersLaneRow({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
+export default function TowersLaneRow({ matchData, allPlayers, currentTime }: { matchData: any; allPlayers: any[]; currentTime?: number }) {
   return (
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'stretch', marginTop: '1.5rem' }}>
       <div style={{ flex: '1 1 220px', maxWidth: '260px' }}>
-        <MiniMap matchData={matchData} />
+        <MiniMap matchData={matchData} currentTime={currentTime} />
       </div>
       <div className="glass-surface" style={{ padding: '1rem', flex: '2 1 420px', minWidth: '340px' }}>
-        <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={240} />
+        <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={240} currentTime={currentTime} />
       </div>
       <LaneMatchupCards allPlayers={allPlayers} />
     </div>
