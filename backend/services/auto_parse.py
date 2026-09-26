@@ -127,11 +127,13 @@ async def auto_parse_worker():
                     if now - last_attempt_utc >= delay:
                         ready.append(m)
 
+            # Extract the API key so we don't pass a detached SQLModel instance
+            od_api_key = settings.opendota_api_key if settings else None
             session.close()
 
             # Process up to MAX_PER_CYCLE per loop
             for match in ready[:MAX_PER_CYCLE]:
-                await _parse_one_match(match.match_id, settings)
+                await _parse_one_match(match.match_id, od_api_key)
 
         except Exception as e:
             logger.error(f"Auto-parse worker error: {e}", exc_info=True)
@@ -139,7 +141,7 @@ async def auto_parse_worker():
         await asyncio.sleep(PARSE_WORKER_INTERVAL)
 
 
-async def _parse_one_match(match_id: int, settings):
+async def _parse_one_match(match_id: int, od_api_key: str = None):
     """
     Attempt to fully parse one match:
     1. Tell OpenDota to parse (for benchmarks/percentiles).
@@ -148,7 +150,7 @@ async def _parse_one_match(match_id: int, settings):
     """
     from sqlmodel import select
     from database import SessionLocal
-    from models import Match
+    from models import Match, UserSettings
     from services.opendota import get_opendota_client
     from services.local_parser import parse_match_locally
     from services.parser_aggregator import aggregate_parser_output
@@ -167,7 +169,7 @@ async def _parse_one_match(match_id: int, settings):
 
         logger.info(f"Auto-parse attempt #{match.parse_attempts} for match {match_id}")
 
-        od_client = get_opendota_client(settings.opendota_api_key if settings else None)
+        od_client = get_opendota_client(od_api_key)
 
         # --- Step 1: Get cluster/salt so we know the replay URL ---
         # We always fetch directly from OpenDota (bypassing cache) to ensure we have
@@ -238,6 +240,7 @@ async def _parse_one_match(match_id: int, settings):
         match.all_players = None
         session.commit()
 
+        settings = session.exec(select(UserSettings).limit(1)).first()
         success = await fetch_match_details(session, match, settings)
         if success:
             session.refresh(match)
