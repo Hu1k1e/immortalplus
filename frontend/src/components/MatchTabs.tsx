@@ -5,6 +5,7 @@ import itemsData from '../lib/constants/items.json';
 import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar, AreaChart, Area, ReferenceLine } from 'recharts';
 import { Trophy } from 'lucide-react';
+import { IconRadiant, IconDire } from './Icons';
 
 
 
@@ -1798,7 +1799,8 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
                   minWidth: "220px",
                   zIndex: 20,
                   boxShadow: "0 10px 30px rgba(0,0,0,0.8)",
-                  pointerEvents: "none"
+                  pointerEvents: "none",
+                  background: "rgba(30, 30, 30, 0.95)"
                 }}>
                   <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "8px", borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: "4px" }}>
                     Deaths & gold delta, {formatTime(t.start)} - {formatTime(t.end)}
@@ -1826,17 +1828,17 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
           <div style={{ position: "relative", width: "350px", height: "350px", borderRadius: "4px", overflow: "hidden", border: "1px solid var(--border-color)", background: "#222" }}>
             <img src="/assets/images/dota2/Game_map_7.41.jpg" alt="Map" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             {tf.deaths_pos.map((m: any, i: number) => {
-               const px = Math.min(100, Math.max(0, ((m.x - 64) / 128) * 100));
-               const py = Math.min(100, Math.max(0, (1 - ((m.y - 64) / 128)) * 100));
+               const px = Math.min(100, Math.max(0, (m.x / 127) * 100));
+               const py = Math.min(100, Math.max(0, (m.y / 127) * 100));
                return (
                  <div key={i} className="map-icon-hover" style={{
                    position: "absolute", left: `${px}%`, top: `${py}%`,
-                   width: "18px", height: "18px", background: m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)", borderRadius: "50%",
-                   transform: "translate(-50%, -50%)", border: "2px solid #000",
+                   width: "24px", height: "24px", zIndex: 5,
+                   transform: "translate(-50%, -50%)",
                    display: "flex", alignItems: "center", justifyContent: "center",
                    cursor: "pointer"
                  }}>
-                   <span style={{ fontSize: "10px" }}>💀</span>
+                   {m.isRadiant ? <IconRadiant style={{ width: 20, height: 20 }} /> : <IconDire style={{ width: 20, height: 20 }} />}
                    <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
                      <PlayerCell p={m.player} />
                      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
@@ -1850,7 +1852,7 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
           <div style={{ textAlign: "center" }}>
             <h3 style={{ color: "var(--accent-gold)", marginBottom: "0.5rem", fontSize: "1.2rem" }}>{formatTime(tf.start)} - {formatTime(tf.end)}</h3>
             <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginTop: "1rem" }}>
-              <img src={tf.radiant_gold_advantage_delta > 0 ? "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/radiant.png" : "https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/icons/dire.png"} style={{ width: "24px" }} />
+              {tf.radiant_gold_advantage_delta > 0 ? <IconRadiant style={{ width: 30, height: 30 }} /> : <IconDire style={{ width: 30, height: 30 }} />}
               <span style={{ fontSize: "1.5rem", color: "var(--accent-gold)", fontWeight: "bold" }}>{Math.abs(tf.radiant_gold_advantage_delta)} <span style={{ fontSize: "1rem" }}>🪙</span></span>
             </div>
           </div>
