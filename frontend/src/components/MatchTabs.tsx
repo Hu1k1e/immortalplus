@@ -1171,13 +1171,13 @@ export function CastsTab({ allPlayers, radiantWin }: { allPlayers: any[]; radian
 
 // ================ OBJECTIVES TAB ================
 export function ObjectivesTab({ allPlayers }: { allPlayers: any[] }) {
-  const radiant = allPlayers.filter(p => p.isRadiant);
-  const dire = allPlayers.filter(p => !p.isRadiant);
+  const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
+  const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
   const radiantWin = allPlayers[0]?.radiant_win;
 
-  const dmgCol = (key: string, label: string, damageKeys: string[]) => ({
+  const dmgCol = (key: string, label: string, damageKeys: string[], tooltip: string) => ({
     key,
-    label,
+    label: <span title={tooltip} style={{ cursor: 'help' }}>{label}</span>,
     sortFn: (a: any, b: any) => {
        const aDmg = damageKeys.reduce((acc, k) => acc + (a.damage?.[k] || 0), 0);
        const bDmg = damageKeys.reduce((acc, k) => acc + (b.damage?.[k] || 0), 0);
@@ -1194,22 +1194,22 @@ export function ObjectivesTab({ allPlayers }: { allPlayers: any[] }) {
     const enemy = isRadiant ? 'badguys' : 'goodguys';
     return [
       { key: 'player', label: 'PLAYER', render: (p: any) => <PlayerCell p={p} /> },
-      dmgCol('anc', 'ANC', [`npc_dota_${enemy}_fort`]),
-      dmgCol('raxb', 'RAXB', [`npc_dota_${enemy}_barracks_melee_bot`, `npc_dota_${enemy}_barracks_ranged_bot`]),
-      dmgCol('raxm', 'RAXM', [`npc_dota_${enemy}_barracks_melee_mid`, `npc_dota_${enemy}_barracks_ranged_mid`]),
-      dmgCol('raxt', 'RAXT', [`npc_dota_${enemy}_barracks_melee_top`, `npc_dota_${enemy}_barracks_ranged_top`]),
-      dmgCol('rosh', 'ROSH', [`npc_dota_roshan`]),
-      dmgCol('shr', 'SHR', [`npc_dota_${enemy}_healer`]),
-      dmgCol('b1', 'B1', [`npc_dota_${enemy}_tower1_bot`]),
-      dmgCol('m1', 'M1', [`npc_dota_${enemy}_tower1_mid`]),
-      dmgCol('t1', 'T1', [`npc_dota_${enemy}_tower1_top`]),
-      dmgCol('b2', 'B2', [`npc_dota_${enemy}_tower2_bot`]),
-      dmgCol('m2', 'M2', [`npc_dota_${enemy}_tower2_mid`]),
-      dmgCol('t2', 'T2', [`npc_dota_${enemy}_tower2_top`]),
-      dmgCol('b3', 'B3', [`npc_dota_${enemy}_tower3_bot`]),
-      dmgCol('m3', 'M3', [`npc_dota_${enemy}_tower3_mid`]),
-      dmgCol('t3', 'T3', [`npc_dota_${enemy}_tower3_top`]),
-      dmgCol('t4', 'T4', [`npc_dota_${enemy}_tower4`]),
+      dmgCol('anc', 'ANC', [`npc_dota_${enemy}_fort`], 'Ancient'),
+      dmgCol('raxb', 'RAXB', [`npc_dota_${enemy}_barracks_melee_bot`, `npc_dota_${enemy}_barracks_ranged_bot`], 'Barracks Bot'),
+      dmgCol('raxm', 'RAXM', [`npc_dota_${enemy}_barracks_melee_mid`, `npc_dota_${enemy}_barracks_ranged_mid`], 'Barracks Mid'),
+      dmgCol('raxt', 'RAXT', [`npc_dota_${enemy}_barracks_melee_top`, `npc_dota_${enemy}_barracks_ranged_top`], 'Barracks Top'),
+      dmgCol('rosh', 'ROSH', [`npc_dota_roshan`], 'Roshan'),
+      dmgCol('shr', 'SHR', [`npc_dota_${enemy}_healer`], 'Shrine'),
+      dmgCol('b1', 'B1', [`npc_dota_${enemy}_tower1_bot`], 'Tower 1 Bot'),
+      dmgCol('m1', 'M1', [`npc_dota_${enemy}_tower1_mid`], 'Tower 1 Mid'),
+      dmgCol('t1', 'T1', [`npc_dota_${enemy}_tower1_top`], 'Tower 1 Top'),
+      dmgCol('b2', 'B2', [`npc_dota_${enemy}_tower2_bot`], 'Tower 2 Bot'),
+      dmgCol('m2', 'M2', [`npc_dota_${enemy}_tower2_mid`], 'Tower 2 Mid'),
+      dmgCol('t2', 'T2', [`npc_dota_${enemy}_tower2_top`], 'Tower 2 Top'),
+      dmgCol('b3', 'B3', [`npc_dota_${enemy}_tower3_bot`], 'Tower 3 Bot'),
+      dmgCol('m3', 'M3', [`npc_dota_${enemy}_tower3_mid`], 'Tower 3 Mid'),
+      dmgCol('t3', 'T3', [`npc_dota_${enemy}_tower3_top`], 'Tower 3 Top'),
+      dmgCol('t4', 'T4', [`npc_dota_${enemy}_tower4`], 'Tower 4'),
     ];
   };
 
