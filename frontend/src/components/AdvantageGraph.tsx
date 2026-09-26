@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { HEROES } from '../lib/heroes';
 import { IconRadiant, IconDire } from './Icons';
@@ -11,6 +12,15 @@ function formatClock(min: number) {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function GoldIcon({ size = 10 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" fill="#e2b742" stroke="#a87f1f" strokeWidth="1.5" />
+      <text x="12" y="16.5" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#7a5a12">$</text>
+    </svg>
+  );
 }
 
 function CustomTooltip({ active, payload, label }: any) {
@@ -37,16 +47,43 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+function KillDot({ time, label, pct, color, anchorLeft }: { time: number; label: string; pct: number; color: string; anchorLeft: boolean }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: 'absolute', left: `${pct}%`, top: '50%',
+        transform: 'translate(-50%,-50%)', width: '6px', height: '6px', borderRadius: '50%',
+        background: color, border: '1px solid rgba(0,0,0,0.5)', cursor: 'default',
+      }}
+    >
+      {hovered && (
+        <div style={{
+          position: 'absolute', bottom: '100%', marginBottom: '5px',
+          left: anchorLeft ? 0 : 'auto', right: anchorLeft ? 'auto' : 0,
+          background: 'rgba(20,20,24,0.97)', border: '1px solid var(--border-color)', borderRadius: '4px',
+          padding: '0.3rem 0.5rem', fontSize: '0.68rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', zIndex: 30,
+        }}>
+          {label} <span style={{ color: 'var(--text-muted)' }}>@ {formatClock(time / 60)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Net Worth / XP advantage area chart, matching stratz.com's structure:
- * Radiant label+icon top-left, Dire label+icon top-right, final-advantage
- * pill badges centered between them, a single filled area for net worth
- * with a plain (unfilled) line for XP, a custom tooltip naming whichever
- * team currently leads each stat, and two kill-event dot ribbons (Radiant
- * kills above the chart, Dire kills below) reading "who killed who" on
- * hover. Extracted out of MatchTabs.tsx's GraphsTab (which still renders it
- * unchanged) so it can also be reused next to the embedded Overview
- * playback panel.
+ * Radiant label+icon top-left, Dire label+icon top-right, a single
+ * rectangular white/gold final-advantage box docked next to whichever team
+ * actually leads (left if Radiant, right if Dire — never centered), a
+ * filled area for net worth with a plain (unfilled) line for XP, a custom
+ * tooltip naming whichever team currently leads each stat, and two
+ * hoverable kill-event dot ribbons (Radiant kills above the chart, Dire
+ * kills below) reading "who killed who". Extracted out of MatchTabs.tsx's
+ * GraphsTab (which still renders it unchanged) so it can also be reused
+ * next to the embedded Overview playback panel.
  */
 export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: { matchData: any; allPlayers?: any[]; height?: number }) {
   if (!matchData?.radiant_gold_adv || !matchData?.radiant_xp_adv) {
@@ -68,6 +105,7 @@ export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: 
 
   const finalGold = goldAdv[goldAdv.length - 1] || 0;
   const finalXp = xpAdv[xpAdv.length - 1] || 0;
+  const radiantLeads = (finalGold + finalXp) >= 0;
 
   const durationMinutes = Math.max(1, advData.length - 1);
 
@@ -84,42 +122,46 @@ export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: 
     log.forEach((e: any) => {
       if (e?.time == null) return;
       const victimHero = Object.values(HEROES).find((h: any) => `npc_dota_hero_${h.img_name}` === e.key || h.img_name === e.key) as any;
-      const label = `${killerName} killed ${victimHero?.name || 'an enemy'} @ ${formatClock(e.time / 60)}`;
+      const label = `${killerName} killed ${victimHero?.name || 'an enemy'}`;
       (p.player_slot < 128 ? radiantDots : direDots).push({ time: e.time, label });
     });
   });
 
   const renderDotRibbon = (dots: { time: number; label: string }[], color: string) => (
     <div style={{ position: 'relative', height: '10px', margin: '0 30px' }}>
-      {dots.map((d, i) => (
-        <div
-          key={i}
-          title={d.label}
-          style={{
-            position: 'absolute', left: `${Math.min(100, Math.max(0, (d.time / 60 / durationMinutes) * 100))}%`, top: '50%',
-            transform: 'translate(-50%,-50%)', width: '6px', height: '6px', borderRadius: '50%',
-            background: color, border: '1px solid rgba(0,0,0,0.5)', cursor: 'default',
-          }}
-        />
-      ))}
+      {dots.map((d, i) => {
+        const pct = Math.min(100, Math.max(0, (d.time / 60 / durationMinutes) * 100));
+        return <KillDot key={i} time={d.time} label={d.label} pct={pct} color={color} anchorLeft={pct < 70} />;
+      })}
+    </div>
+  );
+
+  const AdvantageBox = (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '0.5rem',
+      background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(226,183,66,0.4)', borderRadius: '4px',
+      padding: '0.25rem 0.65rem',
+    }}>
+      {radiantLeads && <IconRadiant style={{ width: 14, height: 14, flexShrink: 0 }} />}
+      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#fff' }}>{fmtK(finalXp)} XP</span>
+      <span style={{ color: 'rgba(255,255,255,0.25)' }}>|</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent-gold)' }}>
+        <GoldIcon size={11} /> {fmtK(finalGold)} Gold
+      </span>
+      {!radiantLeads && <IconDire style={{ width: 14, height: 14, flexShrink: 0 }} />}
     </div>
   );
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', gap: '0.5rem', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--radiant-green)', fontWeight: 700, fontSize: '0.85rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', width: '100%', marginBottom: '0.5rem', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--radiant-green)', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
           <IconRadiant style={{ width: 16, height: 16 }} /> Radiant
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, padding: '0.2rem 0.7rem', borderRadius: '999px', background: finalXp >= 0 ? 'rgba(81,164,69,0.15)' : 'rgba(194,53,43,0.15)', color: finalXp >= 0 ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
-            {fmtK(finalXp)} XP
-          </span>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, padding: '0.2rem 0.7rem', borderRadius: '999px', background: finalGold >= 0 ? 'rgba(81,164,69,0.15)' : 'rgba(194,53,43,0.15)', color: finalGold >= 0 ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
-            {fmtK(finalGold)} Gold
-          </span>
+        <div style={{ flex: 1, display: 'flex', justifyContent: radiantLeads ? 'flex-start' : 'flex-end', minWidth: 0 }}>
+          {AdvantageBox}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--dire-red)', fontWeight: 700, fontSize: '0.85rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--dire-red)', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>
           Dire <IconDire style={{ width: 16, height: 16 }} />
         </div>
       </div>
@@ -132,7 +174,7 @@ export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: 
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
             <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + ':00'} />
             <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => Math.abs(val) > 1000 ? (Math.abs(val) / 1000).toFixed(1) + 'k' : Math.abs(val).toString()} domain={[-maxAdvVal, maxAdvVal]} />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip />} isAnimationActive={false} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
             <defs>
               <linearGradient id="goldFill" x1="0" y1="0" x2="0" y2="1">
@@ -140,8 +182,8 @@ export default function AdvantageGraph({ matchData, allPlayers, height = 400 }: 
                 <stop offset="100%" stopColor="var(--accent-gold)" stopOpacity={0.05} />
               </linearGradient>
             </defs>
-            <Area type="monotone" dataKey="gold" stroke="var(--accent-gold)" strokeWidth={2} fill="url(#goldFill)" name="Gold" />
-            <Area type="monotone" dataKey="xp" stroke="#4da6ff" strokeWidth={1.5} fill="none" name="Experience" />
+            <Area type="linear" dataKey="gold" stroke="var(--accent-gold)" strokeWidth={2} fill="url(#goldFill)" name="Gold" isAnimationActive={false} />
+            <Area type="linear" dataKey="xp" stroke="#4da6ff" strokeWidth={1.5} fill="none" name="Experience" isAnimationActive={false} />
           </AreaChart>
         </ResponsiveContainer>
       </div>
