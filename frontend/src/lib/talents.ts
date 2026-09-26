@@ -19,7 +19,15 @@ export interface TalentTier {
 
 export function talentLabel(name: string): string {
   const ab = ABILITIES[name];
-  if (ab?.dname) return ab.dname;
+  if (ab?.dname) {
+    // OpenDota's constants leave these as unresolved templates, e.g.
+    // "+{s:bonus_duration}s Warcry Duration" — the numeric value isn't in
+    // any data source available here (not even OpenDota's own live API;
+    // it needs Valve's localization files). Strip the token rather than
+    // show broken `{...}` syntax; still names the correct effect, just
+    // without the exact number.
+    return ab.dname.replace(/\{[^}]+\}[a-z%]*/gi, '').replace(/^[+\-%\s]+/, '').trim() || ab.dname;
+  }
   return name.replace('special_bonus_', '').replace(/_/g, ' ');
 }
 

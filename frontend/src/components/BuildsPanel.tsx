@@ -1,16 +1,40 @@
 import { useState } from 'react';
 import { HEROES } from '../lib/heroes';
-import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
+import { getHeroImage, getItemImage, getAbilityImage, ITEMS } from '../lib/dota';
 import { getPlayerPosition, POSITION_INFO } from '../lib/roles';
-import { getAbilityBuildOrder, getSkillBuildLabel } from '../lib/talents';
+import { getAbilityBuildOrder, getSkillBuildLabel, getTalentTree } from '../lib/talents';
 import PositionIcon from './PositionIcon';
 
+/**
+ * Only the "main" items Stratz's own build display shows — not every raw
+ * purchase. Two real signals from items.json, not a guess: drop anything
+ * qual==="consumable" (tangos/clarity/wards/etc, never a build piece), and
+ * drop any item that a LATER purchase's `components` list names (it got
+ * combined into something bigger, e.g. Circlet -> Wraith Band) — an item
+ * only counts as "main" if it's still standing at the end of its own
+ * upgrade chain, or was never a component of anything the player bought
+ * afterward.
+ */
 function purchaseLogOf(p: any) {
   let log = p.purchase_log;
   if (typeof log === 'string') {
     try { log = JSON.parse(log); } catch { log = []; }
   }
-  return Array.isArray(log) ? log.filter((e: any) => e.key && !e.key.startsWith('recipe_') && e.key !== 'ward_dispenser') : [];
+  if (!Array.isArray(log)) return [];
+  const raw = log.filter((e: any) => e.key && !e.key.startsWith('recipe_') && e.key !== 'ward_dispenser');
+
+  const consumedKeys = new Set<string>();
+  raw.forEach((e: any) => {
+    const components: string[] | null = ITEMS[e.key]?.components || null;
+    if (components) components.forEach((c) => consumedKeys.add(c));
+  });
+
+  return raw.filter((e: any) => {
+    const item = ITEMS[e.key];
+    if (item?.qual === 'consumable') return false;
+    if (consumedKeys.has(e.key)) return false;
+    return true;
+  });
 }
 
 function formatClock(sec: number) {
@@ -19,16 +43,59 @@ function formatClock(sec: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function WardIcon({ type }: { type: 'obs' | 'sen' }) {
+function WardIcon({ type, size = 14 }: { type: 'obs' | 'sen'; size?: number }) {
   return type === 'obs' ? (
-    <svg width="10" height="10" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
       <circle cx="12" cy="12" r="9" fill="none" stroke="#4da6ff" strokeWidth="2.5" />
       <circle cx="12" cy="12" r="3" fill="#4da6ff" />
     </svg>
   ) : (
-    <svg width="10" height="10" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
       <path d="M12 2 L22 8 V16 L12 22 L2 16 V8 Z" fill="none" stroke="#e2b742" strokeWidth="2.5" />
     </svg>
+  );
+}
+
+/** Single talent-tree badge, top-right of the card. Hovering shows the same
+ * 4-tier x 2-option breakdown the game's own talent tooltip shows, chosen
+ * option bold/gold, the other dimmed — not just an icon strip. */
+function TalentBadge({ heroNpcName, abilityUpgradesArr }: { heroNpcName?: string; abilityUpgradesArr?: number[] }) {
+  const [hovered, setHovered] = useState(false);
+  const tiers = getTalentTree(heroNpcName, abilityUpgradesArr);
+  if (tiers.length === 0 || !tiers.some((t) => t.options.length > 0)) return null;
+
+  return (
+    <div
+      style={{ position: 'relative', flexShrink: 0 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <img
+        src="/assets/images/dota2/talent_tree.svg"
+        alt="Talents"
+        style={{ width: '22px', height: '22px', flexShrink: 0, cursor: 'default' }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+      {hovered && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, marginTop: '4px', zIndex: 40, width: '220px',
+          background: 'rgba(15,17,21,0.98)', border: '1px solid var(--border-color)', borderRadius: '4px',
+          padding: '0.5rem 0.65rem', fontSize: '0.7rem',
+        }}>
+          {[...tiers].reverse().map((tier) => (
+            <div key={tier.level} style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', padding: '0.2rem 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {tier.options.map((o, i) => (
+                <span key={i} style={{
+                  color: o.chosen ? 'var(--accent-gold)' : 'var(--text-muted)', fontWeight: o.chosen ? 700 : 400,
+                }}>
+                  {o.label}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -40,43 +107,33 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
   // it has to be rebuilt from img_name instead of read off hero.name.
   const heroNpcName = hero ? `npc_dota_hero_${hero.img_name}` : undefined;
   const skillBuild = getSkillBuildLabel(heroNpcName, player.ability_upgrades_arr);
-  const abilityOrder = getAbilityBuildOrder(heroNpcName, player.ability_upgrades_arr);
+  const abilityOrder = getAbilityBuildOrder(heroNpcName, player.ability_upgrades_arr).filter((a) => !a.isTalent);
   const obsCount = player.purchase_ward_observer || 0;
   const senCount = player.purchase_ward_sentry || 0;
 
   return (
-    <div className="glass-surface" style={{ padding: '0.55rem 0.7rem', borderRadius: 'var(--radius-md)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '36px', height: '36px', objectFit: 'cover', objectPosition: 'center 30%', borderRadius: '4px', flexShrink: 0 }} />}
+    <div className="glass-surface" style={{ padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '42px', height: '42px', objectFit: 'cover', objectPosition: 'center 30%', borderRadius: '4px', flexShrink: 0 }} />}
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
-          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {player.persona || player.personaname || 'Anonymous'}
           </div>
-          {skillBuild && <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{skillBuild} build</div>}
+          {skillBuild && <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>{skillBuild} build</div>}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>
-          <span title="Observer wards purchased" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <WardIcon type="obs" /> {obsCount}
-          </span>
-          <span title="Sentry wards purchased" style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <WardIcon type="sen" /> {senCount}
-          </span>
-        </div>
+        <TalentBadge heroNpcName={heroNpcName} abilityUpgradesArr={player.ability_upgrades_arr} />
       </div>
 
       {abilityOrder.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginTop: '0.4rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '0.5rem' }}>
           {abilityOrder.map((a, i) => (
             <img
               key={i}
               src={getAbilityImage(a.name)}
               alt={a.label}
               title={a.label}
-              style={{
-                width: '15px', height: '15px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0,
-                border: a.isTalent ? '1px solid var(--accent-gold)' : '1px solid rgba(255,255,255,0.1)',
-              }}
+              style={{ width: '22px', height: '22px', objectFit: 'cover', borderRadius: '3px', flexShrink: 0, border: '1px solid rgba(255,255,255,0.12)' }}
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           ))}
@@ -84,9 +141,9 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
       )}
 
       {log.length === 0 ? (
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>No item timing data.</div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.55rem' }}>No item timing data.</div>
       ) : (
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '0.55rem' }}>
           {log.map((entry: any, i: number) => {
             const taken = (entry.time || 0) <= scrubTime;
             return (
@@ -96,14 +153,14 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
                   alt={entry.key}
                   title={`${entry.key.replace(/_/g, ' ')} @ ${formatClock(entry.time || 0)}`}
                   style={{
-                    width: '27px', height: '19px', objectFit: 'cover', borderRadius: '3px',
+                    width: '38px', height: '27px', objectFit: 'cover', borderRadius: '3px',
                     filter: taken ? 'none' : 'grayscale(100%) brightness(0.45)',
                     opacity: taken ? 1 : 0.55,
                     transition: 'filter 0.15s, opacity 0.15s',
                   }}
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
-                <span style={{ fontSize: '0.55rem', color: taken ? 'var(--text-muted)' : 'rgba(255,255,255,0.25)', marginTop: '2px' }}>
+                <span style={{ fontSize: '0.6rem', color: taken ? 'var(--text-muted)' : 'rgba(255,255,255,0.25)', marginTop: '2px' }}>
                   {formatClock(entry.time || 0)}
                 </span>
               </div>
@@ -111,6 +168,15 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
           })}
         </div>
       )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.9rem', marginTop: '0.55rem' }}>
+        <span title="Observer wards purchased" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          <WardIcon type="obs" /> {obsCount}
+        </span>
+        <span title="Sentry wards purchased" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+          <WardIcon type="sen" /> {senCount}
+        </span>
+      </div>
     </div>
   );
 }

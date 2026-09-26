@@ -155,9 +155,10 @@ export default function MatchMap({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Radiant Advantage graph (gold)
+  // Mini advantage sparkline (gold + XP)
   const goldAdv = matchData?.radiant_gold_adv || [];
-  const maxGold = Math.max(1, ...goldAdv.map((g: number) => Math.abs(g)));
+  const xpAdv = matchData?.radiant_xp_adv || [];
+  const maxGold = Math.max(1, ...goldAdv.map((g: number) => Math.abs(g)), ...xpAdv.map((x: number) => Math.abs(x)));
   const currentMinute = Math.floor(currentTime / 60);
 
   // Hero movement. Preferred source: `pos_t` — a real x/y sampled every
@@ -473,33 +474,49 @@ export default function MatchMap({
         </div>
       </div>}
 
-      {/* Gold Advantage Mini-Graph */}
-      {goldAdv.length > 0 && !compact && (
-        <div style={{ marginTop: '1rem' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>Radiant Advantage</div>
-          <div style={{ height: '40px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px', position: 'relative', overflow: 'hidden' }}>
-            {/* Zero line */}
-            <div style={{ position: 'absolute', top: '50%', width: '100%', height: '1px', background: 'rgba(255,255,255,0.2)' }} />
-            {/* Graph */}
-            <svg viewBox={`0 0 ${goldAdv.length} 100`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
-              <path
-                d={goldAdv.map((g: number, i: number) => {
-                  const x = i;
-                  const y = 50 - (g / maxGold) * 45;
-                  return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-                }).join(' ')}
-                fill="none"
-                stroke={goldAdv[goldAdv.length - 1] >= 0 ? '#4ade80' : '#ef4444'}
-                strokeWidth="1.5"
-              />
-            </svg>
-            {/* Current time indicator */}
-            {currentMinute < goldAdv.length && (
-              <div style={{ position: 'absolute', left: `${(currentMinute / goldAdv.length) * 100}%`, top: 0, bottom: 0, width: '2px', background: 'var(--accent-gold)', opacity: 0.8 }} />
-            )}
+      {/* Gold + XP advantage mini sparkline, labels reflecting whichever
+          side currently leads each stat (not a fixed "Radiant Advantage"
+          title — it flips as the graph does). */}
+      {goldAdv.length > 0 && !compact && (() => {
+        const goldIdx = Math.min(goldAdv.length - 1, currentMinute);
+        const xpIdx = Math.min(xpAdv.length - 1, currentMinute);
+        const goldNow = goldAdv[goldIdx] ?? 0;
+        const xpNow = xpAdv[xpIdx] ?? 0;
+        return (
+          <div style={{ marginTop: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '0.3rem' }}>
+              <span style={{ color: goldNow >= 0 ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
+                {goldNow >= 0 ? 'Radiant' : 'Dire'} Gold Advantage
+              </span>
+              <span style={{ color: xpNow >= 0 ? 'var(--radiant-green)' : 'var(--dire-red)' }}>
+                {xpNow >= 0 ? 'Radiant' : 'Dire'} XP Advantage
+              </span>
+            </div>
+            <div style={{ height: '40px', background: 'rgba(0,0,0,0.3)', borderRadius: '4px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: '50%', width: '100%', height: '1px', background: 'rgba(255,255,255,0.2)' }} />
+              <svg viewBox={`0 0 ${goldAdv.length} 100`} preserveAspectRatio="none" style={{ width: '100%', height: '100%' }}>
+                <path
+                  d={goldAdv.map((g: number, i: number) => `${i === 0 ? 'M' : 'L'} ${i} ${50 - (g / maxGold) * 45}`).join(' ')}
+                  fill="none" stroke="var(--accent-gold)" strokeWidth="1.5"
+                />
+                {xpAdv.length > 0 && (
+                  <path
+                    d={xpAdv.map((x: number, i: number) => `${i === 0 ? 'M' : 'L'} ${i} ${50 - (x / maxGold) * 45}`).join(' ')}
+                    fill="none" stroke="#4da6ff" strokeWidth="1.5"
+                  />
+                )}
+              </svg>
+              {currentMinute < goldAdv.length && (
+                <div style={{ position: 'absolute', left: `${(currentMinute / goldAdv.length) * 100}%`, top: 0, bottom: 0, width: '2px', background: '#fff', opacity: 0.6 }} />
+              )}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.3rem', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '10px', height: '2px', background: 'var(--accent-gold)', display: 'inline-block' }} /> Gold</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><span style={{ width: '10px', height: '2px', background: '#4da6ff', display: 'inline-block' }} /> XP</span>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
     </div>
   );

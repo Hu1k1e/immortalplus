@@ -115,11 +115,11 @@ function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: num
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#05070a' }}>
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#2a2c30' }}>
       <img
         src="/assets/images/dota2/minimap_geometry_current.png"
         alt="Map"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(1) hue-rotate(180deg) brightness(0.8) saturate(1.2) contrast(1.1)' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.88) hue-rotate(180deg) brightness(1.05) saturate(0.9)' }}
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
       {RADIANT_BUILDINGS.map((b) => renderBuilding(b, true))}

@@ -74,47 +74,75 @@ function DraftGrid({ matchData }: { matchData: any }) {
   );
 }
 
-const KILL_CATEGORIES: { key: string; label: string; color: string }[] = [
-  { key: 'hero_kills', label: 'Hero', color: 'var(--dire-red)' },
-  { key: 'tower_kills', label: 'Tower', color: 'var(--radiant-green)' },
-  { key: 'roshan_kills', label: 'Roshan', color: '#ff9800' },
-  { key: 'courier_kills', label: 'Courier', color: 'var(--accent-gold)' },
-  { key: 'neutral_kills', label: 'Neutral', color: '#42a5f5' },
-];
+/** Which enemy heroes a player killed, and how many times — resolved from
+ * kills_log's victim `key` (an npc name) against the hero table, same
+ * matching pattern used elsewhere for kills_log (AdvantageGraph, story). */
+function killsByVictimHero(player: any): Map<number, number> {
+  let log = player.kills_log;
+  if (typeof log === 'string') { try { log = JSON.parse(log); } catch { log = []; } }
+  const counts = new Map<number, number>();
+  if (!Array.isArray(log)) return counts;
+  log.forEach((e: any) => {
+    const victim = Object.values(HEROES).find((h: any) => `npc_dota_hero_${h.img_name}` === e.key || h.img_name === e.key) as any;
+    if (victim) counts.set(victim.id, (counts.get(victim.id) || 0) + 1);
+  });
+  return counts;
+}
 
-function KillBreakdownColumn({ title, color, players }: { title: string; color: string; players: any[] }) {
+function KillBreakdownColumn({ title, color, team, enemyTeam }: { title: string; color: string; team: any[]; enemyTeam: any[] }) {
+  const enemyHeroes = enemyTeam.map((p) => ({ slot: p.player_slot, hero: HEROES[p.hero_id] })).filter((e) => e.hero);
+  const columnTotals = enemyHeroes.map(() => 0);
+  const rows = team.map((p) => {
+    const counts = killsByVictimHero(p);
+    const perEnemy = enemyHeroes.map((e) => counts.get(e.hero.id) || 0);
+    perEnemy.forEach((v, i) => { columnTotals[i] += v; });
+    return { player: p, perEnemy, total: perEnemy.reduce((a, b) => a + b, 0) };
+  });
+  const grandTotal = columnTotals.reduce((a, b) => a + b, 0);
+
   return (
-    <div style={{ flex: 1 }}>
+    <div style={{ flex: 1, minWidth: 0 }}>
       <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.85rem', color }}>{title}</h4>
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-            <th style={{ textAlign: 'left', padding: '0.35rem 0.3rem', color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase' }}>Player</th>
-            {KILL_CATEGORIES.map((c) => (
-              <th key={c.key} style={{ textAlign: 'center', padding: '0.35rem 0.3rem', color: 'var(--text-muted)', fontSize: '0.65rem', textTransform: 'uppercase' }}>{c.label}</th>
-            ))}
-          </tr>
-        </thead>
         <tbody>
-          {players.map((p) => {
+          {rows.map(({ player: p, perEnemy, total }) => {
             const hero = HEROES[p.hero_id];
             return (
               <tr key={p.player_slot} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                <td style={{ padding: '0.4rem 0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '28px', height: '16px', objectFit: 'cover', borderRadius: '2px' }} />}
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '90px' }}>{p.persona || p.personaname || 'Anonymous'}</span>
+                <td style={{ padding: '0.4rem 0.3rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '32px', height: '32px', objectFit: 'cover', borderRadius: '3px' }} />}
+                    <div style={{ overflow: 'hidden' }}>
+                      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '110px' }}>{p.persona || p.personaname || 'Anonymous'}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{total} kills</div>
+                    </div>
+                  </div>
                 </td>
-                {KILL_CATEGORIES.map((c) => {
-                  const val = p[c.key] || 0;
+                {enemyHeroes.map((e, i) => {
+                  const val = perEnemy[i];
                   return (
-                    <td key={c.key} style={{ textAlign: 'center', padding: '0.4rem 0.3rem', color: val > 0 ? c.color : 'var(--text-muted)', fontWeight: val > 0 ? 700 : 400 }}>
-                      {val}
+                    <td key={e.slot} style={{ textAlign: 'center', padding: '0.4rem 0.3rem' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', opacity: val > 0 ? 1 : 0.35 }}>
+                        <img src={getHeroImage(e.hero.img_name)} alt={e.hero.name} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '3px', filter: val > 0 ? 'none' : 'grayscale(100%)' }} />
+                        <span style={{ fontWeight: val > 0 ? 700 : 400, color: val > 0 ? 'var(--text-primary)' : 'var(--text-muted)', minWidth: '10px' }}>{val}</span>
+                      </div>
                     </td>
                   );
                 })}
               </tr>
             );
           })}
+          <tr>
+            <td style={{ padding: '0.5rem 0.3rem', fontWeight: 700 }}>{grandTotal} kills</td>
+            {enemyHeroes.map((e, i) => (
+              <td key={e.slot} style={{ textAlign: 'center', padding: '0.5rem 0.3rem' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <img src={getHeroImage(e.hero.img_name)} alt={e.hero.name} style={{ width: '24px', height: '24px', objectFit: 'cover', borderRadius: '3px' }} />
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{columnTotals[i]}</span>
+                </div>
+              </td>
+            ))}
+          </tr>
         </tbody>
       </table>
     </div>
@@ -126,10 +154,13 @@ function KillBreakdownTable({ allPlayers }: { allPlayers: any[] }) {
   const dire = allPlayers.filter((p) => p.player_slot >= 128);
 
   return (
-    <div className="glass-surface" style={{ padding: '1rem', display: 'flex', gap: '1.5rem' }}>
-      <KillBreakdownColumn title="Radiant - Kill Breakdown" color="var(--radiant-green)" players={radiant} />
-      <div style={{ width: '1px', background: 'var(--border-color)' }} />
-      <KillBreakdownColumn title="Dire - Kill Breakdown" color="var(--dire-red)" players={dire} />
+    <div className="glass-surface" style={{ padding: '1rem' }}>
+      <h3 style={{ margin: '0 0 1rem', color: 'var(--text-primary)' }}>Kill Breakdown</h3>
+      <div style={{ display: 'flex', gap: '1.5rem' }}>
+        <KillBreakdownColumn title="Radiant" color="var(--radiant-green)" team={radiant} enemyTeam={dire} />
+        <div style={{ width: '1px', background: 'var(--border-color)' }} />
+        <KillBreakdownColumn title="Dire" color="var(--dire-red)" team={dire} enemyTeam={radiant} />
+      </div>
     </div>
   );
 }

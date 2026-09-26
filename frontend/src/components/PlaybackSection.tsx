@@ -1,6 +1,5 @@
 import MatchMap from './MatchMap';
 import LiveScoreboardPanel from './LiveScoreboardPanel';
-import AdvantageGraph from './AdvantageGraph';
 import { useMatchPlayback } from '../hooks/useMatchPlayback';
 
 interface PlaybackSectionProps {
@@ -54,11 +53,6 @@ export default function PlaybackSection({ matchData, allPlayers, selectedPlayer,
         <div style={{ flex: '3 1 640px', minWidth: '0' }}>
           <LiveScoreboardPanel allPlayers={allPlayers} currentTime={playback.currentTime} />
         </div>
-      </div>
-
-      <div className="glass-surface" style={{ padding: '1rem', marginTop: '1.5rem' }}>
-        <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem' }}>Net Worth / XP Advantage</h4>
-        <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={260} currentTime={playback.currentTime} />
       </div>
     </div>
   );
