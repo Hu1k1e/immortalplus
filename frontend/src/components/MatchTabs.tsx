@@ -1745,17 +1745,31 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
       
       {/* TIMELINE */}
       <div style={{ position: "relative", width: "100%", height: "80px", marginBottom: "2rem", display: "flex", alignItems: "center" }}>
-        <div style={{ position: "absolute", left: "60px", top: "50%", width: "calc(100% - 120px)", height: "2px", background: "rgba(255,255,255,0.2)" }} />
         
-        <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", alignItems: "center", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-          <div>Radiant</div>
-          <div style={{ margin: "5px 0" }} />
-          <div>Dire</div>
+        {/* Track */}
+        <div style={{ 
+          position: "absolute", left: "40px", top: "50%", width: "calc(100% - 80px)", height: "8px", 
+          background: "var(--surface-color)", borderRadius: "4px", transform: "translateY(-50%)",
+          boxShadow: "inset 0 1px 3px rgba(0,0,0,0.5), 0 1px 1px rgba(255,255,255,0.05)"
+        }}>
+           <div style={{ position: "absolute", top: "50%", left: 0, width: "100%", height: "2px", background: "rgba(255,255,255,0.1)", transform: "translateY(-50%)" }} />
         </div>
         
-        <div style={{ position: "absolute", left: "60px", top: "calc(50% + 15px)", fontSize: "0.8rem", color: "var(--text-muted)" }}>0:00</div>
-        <div style={{ position: "absolute", right: "60px", top: "calc(50% - 7px)", fontSize: "0.8rem", color: "var(--text-muted)", background: "var(--bg-color)", padding: "0 5px" }}>{formatTime(matchDuration)}</div>
+        {/* Timestamps */}
+        <div style={{ position: "absolute", left: "40px", top: "calc(50% + 15px)", fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "bold" }}>0:00</div>
+        <div style={{ position: "absolute", right: "40px", top: "calc(50% + 15px)", fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "bold" }}>{formatTime(matchDuration)}</div>
 
+        {/* Legend */}
+        <div style={{ position: "absolute", right: "40px", bottom: "-15px", display: "flex", gap: "15px", fontSize: "0.75rem", color: "var(--text-muted)", alignItems: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <IconRadiant style={{ width: 14, height: 14, fill: "var(--radiant-green)" }} /> Radiant Won
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <IconDire style={{ width: 14, height: 14, fill: "var(--dire-red)" }} /> Dire Won
+          </div>
+        </div>
+
+        {/* Markers */}
         {parsedTeamfights.map((t: any, i: number) => {
           const isSelected = selectedTf === i;
           const isHovered = hoveredTf === i;
@@ -1770,7 +1784,7 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
               onClick={() => setSelectedTf(i)}
               style={{
                 position: "absolute", 
-                left: `calc(60px + (100% - 120px) * ${t.start / matchDuration})`, 
+                left: `calc(40px + (100% - 80px) * ${t.start / matchDuration})`, 
                 top: "50%",
                 transform: "translate(-50%, -50%)",
                 cursor: "pointer",
@@ -1780,9 +1794,9 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
               <div style={{
                 color: color,
                 transition: "all 0.2s",
-                filter: isSelected ? `drop-shadow(0 0 10px ${color})` : "none"
+                filter: isSelected ? `drop-shadow(0 0 10px ${color})` : "drop-shadow(0 0 3px rgba(0,0,0,0.8))"
               }}>
-                {isRadiantWon ? <IconRadiant style={{ width: isSelected || isHovered ? 24 : 16, height: isSelected || isHovered ? 24 : 16, fill: color }} /> : <IconDire style={{ width: isSelected || isHovered ? 24 : 16, height: isSelected || isHovered ? 24 : 16, fill: color }} />}
+                {isRadiantWon ? <IconRadiant style={{ width: isSelected || isHovered ? 28 : 20, height: isSelected || isHovered ? 28 : 20, fill: color }} /> : <IconDire style={{ width: isSelected || isHovered ? 28 : 20, height: isSelected || isHovered ? 28 : 20, fill: color }} />}
               </div>
 
               {/* TIMELINE TOOLTIP */}
@@ -1862,53 +1876,9 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
                   );
               });
 
-              let activeDeathsPos: any[] = [];
-              if (tf && tf.players) {
-                  tf.players.forEach((p: any) => {
-                      if (p?.deaths_pos) {
-                          if (typeof p.deaths_pos === "object" && !Array.isArray(p.deaths_pos)) {
-                              Object.keys(p.deaths_pos).forEach(x => {
-                                  Object.keys(p.deaths_pos[x]).forEach(y => {
-                                      activeDeathsPos.push({
-                                          x: parseInt(x, 10), y: parseInt(y, 10),
-                                          player: p,
-                                          isRadiant: p.player_slot < 128,
-                                          killer: tf.players.find((k: any) => k?.killed && HEROES[p.hero_id as keyof typeof HEROES] && k.killed[HEROES[p.hero_id as keyof typeof HEROES]?.name])
-                                      });
-                                  });
-                              });
-                          }
-                      }
-                  });
-              }
-
-              const activeMarkers = activeDeathsPos.map((m: any, i: number) => {
-                  const px = Math.min(100, Math.max(0, ((m.x - 64) / 128) * 100));
-                  const py = Math.min(100, Math.max(0, 100 - ((m.y - 64) / 128) * 100));
-                  const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
-                  const killerName = m.killer?.persona || m.killer?.name || "Unknown";
-                  return (
-                      <div key={`active_death_${i}`} className="map-icon-hover" style={{
-                        position: "absolute", left: `${px}%`, top: `${py}%`,
-                        zIndex: 15, transform: "translate(-50%, -50%)", cursor: "pointer"
-                      }} title={`Killed by ${killerName}`}>
-                        <div style={{
-                            width: "24px", height: "24px",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            borderRadius: "50%",
-                            border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
-                            overflow: "hidden", background: "#000"
-                        }}>
-                            {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-                        </div>
-                      </div>
-                  );
-              });
-
               return (
                   <>
                       {allFightsMarkers}
-                      {activeMarkers}
                   </>
               );
             })()}
@@ -2478,7 +2448,13 @@ export function StoryTab({ matchData }: { matchData: any }) {
   if (Array.isArray(teamfights)) {
     teamfights.forEach((tf: any) => {
       if (!tf) return;
-      const goldDelta = tf.radiant_gold_advantage_delta || 0;
+      let goldDelta = 0;
+      (tf.players || []).forEach((p: any, i: number) => {
+          if (p && p.gold_delta) {
+              const isRadiant = i < 5 || (allPlayers.find((ap:any)=>ap.player_slot === p.player_slot)?.player_slot < 128);
+              goldDelta += isRadiant ? p.gold_delta : -p.gold_delta;
+          }
+      });
       const radWon = goldDelta > 0;
       const deadHeroes: React.ReactNode[] = [];
       (tf.players || []).forEach((p: any, i: number) => {
