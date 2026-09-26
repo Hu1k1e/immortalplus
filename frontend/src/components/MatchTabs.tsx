@@ -1886,11 +1886,12 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
                   const px = Math.min(100, Math.max(0, ((m.x - 64) / 128) * 100));
                   const py = Math.min(100, Math.max(0, 100 - ((m.y - 64) / 128) * 100));
                   const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
+                  const killerName = m.killer?.persona || m.killer?.name || "Unknown";
                   return (
                       <div key={`active_death_${i}`} className="map-icon-hover" style={{
                         position: "absolute", left: `${px}%`, top: `${py}%`,
                         zIndex: 15, transform: "translate(-50%, -50%)", cursor: "pointer"
-                      }}>
+                      }} title={`Killed by ${killerName}`}>
                         <div style={{
                             width: "24px", height: "24px",
                             display: "flex", alignItems: "center", justifyContent: "center",
@@ -1899,11 +1900,6 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
                             overflow: "hidden", background: "#000"
                         }}>
                             {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-                        </div>
-                        <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
-                          <PlayerCell p={m.player} />
-                          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
-                          {m.killer ? <PlayerCell p={m.killer} /> : <span style={{ color: "var(--text-muted)" }}>Unknown</span>}
                         </div>
                       </div>
                   );
@@ -2373,8 +2369,8 @@ export function LogTab({ allPlayers, matchData }: { allPlayers: any[]; matchData
 
 // ================ STORY TAB ================
 export function StoryTab({ matchData }: { matchData: any }) {
-  const { match, players } = matchData;
-  const allPlayers = match.players || players || [];
+  const match = matchData;
+  const allPlayers = match.all_players || match.players || [];
   const duration = match.duration || 0;
   const gameDate = new Date((match.start_time || 0) * 1000).toLocaleDateString();
   const durMins = Math.floor(duration / 60);
