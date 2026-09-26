@@ -315,8 +315,18 @@ async def request_parse(match_id: int, background_tasks: BackgroundTasks, sessio
             "message": "Match not yet synced locally — queued on OpenDota only",
         }
 
+    stratz_data = None
+    if settings and settings.stratz_api_token:
+        from services.stratz import get_stratz_client
+        stratz_client = get_stratz_client(settings.stratz_api_token)
+        if stratz_client:
+            try:
+                stratz_data = await stratz_client.get_match(match_id)
+            except Exception as e:
+                logger.info(f"Stratz lookup failed for {match_id} (non-fatal, other sources still tried): {e}")
+
     cluster, salt = await resolve_cluster_salt(
-        match, od_client, steam_api_key=settings.steam_api_key if settings else None
+        match, od_client, steam_api_key=settings.steam_api_key if settings else None, stratz_data=stratz_data
     )
     session.commit()  # persist opendota_raw if resolve_cluster_salt fetched+stored it
 

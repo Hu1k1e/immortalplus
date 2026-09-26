@@ -106,6 +106,7 @@ async def auto_parse_worker():
             ).all()
 
             steam_api_key = settings.steam_api_key if settings else None
+            stratz_api_token = settings.stratz_api_token if settings else None
 
             # Filter to those that are ready for a (re-)attempt
             ready = []
@@ -130,7 +131,7 @@ async def auto_parse_worker():
 
             # Process up to MAX_PER_CYCLE per loop
             for match in ready[:MAX_PER_CYCLE]:
-                await _parse_one_match(match.match_id, od_api_key, steam_api_key)
+                await _parse_one_match(match.match_id, od_api_key, steam_api_key, stratz_api_token)
 
         except Exception as e:
             logger.error(f"Auto-parse worker error: {e}", exc_info=True)
@@ -138,7 +139,7 @@ async def auto_parse_worker():
         await asyncio.sleep(PARSE_WORKER_INTERVAL)
 
 
-async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key: str = None):
+async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key: str = None, stratz_api_token: str = None):
     """
     Attempt to fully parse one match:
     1. Tell OpenDota to parse (for benchmarks/percentiles).
@@ -151,6 +152,7 @@ async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key:
     from services.opendota import get_opendota_client
     from services.local_parser import parse_match_locally
     from services.steam import resolve_cluster_salt
+    from services.stratz import get_stratz_client
     from services.sync import fetch_match_details
 
     session = SessionLocal()
@@ -169,9 +171,20 @@ async def _parse_one_match(match_id: int, od_api_key: str = None, steam_api_key:
         od_client = get_opendota_client(od_api_key)
 
         # --- Step 1: Get cluster/salt so we know the replay URL ---
-        # Steam API is tried first (fast + reliable), falling back to OpenDota's
-        # own (often not-yet-populated) cluster/replay_salt fields.
-        cluster, salt = await resolve_cluster_salt(match, od_client, steam_api_key=steam_api_key)
+        # Tries stored data, then Steam API, then a fresh OpenDota lookup, then
+        # Stratz, in that order (see resolve_cluster_salt). Stratz needs its own
+        # match fetch first since it's a GraphQL call, not a REST field lookup.
+        stratz_data = None
+        stratz_client = get_stratz_client(stratz_api_token)
+        if stratz_client:
+            try:
+                stratz_data = await stratz_client.get_match(match_id)
+            except Exception as e:
+                logger.info(f"[{match_id}] Stratz lookup failed (non-fatal, other sources still tried): {e}")
+
+        cluster, salt = await resolve_cluster_salt(
+            match, od_client, steam_api_key=steam_api_key, stratz_data=stratz_data
+        )
         session.commit()  # persist opendota_raw if resolve_cluster_salt fetched+stored it
         logger.info(f"[{match_id}] cluster={cluster}, replay_salt={salt}")
 
