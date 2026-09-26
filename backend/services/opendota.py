@@ -34,7 +34,10 @@ class OpenDotaClient:
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 timeout=30.0,
-                headers={"Accept": "application/json"},
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "ImmortalPlus/1.0"
+                },
             )
         return self._client
 

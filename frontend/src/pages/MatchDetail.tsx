@@ -20,7 +20,9 @@ export default function MatchDetail() {
   const [activeMistakeTab, setActiveMistakeTab] = useState('current');
   const [mainTab, setMainTab] = useState('Overview');
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
-  const [parseState, setParseState] = useState<'idle' | 'requesting' | 'requested' | 'error'>('idle');
+  const [parseState, setParseState] = useState<'idle' | 'requesting' | 'requested' | 'error'>(
+    localStorage.getItem(`parse_requested_${matchId}`) ? 'requested' : 'idle'
+  );
 
   const [refetching, setRefetching] = useState(false);
 
@@ -29,8 +31,11 @@ export default function MatchDetail() {
     try {
       const res = await api.get(`/matches/${matchId}`);
       setMatchData(res.data);
-      if (res.data.is_parsed && parseState !== 'idle') {
-        setParseState('idle'); // Clear parsing state once it finishes
+      if (res.data.is_parsed) {
+        if (parseState !== 'idle') {
+          setParseState('idle'); // Clear parsing state once it finishes
+        }
+        localStorage.removeItem(`parse_requested_${matchId}`);
       }
       if (res.data.is_analyzed) {
         const analysisRes = await api.get(`/matches/${matchId}/analysis`);
@@ -73,6 +78,7 @@ export default function MatchDetail() {
     try {
       await api.post(`/matches/${matchId}/request-parse`);
       setParseState('requested');
+      localStorage.setItem(`parse_requested_${matchId}`, 'true');
     } catch (err) {
       setParseState('error');
     }
