@@ -189,3 +189,4 @@ The application runs entirely locally via Docker Compose, composed of three main
   - Removed deprecated `odota_ui_temp` references, making `MatchTabs.tsx` fully independent.
  
  
+- **2026-09-27 (Mid-Morning)**: Rebuilt the ChatTab, LogTab, and StoryTab for full OpenDota 1:1 parity. ChatTab now parses actual game chat_wheel.json with multi-select faction/type filtering and spam detection. LogTab visualizes timelines left-to-right based on radiant/dire positioning with 30-second time gap dividers. StoryTab narratively recaps the match dynamically by parsing objectives, gold advantages at the 10/20/30/40 minute thresholds, teamfight deltas, and first-blood assignments. Perfected the TeamfightsTab map by including the average teamfight location alongside exact hero portrait map plots for individual casualties. Fixed all rendering errors and decoupled components from temporary opendota dependencies.

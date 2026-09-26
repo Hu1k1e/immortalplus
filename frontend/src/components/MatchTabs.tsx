@@ -1828,80 +1828,89 @@ export function TeamfightsTab({ teamfights, allPlayers }: { teamfights: any[]; a
             
             {/* Map Markers */}
             {(() => {
-              // Extract deaths position from player dict
-              let deathsPos: any[] = [];
+              const allFightsMarkers = parsedTeamfights.map((t: any, index: number) => {
+                  let dpos: any[] = [];
+                  (t.players || []).forEach((p: any) => {
+                     if (p?.deaths_pos) {
+                        if (typeof p.deaths_pos === "object" && !Array.isArray(p.deaths_pos)) {
+                           Object.keys(p.deaths_pos).forEach(x => {
+                               Object.keys(p.deaths_pos[x]).forEach(y => {
+                                   dpos.push({ x: parseInt(x, 10), y: parseInt(y, 10), player: p });
+                               });
+                           });
+                        }
+                     }
+                  });
+                  if (dpos.length === 0) return null;
+                  const avgX = dpos.reduce((acc: number, m: any) => acc + m.x, 0) / dpos.length;
+                  const avgY = dpos.reduce((acc: number, m: any) => acc + m.y, 0) / dpos.length;
+                  const avgPx = Math.min(100, Math.max(0, ((avgX - 64) / 128) * 100));
+                  const avgPy = Math.min(100, Math.max(0, 100 - ((avgY - 64) / 128) * 100));
+                  const isRadiantWon = t.radiant_gold_advantage_delta > 0;
+                  const isSelected = t === tf;
+                  
+                  return (
+                    <div key={`tf_marker_${index}`} style={{
+                        position: "absolute", left: `${avgPx}%`, top: `${avgPy}%`,
+                        zIndex: isSelected ? 10 : 3, transform: "translate(-50%, -50%)",
+                        display: "flex", flexDirection: "column", alignItems: "center", cursor: "pointer",
+                        opacity: isSelected ? 1 : 0.6,
+                        filter: isSelected ? "drop-shadow(0 0 10px rgba(255,255,255,0.8))" : "none",
+                    }} onClick={() => setSelectedTf(index)}>
+                        {isRadiantWon ? <IconRadiant style={{ width: isSelected ? 32 : 20, height: isSelected ? 32 : 20 }} /> : <IconDire style={{ width: isSelected ? 32 : 20, height: isSelected ? 32 : 20 }} />}
+                    </div>
+                  );
+              });
+
+              let activeDeathsPos: any[] = [];
               if (tf && tf.players) {
-                tf.players.forEach((p: any) => {
-                  if (p && p.deaths_pos) {
-                    if (typeof p.deaths_pos === "object" && !Array.isArray(p.deaths_pos)) {
-                      Object.keys(p.deaths_pos).forEach(x => {
-                        Object.keys(p.deaths_pos[x]).forEach(y => {
-                          deathsPos.push({
-                            x: parseInt(x, 10),
-                            y: parseInt(y, 10),
-                            player: p,
-                            isRadiant: p.player_slot < 128,
-                            killer: tf.players.find((k: any) => k?.killed && HEROES[p.hero_id as keyof typeof HEROES] && k.killed[HEROES[p.hero_id as keyof typeof HEROES]?.name])
-                          });
-                        });
-                      });
-                    } else if (Array.isArray(p.deaths_pos)) {
-                        // Already flat
-                        deathsPos = deathsPos.concat(p.deaths_pos);
-                    }
-                  }
-                });
+                  tf.players.forEach((p: any) => {
+                      if (p?.deaths_pos) {
+                          if (typeof p.deaths_pos === "object" && !Array.isArray(p.deaths_pos)) {
+                              Object.keys(p.deaths_pos).forEach(x => {
+                                  Object.keys(p.deaths_pos[x]).forEach(y => {
+                                      activeDeathsPos.push({
+                                          x: parseInt(x, 10), y: parseInt(y, 10),
+                                          player: p,
+                                          isRadiant: p.player_slot < 128,
+                                          killer: tf.players.find((k: any) => k?.killed && HEROES[p.hero_id as keyof typeof HEROES] && k.killed[HEROES[p.hero_id as keyof typeof HEROES]?.name])
+                                      });
+                                  });
+                              });
+                          }
+                      }
+                  });
               }
 
-              if (deathsPos.length === 0) return null;
-
-              const avgX = deathsPos.reduce((acc: number, m: any) => acc + m.x, 0) / deathsPos.length;
-              const avgY = deathsPos.reduce((acc: number, m: any) => acc + m.y, 0) / deathsPos.length;
-              const avgPx = Math.min(100, Math.max(0, (avgX / 127) * 100));
-              const avgPy = Math.min(100, Math.max(0, 100 - (avgY / 127) * 100));
-              const isRadiantWon = tf.radiant_gold_advantage_delta > 0;
-
-              return (
-                <>
-                  <div style={{
-                    position: "absolute", left: `${avgPx}%`, top: `${avgPy}%`,
-                    zIndex: 4, transform: "translate(-50%, -50%)",
-                    display: "flex", flexDirection: "column", alignItems: "center", pointerEvents: "none"
-                  }}>
-                    {isRadiantWon ? <IconRadiant style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(102,187,106,0.8))" }} /> : <IconDire style={{ width: 40, height: 40, filter: "drop-shadow(0 0 10px rgba(244,67,54,0.8))" }} />}
-                    <div style={{ color: "var(--accent-gold)", fontWeight: "bold", fontSize: "0.85rem", textShadow: "0 0 4px #000", marginTop: "2px" }}>
-                      {Math.abs(tf.radiant_gold_advantage_delta || 0)}
-                    </div>
-                  </div>
-
-                  {deathsPos.map((m: any, i: number) => {
-                    const px = Math.min(100, Math.max(0, (m.x / 127) * 100));
-                    const py = Math.min(100, Math.max(0, 100 - (m.y / 127) * 100));
-                    const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
-                    
-                    return (
-                      <div key={i} className="map-icon-hover" style={{
+              const activeMarkers = activeDeathsPos.map((m: any, i: number) => {
+                  const px = Math.min(100, Math.max(0, ((m.x - 64) / 128) * 100));
+                  const py = Math.min(100, Math.max(0, 100 - ((m.y - 64) / 128) * 100));
+                  const hero = m.player?.hero_id ? HEROES[m.player.hero_id as keyof typeof HEROES] : null;
+                  return (
+                      <div key={`active_death_${i}`} className="map-icon-hover" style={{
                         position: "absolute", left: `${px}%`, top: `${py}%`,
-                        width: "24px", height: "24px", zIndex: 5,
+                        width: "24px", height: "24px", zIndex: 15,
                         transform: "translate(-50%, -50%)",
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer",
-                        borderRadius: "50%",
+                        cursor: "pointer", borderRadius: "50%",
                         border: `2px solid ${m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)"}`,
-                        overflow: "hidden",
-                        background: "#000"
+                        overflow: "hidden", background: "#000"
                       }}>
-                        {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ width: "8px", height: "8px", background: m.isRadiant ? "var(--radiant-green)" : "var(--dire-red)", borderRadius: "50%" }} />}
-                        
+                        {hero ? <img src={getHeroImage(hero.img_name || '')} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
                         <div className="map-tooltip glass-surface" style={{ minWidth: "200px", display: "flex", alignItems: "center", gap: "10px" }}>
                           <PlayerCell p={m.player} />
                           <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>killed by</div>
                           {m.killer ? <PlayerCell p={m.killer} /> : <span style={{ color: "var(--text-muted)" }}>Unknown</span>}
                         </div>
                       </div>
-                    );
-                  })}
-                </>
+                  );
+              });
+
+              return (
+                  <>
+                      {allFightsMarkers}
+                      {activeMarkers}
+                  </>
               );
             })()}
           </div>
@@ -2431,7 +2440,7 @@ export function StoryTab({ matchData }: { matchData: any }) {
         )
       });
     } else if (obj.type === 'building_kill' || obj.type === 'CHAT_MESSAGE_TOWER_KILL' || obj.type === 'CHAT_MESSAGE_TOWER_DENY') {
-      const key = obj.key || '';
+      const key = String(obj.key || '');
       const isGood = key.indexOf('goodguys') !== -1 || obj.team === 2;
       const isDeny = obj.type === 'CHAT_MESSAGE_TOWER_DENY';
       const part = key ? (key.split('guys_')[1] || '').replace(/_/g, ' ') : 'a tower';
