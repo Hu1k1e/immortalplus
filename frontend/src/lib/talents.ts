@@ -3,7 +3,7 @@ import heroAbilitiesJson from './constants/hero_abilities.json';
 import abilitiesJson from './constants/abilities.json';
 
 const ABILITY_ID_TO_NAME: Record<string, string> = abilityIdsJson as any;
-const HERO_ABILITIES: Record<string, { talents?: { name: string; level: number }[] }> = heroAbilitiesJson as any;
+const HERO_ABILITIES: Record<string, { abilities?: string[]; talents?: { name: string; level: number }[] }> = heroAbilitiesJson as any;
 const ABILITIES: Record<string, any> = abilitiesJson as any;
 
 export interface TalentOption {
