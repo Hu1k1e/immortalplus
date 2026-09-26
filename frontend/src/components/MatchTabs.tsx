@@ -3,9 +3,10 @@ import { HEROES } from '../lib/heroes';
 import abilitiesData from '../lib/constants/abilities.json';
 import itemsData from '../lib/constants/items.json';
 import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar, AreaChart, Area, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import { Trophy } from 'lucide-react';
 import { IconRadiant, IconDire } from './Icons';
+import AdvantageGraph from './AdvantageGraph';
 
 
 
@@ -135,9 +136,9 @@ export const UniversalTooltip = ({ name, children }: any) => {
 };
 
 // ================ SHARED HELPERS ================
-const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
-const fmtK = (n: any) => (n == null || isNaN(n)) ? '-' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
-const pct = (n: any) => (n == null || isNaN(n)) ? '-' : `${(n * 100).toFixed(2)}%`;
+export const fmt = (n: any, d = 0) => (n == null || isNaN(n)) ? '-' : Number(n).toFixed(d);
+export const fmtK = (n: any) => (n == null || isNaN(n)) ? '-' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+export const pct = (n: any) => (n == null || isNaN(n)) ? '-' : `${(n * 100).toFixed(2)}%`;
 
 const PlayerCell = ({ p }: { p: any }) => {
   const hero = HEROES[p.hero_id];
@@ -149,7 +150,7 @@ const PlayerCell = ({ p }: { p: any }) => {
   );
 };
 
-const PercentBar = ({ value, max, color = 'var(--radiant-green)' }: { value: number; max: number; color?: string }) => {
+export const PercentBar = ({ value, max, color = 'var(--radiant-green)' }: { value: number; max: number; color?: string }) => {
   if (!max || max <= 0) return <span>{value}</span>;
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
   return (
@@ -162,10 +163,10 @@ const PercentBar = ({ value, max, color = 'var(--radiant-green)' }: { value: num
   );
 };
 
-const th: React.CSSProperties = { padding: '0.5rem 0.8rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' };
-const td: React.CSSProperties = { padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.05)' };
+export const th: React.CSSProperties = { padding: '0.5rem 0.8rem', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' };
+export const td: React.CSSProperties = { padding: '0.5rem 0.8rem', fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.05)' };
 
-const TeamTable = ({ title, players, columns, winner, totals, noOverflow }: { title: string; players: any[]; columns: { key: string; label: any; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any, noOverflow?: boolean }) => {
+export const TeamTable = ({ title, players, columns, winner, totals, noOverflow }: { title: string; players: any[]; columns: { key: string; label: any; sortFn?: (a: any, b: any) => number; render: (p: any) => any }[]; winner?: boolean, totals?: any, noOverflow?: boolean }) => {
   const [sortConfig, setSortConfig] = useState<{key: string | null, direction: 'asc' | 'desc'}>({ key: null, direction: 'desc' });
   
   const sortedPlayers = [...players].sort((a, b) => {
@@ -2565,27 +2566,6 @@ export function StoryTab({ matchData }: { matchData: any }) {
 // ================ GRAPHS TAB ================
 export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
   if (!matchData.radiant_gold_adv || !matchData.radiant_xp_adv) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Graph data not available.</div>;
-  
-  let goldAdv = matchData.radiant_gold_adv;
-  let xpAdv = matchData.radiant_xp_adv;
-  if (typeof goldAdv === 'string') goldAdv = JSON.parse(goldAdv);
-  if (typeof xpAdv === 'string') xpAdv = JSON.parse(xpAdv);
-
-  const advData = goldAdv.map((val: number, idx: number) => ({
-    time: idx,
-    gold: val,
-    xp: xpAdv[idx] || 0
-  }));
-
-  const maxAdvVal = Math.max(...advData.map((d: any) => Math.max(Math.abs(d.gold), Math.abs(d.xp))));
-  const gradientOffset = () => {
-    const dataMax = Math.max(...advData.map((i: any) => Math.max(i.gold, i.xp)));
-    const dataMin = Math.min(...advData.map((i: any) => Math.min(i.gold, i.xp)));
-    if (dataMax <= 0) return 0;
-    if (dataMin >= 0) return 1;
-    return dataMax / (dataMax - dataMin);
-  };
-  const off = gradientOffset();
 
   const playerColors = [
     '#3375FF', '#66FFBF', '#BF00BF', '#F3F00B', '#FF6B00', // Radiant
@@ -2597,9 +2577,13 @@ export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayer
     return p ? HEROES[p.hero_id]?.name || 'Unknown' : 'Unknown';
   };
 
+  let radiantGoldAdv = matchData.radiant_gold_adv;
+  if (typeof radiantGoldAdv === 'string') radiantGoldAdv = JSON.parse(radiantGoldAdv);
+  const timelineLength = radiantGoldAdv.length;
+
   // Helper to build array for a specific metric (networth_t, gold_t, etc.)
   const buildLineData = (key: string) => {
-    const length = advData.length;
+    const length = timelineLength;
     const res = [];
     for (let i = 0; i < length; i++) {
       const point: any = { time: i };
@@ -2684,33 +2668,7 @@ export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayer
     <div className="animation-fade-in" style={{ padding: '1rem 0' }}>
       <div style={{ marginBottom: '4rem' }}>
         <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Radiant Advantage</h3>
-        <div style={{ width: '100%', height: '400px' }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={advData} margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + ':00'} />
-              <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => Math.abs(val) > 1000 ? (Math.abs(val)/1000).toFixed(1) + 'k' : Math.abs(val).toString()} domain={[-maxAdvVal, maxAdvVal]} />
-              <Tooltip 
-                contentStyle={{ background: '#1a1f26', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-                labelFormatter={(label) => label + ':00'}
-              />
-              <Legend wrapperStyle={{ paddingTop: '20px' }} iconType="circle" />
-              <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
-              <defs>
-                <linearGradient id="splitColorGold" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset={off} stopColor="var(--accent-gold)" stopOpacity={0.8} />
-                  <stop offset={off} stopColor="var(--accent-gold)" stopOpacity={0.1} />
-                </linearGradient>
-                <linearGradient id="splitColorXP" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset={off} stopColor="#4da6ff" stopOpacity={0.8} />
-                  <stop offset={off} stopColor="#4da6ff" stopOpacity={0.1} />
-                </linearGradient>
-              </defs>
-              <Area type="monotone" dataKey="gold" stroke="var(--accent-gold)" strokeWidth={2} fill="url(#splitColorGold)" name="Gold" />
-              <Area type="monotone" dataKey="xp" stroke="#4da6ff" strokeWidth={2} fill="url(#splitColorXP)" name="Experience" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+        <AdvantageGraph matchData={matchData} />
       </div>
 
       {renderLineChart('Net Worth', 'networth_t')}

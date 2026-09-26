@@ -74,6 +74,7 @@ async def get_matches(
     hero_id: int = None,
     result: str = None,
     game_mode: int = None,
+    lane_role: int = None,
     session: Session = Depends(get_session),
 ):
     """Get match history from local database."""
@@ -89,6 +90,8 @@ async def get_matches(
         query = query.where(Match.result == result)
     if game_mode is not None:
         query = query.where(Match.game_mode == game_mode)
+    if lane_role is not None:
+        query = query.where(Match.lane_role == lane_role)
 
     query = query.order_by(Match.match_id.desc()).offset(offset).limit(limit)
     matches = session.exec(query).all()
@@ -99,6 +102,10 @@ async def get_matches(
         count_query = count_query.where(Match.hero_id == hero_id)
     if result:
         count_query = count_query.where(Match.result == result)
+    if game_mode is not None:
+        count_query = count_query.where(Match.game_mode == game_mode)
+    if lane_role is not None:
+        count_query = count_query.where(Match.lane_role == lane_role)
 
     total = len(session.exec(count_query).all())
 

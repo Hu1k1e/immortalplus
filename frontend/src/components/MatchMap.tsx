@@ -6,15 +6,79 @@ interface MatchMapProps {
   matchData: any;
   selectedPlayer: any;
   compact?: boolean;
+  // Optional controlled playback clock. When provided, MatchMap reads/writes
+  // through these instead of managing its own state, so a parent
+  // (PlaybackSection) can share one clock between the map and a live side
+  // panel. Omitted at the other two existing call sites, which keep
+  // today's fully self-contained behavior.
+  controlledTime?: number;
+  controlledIsPlaying?: boolean;
+  controlledSpeed?: number;
+  onControlledTimeChange?: (t: number) => void;
+  onControlledPlayingChange?: (p: boolean) => void;
+  onControlledSpeedChange?: (s: number) => void;
+  // Start playing automatically once, on mount (only meaningful when this
+  // instance owns its own clock, i.e. controlledIsPlaying is not passed).
+  autoPlayOnMount?: boolean;
 }
 
-export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMapProps) {
+export default function MatchMap({
+  matchData, selectedPlayer, compact,
+  controlledTime, controlledIsPlaying, controlledSpeed,
+  onControlledTimeChange, onControlledPlayingChange, onControlledSpeedChange,
+  autoPlayOnMount,
+}: MatchMapProps) {
   const duration = matchData?.duration || 0;
-  const [currentTime, setCurrentTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(4);
+  const [internalTime, setInternalTime] = useState(0);
+  const [internalPlaying, setInternalPlaying] = useState(false);
+  const [internalSpeed, setInternalSpeed] = useState(4);
   const animRef = useRef<number | null>(null);
   const lastTickRef = useRef<number>(0);
+  const autoPlayedRef = useRef(false);
+
+  const currentTime = controlledTime !== undefined ? controlledTime : internalTime;
+  const isPlaying = controlledIsPlaying !== undefined ? controlledIsPlaying : internalPlaying;
+  const playbackSpeed = controlledSpeed !== undefined ? controlledSpeed : internalSpeed;
+
+  // Refs mirroring the latest read values/callback props so the setters
+  // below can have a STABLE identity (required — React's own useState
+  // setters are always stable, and the tick() loop below depends on that
+  // stability to avoid resetting its elapsed-time tracking every frame).
+  const currentTimeRef = useRef(currentTime);
+  useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
+  const onTimeChangeRef = useRef(onControlledTimeChange);
+  useEffect(() => { onTimeChangeRef.current = onControlledTimeChange; }, [onControlledTimeChange]);
+  const onPlayingChangeRef = useRef(onControlledPlayingChange);
+  useEffect(() => { onPlayingChangeRef.current = onControlledPlayingChange; }, [onControlledPlayingChange]);
+  const onSpeedChangeRef = useRef(onControlledSpeedChange);
+  useEffect(() => { onSpeedChangeRef.current = onControlledSpeedChange; }, [onControlledSpeedChange]);
+
+  const setCurrentTime = useCallback((updater: number | ((prev: number) => number)) => {
+    const prev = currentTimeRef.current;
+    const next = typeof updater === 'function' ? (updater as (p: number) => number)(prev) : updater;
+    currentTimeRef.current = next;
+    if (onTimeChangeRef.current) onTimeChangeRef.current(next);
+    else setInternalTime(next);
+  }, []);
+
+  const setIsPlaying = useCallback((p: boolean) => {
+    if (onPlayingChangeRef.current) onPlayingChangeRef.current(p);
+    else setInternalPlaying(p);
+  }, []);
+
+  const setPlaybackSpeed = useCallback((s: number) => {
+    if (onSpeedChangeRef.current) onSpeedChangeRef.current(s);
+    else setInternalSpeed(s);
+  }, []);
+
+  // Autoplay once on mount, only when this instance owns its own play state
+  useEffect(() => {
+    if (autoPlayOnMount && !autoPlayedRef.current && controlledIsPlaying === undefined && duration > 0) {
+      autoPlayedRef.current = true;
+      setIsPlaying(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlayOnMount, duration]);
 
   // Playback loop
   const tick = useCallback((timestamp: number) => {
@@ -32,7 +96,7 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
     });
 
     animRef.current = requestAnimationFrame(tick);
-  }, [playbackSpeed, duration]);
+  }, [playbackSpeed, duration, setCurrentTime, setIsPlaying]);
 
   useEffect(() => {
     if (isPlaying) {
@@ -91,30 +155,44 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
   const maxGold = Math.max(1, ...goldAdv.map((g: number) => Math.abs(g)));
   const currentMinute = Math.floor(currentTime / 60);
 
-  // Hero positions based on pos dict {"1": {"x": 123, "y": 123}}
+  // Hero positions based on pos dict {"1": {"x": 123, "y": 123}} (per-minute
+  // samples). Linearly interpolate between the bounding minute samples for
+  // smooth movement instead of snapping once per minute; falls back to the
+  // nearest known minute (up to 5 back) on either side when a sample is
+  // sparse/missing.
   const heroPositions = useMemo(() => {
     if (!matchData?.all_players) return [];
     const positions: any[] = [];
-    
+    const minuteFloor = Math.floor(currentTime / 60);
+    const frac = (currentTime % 60) / 60;
+
+    const findPos = (p: any, minute: number): { x: number; y: number } | null => {
+      if (!p.pos || minute < 0) return null;
+      if (p.pos[String(minute)]) return p.pos[String(minute)];
+      for (let back = minute - 1; back >= Math.max(0, minute - 5); back--) {
+        if (p.pos[String(back)]) return p.pos[String(back)];
+      }
+      return null;
+    };
+
     matchData.all_players.forEach((p: any) => {
-      // Find the closest previous minute position if current minute doesn't exist
-      // Since pos is sparsely sampled sometimes
-      let minStr = String(currentMinute);
-      let posData = p.pos ? p.pos[minStr] : null;
-      
-      // If we don't have exact minute, try to fallback to previous known minute up to 5 mins back
-      if (!posData && p.pos) {
-        for (let back = currentMinute - 1; back >= Math.max(0, currentMinute - 5); back--) {
-          if (p.pos[String(back)]) {
-            posData = p.pos[String(back)];
-            break;
-          }
-        }
+      const posA = findPos(p, minuteFloor);
+      const posB = findPos(p, minuteFloor + 1);
+
+      let x: number | undefined;
+      let y: number | undefined;
+      if (posA && posB) {
+        x = posA.x + (posB.x - posA.x) * frac;
+        y = posA.y + (posB.y - posA.y) * frac;
+      } else if (posA) {
+        x = posA.x; y = posA.y;
+      } else if (posB) {
+        x = posB.x; y = posB.y;
       }
 
-      if (posData && posData.x && posData.y) {
-        const left = Math.min(100, Math.max(0, ((posData.x - 64) / 128) * 100));
-        const top = Math.min(100, Math.max(0, (1 - ((posData.y - 64) / 128)) * 100));
+      if (x != null && y != null) {
+        const left = Math.min(100, Math.max(0, ((x - 64) / 128) * 100));
+        const top = Math.min(100, Math.max(0, (1 - ((y - 64) / 128)) * 100));
         positions.push({
           playerSlot: p.player_slot,
           heroId: p.hero_id,
@@ -124,7 +202,7 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
       }
     });
     return positions;
-  }, [matchData, currentMinute]);
+  }, [matchData, currentTime]);
 
   const mapSize = compact ? '320px' : '100%';
 
@@ -274,7 +352,10 @@ export default function MatchMap({ matchData, selectedPlayer, compact }: MatchMa
                   backgroundPosition: 'center',
                   backgroundColor: '#333',
                   zIndex: isSelected ? 20 : 15,
-                  transition: 'all 0.5s linear' // smooth movement
+                  // Position is now interpolated every frame (see heroPositions
+                  // above), so only transition size/border here — transitioning
+                  // left/top too would fight the per-frame updates and lag.
+                  transition: 'width 0.2s ease, height 0.2s ease, border-color 0.2s ease'
                 }}
                 title={hero ? hero.localized_name : `Player ${hp.playerSlot}`}
               />
