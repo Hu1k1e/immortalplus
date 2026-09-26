@@ -180,6 +180,11 @@ class StratzClient:
                 "lobby_type": match_data.get("lobbyType"),
                 "start_time": match_data.get("startDateTime"),
                 "version": 21, # indicate parsed
+                # Requested in the query above but was previously dropped here —
+                # resolve_cluster_salt()'s Stratz fallback reads these exact keys
+                # and was always getting None/None as a result.
+                "clusterId": match_data.get("clusterId"),
+                "replaySalt": match_data.get("replaySalt"),
                 "players": []
             }
             
