@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
+import { getStandingBuildings, buildingLabel } from '../lib/buildings';
 
 interface MatchMapProps {
   matchData: any;
@@ -302,7 +303,7 @@ export default function MatchMap({
         style={{
           position: 'relative',
           width: mapSize,
-          maxWidth: '600px',
+          maxWidth: '900px',
           aspectRatio: '1/1',
           background: '#0a0a0a',
           borderRadius: '8px',
@@ -335,23 +336,35 @@ export default function MatchMap({
             }}
           />
 
-          {/* Building markers (simplified) */}
-          {/* Tower positions - Radiant */}
-          {[
-            { x: 18, y: 82, label: 'T1 Bot' },
-            { x: 38, y: 62, label: 'T1 Mid' },
-            { x: 12, y: 52, label: 'T1 Top' },
-          ].map((t, i) => (
-            <div key={`rt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--radiant-green)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
-          ))}
-          {/* Tower positions - Dire */}
-          {[
-            { x: 88, y: 18, label: 'T1 Top' },
-            { x: 62, y: 38, label: 'T1 Mid' },
-            { x: 88, y: 48, label: 'T1 Bot' },
-          ].map((t, i) => (
-            <div key={`dt${i}`} style={{ position: 'absolute', left: `${t.x}%`, top: `${t.y}%`, width: '8px', height: '8px', background: 'var(--dire-red)', border: '1px solid #000', borderRadius: '2px', transform: 'translate(-50%,-50%)', opacity: 0.6 }} title={t.label} />
-          ))}
+          {/* Real building markers: every standing tower/barracks/Ancient,
+              computed from the objectives log at the current playback time
+              (the same system TowersLaneRow's Overview mini-map uses) —
+              destroyed buildings simply disappear instead of the previous
+              fixed 3-per-side placeholder markers that never went away. */}
+          {(() => {
+            const { radiant: standingRadiant, dire: standingDire } = getStandingBuildings(matchData, mode === 'lanes' ? undefined : currentTime);
+            const renderBuilding = (b: ReturnType<typeof getStandingBuildings>['radiant'][number], isRadiant: boolean) => {
+              const isAncient = b.id[0] === 'a';
+              return (
+                <div
+                  key={b.id}
+                  title={`${buildingLabel(b.id)} — ${isRadiant ? 'Radiant' : 'Dire'} — Standing`}
+                  style={{
+                    position: 'absolute', top: `${b.topPct}%`, left: `${b.leftPct}%`, transform: 'translate(-50%,-50%)',
+                    width: isAncient ? '11px' : '8px', height: isAncient ? '11px' : '8px', borderRadius: '2px',
+                    background: isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)',
+                    border: '1px solid rgba(0,0,0,0.7)', zIndex: 8,
+                  }}
+                />
+              );
+            };
+            return (
+              <>
+                {standingRadiant.map((b) => renderBuilding(b, true))}
+                {standingDire.map((b) => renderBuilding(b, false))}
+              </>
+            );
+          })()}
 
           {/* Hero Positions */}
           {heroPositions.map((hp: any, i: number) => {

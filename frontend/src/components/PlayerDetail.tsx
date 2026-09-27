@@ -277,7 +277,7 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                       WebkitMaskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, WebkitMaskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat',
                       maskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, maskSize: '100% 100%', maskRepeat: 'no-repeat',
                     }}>
-                      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.75) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(1.9) saturate(0.4)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                     </div>
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '8px', ...LANE_ICON_ALIGN[selectedPlayer.lane] }}>
                       {laneMatchup?.map((p: any) => (
