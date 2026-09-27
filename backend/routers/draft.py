@@ -129,6 +129,44 @@ async def get_draft_state():
     return _gsi_state
 
 
+@router.post("/screen-report")
+async def report_screen_scan(
+    ally_picks: list[int] = [],
+    enemy_picks: list[int] = [],
+    bans: list[int] = [],
+):
+    """
+    Ingest picks/bans identified by the local draft-scanner companion app
+    (see draft-scanner/) via screen-capture + hero-icon template matching.
+
+    This exists because Valve deliberately blanks pick/ban visibility from
+    every API-level channel during the draft (GSI, and — confirmed via
+    Valve's patch 7.35d changelog notes, in response to the "OverPlus"
+    controversy — even Overwolf's own officially-sanctioned game-events
+    integration) for every mode except Captain's Mode. Screen-reading is
+    the one channel that isn't blocked, since it only reads pixels already
+    rendered to the player's own monitor rather than any privileged data
+    channel — same category as OBS/Discord screen share, not game-memory
+    access (see draft-scanner/main.py's docstring).
+
+    _gsi_state is still the single source of truth for /suggest and the
+    websocket — this just feeds it from a second, resolution-limited
+    source when GSI's own draft block comes back empty (e.g. All Pick).
+    A slot GSI has already identified is never overwritten with a
+    screen-detected empty result, so a temporarily-failed match doesn't
+    regress an already-confirmed pick.
+    """
+    if ally_picks:
+        _gsi_state["ally_picks"] = ally_picks
+    if enemy_picks:
+        _gsi_state["enemy_picks"] = enemy_picks
+    if bans:
+        _gsi_state["bans"] = bans
+
+    await broadcast_draft_update(_gsi_state)
+    return {"status": "ok", "state": _gsi_state}
+
+
 @router.websocket("/ws")
 async def draft_websocket(ws: WebSocket):
     """WebSocket for real-time draft updates from GSI."""
