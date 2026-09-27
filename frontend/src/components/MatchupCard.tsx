@@ -82,7 +82,7 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
         display: 'flex',
         flexDirection: 'column',
         flex: '1 1 0',
-        minWidth: '130px',
+        minWidth: 0,
         maxWidth: '190px',
       }}
     >

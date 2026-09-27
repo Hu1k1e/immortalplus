@@ -5,9 +5,23 @@ import AdvantageGraph from './AdvantageGraph';
 const LANE_NAMES: Record<number, string> = { 1: 'Bottom Lane', 2: 'Middle Lane', 3: 'Top Lane' };
 
 // Real building screen positions (top%/left% on a square map view) — the
-// patch 7.33 set (buildingData733.ts), the more current of the two
-// coordinate sets OpenDota's own frontend vendors; the earlier pass here
-// used the older 6.70 set (buildingData.ts) by mistake.
+// patch 7.33 set (buildingData733.ts), the coordinate set OpenDota's own
+// frontend vendors. These percentages are calibrated against OpenDota's
+// OWN reference map image (map/simple.png), which is NOT a plain edge-to-
+// edge crop — measured its actual terrain content (via pixel-scanning for
+// the black-padding boundary) at 6.05%-93.85% of the canvas on both axes,
+// i.e. a ~6% inset margin. Stratz's minimap_geometry_current.png (used
+// here) has no such margin — terrain fills 0-100% edge to edge — so
+// applying OpenDota's percentages directly put every building
+// systematically off (worse near the edges, where most towers are).
+// remapPct() rescales from "OpenDota's padded canvas" space into "this
+// asset's edge-to-edge" space before rendering.
+const PAD_START = 6.05;
+const PAD_END = 93.85;
+function remapPct(v: number): number {
+  return ((v - PAD_START) / (PAD_END - PAD_START)) * 100;
+}
+
 interface BuildingEntry { id: string; top: number; left: number; }
 
 const RADIANT_BUILDINGS: BuildingEntry[] = [
@@ -107,7 +121,7 @@ function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: num
         key={b.id}
         title={`${buildingLabel(b.id)} — ${isRadiant ? 'Radiant' : 'Dire'} — Standing`}
         style={{
-          position: 'absolute', top: `${b.top}%`, left: `${b.left}%`, transform: 'translate(-50%,-50%)',
+          position: 'absolute', top: `${remapPct(b.top)}%`, left: `${remapPct(b.left)}%`, transform: 'translate(-50%,-50%)',
           width: isAncient ? '9px' : '7px', height: isAncient ? '9px' : '7px', borderRadius: '2px',
           background: '#ff8c1a',
           border: '1px solid rgba(0,0,0,0.6)',
@@ -177,6 +191,7 @@ export default function TowersLaneRow({ matchData, allPlayers, currentTime }: { 
   return (
     <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'stretch', marginTop: '1.5rem' }}>
       <div style={{ flex: '1 1 220px', maxWidth: '260px' }}>
+        <h4 style={{ margin: '0 0 0.5rem', fontSize: '0.9rem', color: 'var(--text-primary)' }}>Towers</h4>
         <MiniMap matchData={matchData} currentTime={currentTime} />
       </div>
       <div className="glass-surface" style={{ padding: '1rem', flex: '2 1 420px', minWidth: '340px' }}>

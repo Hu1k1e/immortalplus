@@ -17,7 +17,7 @@ export default function MatchupGrid({ allPlayers, onSelectPlayer, currentTime }:
   return (
     <div>
       <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Matchup</h3>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px', overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: '8px' }}>
         {radiant.map((p) => (
           <MatchupCard key={p.player_slot} player={p} allPlayers={allPlayers} onClick={() => onSelectPlayer?.(p)} currentTime={currentTime} />
         ))}

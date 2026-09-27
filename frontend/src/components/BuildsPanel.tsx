@@ -75,34 +75,39 @@ function TalentBadge({ heroNpcName, abilityUpgradesArr, anchor }: { heroNpcName?
       <img
         src="/assets/images/dota2/talent_tree.svg"
         alt="Talents"
-        style={{ width: '22px', height: '22px', flexShrink: 0, cursor: 'default' }}
+        style={{ width: '22px', height: '22px', flexShrink: 0, cursor: 'default', filter: 'drop-shadow(0 0 4px rgba(226,183,66,0.6))' }}
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
       {hovered && (
         <div style={{
-          position: 'absolute', top: '100%', marginTop: '4px', zIndex: 40, width: '320px',
+          position: 'absolute', top: '100%', marginTop: '4px', zIndex: 40, width: '270px',
           ...(anchor === 'left' ? { left: 0 } : { right: 0 }),
           background: 'rgba(15,17,21,0.98)', border: '1px solid var(--border-color)', borderRadius: '4px',
-          padding: '0.6rem 0.75rem', fontSize: '0.7rem',
+          padding: '0.5rem 0.6rem', fontSize: '0.66rem',
         }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', rowGap: '0.5rem', alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', rowGap: '0.2rem', alignItems: 'center' }}>
             <img
               src="/assets/images/dota2/talent_tree.svg" alt=""
-              style={{ gridColumn: 2, gridRow: `1 / span ${reversed.length}`, width: '26px', height: '26px', margin: '0 0.6rem' }}
+              style={{
+                gridColumn: 2, gridRow: `1 / span ${reversed.length}`, width: '22px', height: '22px', margin: '0 0.4rem',
+                filter: 'drop-shadow(0 0 5px rgba(226,183,66,0.85))',
+              }}
             />
             {reversed.map((tier, row) => (
               <Fragment key={tier.level}>
                 <span style={{
-                  gridColumn: 1, gridRow: row + 1, textAlign: 'right',
+                  gridColumn: 1, gridRow: row + 1, textAlign: 'right', lineHeight: 1.25,
                   color: tier.options[0]?.chosen ? 'var(--accent-gold)' : 'var(--text-muted)',
                   fontWeight: tier.options[0]?.chosen ? 700 : 400,
+                  textShadow: tier.options[0]?.chosen ? '0 0 6px rgba(226,183,66,0.8)' : 'none',
                 }}>
                   {tier.options[0]?.label}
                 </span>
                 <span style={{
-                  gridColumn: 3, gridRow: row + 1, textAlign: 'left',
+                  gridColumn: 3, gridRow: row + 1, textAlign: 'left', lineHeight: 1.25,
                   color: tier.options[1]?.chosen ? 'var(--accent-gold)' : 'var(--text-muted)',
                   fontWeight: tier.options[1]?.chosen ? 700 : 400,
+                  textShadow: tier.options[1]?.chosen ? '0 0 6px rgba(226,183,66,0.8)' : 'none',
                 }}>
                   {tier.options[1]?.label}
                 </span>
