@@ -1,9 +1,42 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { HEROES } from '../lib/heroes';
 import { ITEMS, getHeroImage, getItemImage, getAbilityImage, getHeroIcon } from '../lib/dota';
 import abilityIdsJson from '../lib/constants/ability_ids.json';
 import { IconRadiant, IconDire } from './Icons';
 import MatchMap from './MatchMap';
+import { MiniMap as TowersMiniMap } from './TowersLaneRow';
+import { purchaseLogOf } from './BuildsPanel';
+
+const LANE_OVERLAY: Record<number, string> = { 3: '/assets/images/dota2/minimap_top.svg', 2: '/assets/images/dota2/minimap_mid.svg', 1: '/assets/images/dota2/minimap_bot.svg' };
+
+/** Wards planted within the first minute, plotted on the same real Stratz
+ * map asset (and the same x/y -> percent transform) MatchMap already uses
+ * for hero markers — no towers, since this panel is about vision, not
+ * objectives. */
+function VisionMiniMap({ allPlayers }: { allPlayers: any[] }) {
+  const dots: { left: number; top: number; radiant: boolean; type: 'obs' | 'sen' }[] = [];
+  allPlayers.forEach((p: any) => {
+    const isRadiant = p.player_slot < 128;
+    (p.obs_log || []).filter((w: any) => (w.time ?? 0) <= 60).forEach((w: any) => {
+      dots.push({ left: Math.min(100, Math.max(0, ((w.x - 64) / 128) * 100)), top: Math.min(100, Math.max(0, (1 - (w.y - 64) / 128) * 100)), radiant: isRadiant, type: 'obs' });
+    });
+    (p.sen_log || []).filter((w: any) => (w.time ?? 0) <= 60).forEach((w: any) => {
+      dots.push({ left: Math.min(100, Math.max(0, ((w.x - 64) / 128) * 100)), top: Math.min(100, Math.max(0, (1 - (w.y - 64) / 128) * 100)), radiant: isRadiant, type: 'sen' });
+    });
+  });
+  return (
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b' }}>
+      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.6) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+      {dots.map((d, i) => (
+        <div key={i} style={{
+          position: 'absolute', left: `${d.left}%`, top: `${d.top}%`, transform: 'translate(-50%,-50%)',
+          width: '8px', height: '8px', borderRadius: d.type === 'obs' ? '50%' : '2px',
+          background: d.radiant ? 'var(--radiant-green)' : 'var(--dire-red)', border: '1px solid rgba(0,0,0,0.6)',
+        }} />
+      ))}
+    </div>
+  );
+}
 
 const ABILITY_IDS: Record<string, string> = abilityIdsJson;
 
@@ -16,14 +49,25 @@ function formatTime(secs: number) {
   return `${sign}${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
+// item_0..5/item_neutral/backpack_0..2 are numeric item ids, not name keys —
+// ITEMS is keyed by name (e.g. "blink"), so a reverse id->name map is
+// needed to actually resolve them. This was missing before (silently
+// falling back to the raw numeric id as a fake "name", which then failed
+// every image lookup) — the real cause of the broken item icons here.
+const ITEM_ID_TO_NAME: Record<number, string> = {};
+Object.entries(ITEMS).forEach(([name, data]: [string, any]) => {
+  if (data?.id != null) ITEM_ID_TO_NAME[data.id] = name;
+});
+
 const resolveItemName = (item: any) => {
   if (item == null) return null;
-  return typeof item === 'number' || !isNaN(Number(item))
-    ? ITEMS[Number(item)]?.name?.replace('item_', '') || String(item).replace('item_', '')
-    : String(item).replace('item_', '');
+  if (typeof item === 'number' || (!isNaN(Number(item)) && String(item).trim() !== '')) {
+    return ITEM_ID_TO_NAME[Number(item)] || null;
+  }
+  return String(item).replace('item_', '');
 };
 
-const ItemIcon = ({ item, size = 44 }: { item: any; size?: number }) => {
+const ItemIcon = ({ item, size = 44, dim = false }: { item: any; size?: number; dim?: boolean }) => {
   const itemName = resolveItemName(item);
   const dname = itemName ? (ITEMS[itemName]?.dname || itemName) : '';
   if (!itemName || itemName === 'empty' || itemName === 'null') {
@@ -31,7 +75,7 @@ const ItemIcon = ({ item, size = 44 }: { item: any; size?: number }) => {
   }
   return (
     <div title={dname} style={{ width: `${size * 1.35}px`, height: `${size}px`, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', overflow: 'hidden' }}>
-      <img src={getItemImage(itemName)} alt={dname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+      <img src={getItemImage(itemName)} alt={dname} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: dim ? 'grayscale(100%) brightness(0.4)' : 'none', opacity: dim ? 0.5 : 1 }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
     </div>
   );
 };
@@ -39,7 +83,20 @@ const ItemIcon = ({ item, size = 44 }: { item: any; size?: number }) => {
 export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, setSelectedPlayer }: any) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
-  
+
+  // Post-Game Stats item build: starts showing the final build, scrubbing
+  // back greys out anything not yet acquired as of that time (real
+  // purchase_log timestamps matched against the final inventory's resolved
+  // item names — the same convention BuildsPanel/PerformancesExpandedUI use).
+  const [statsScrub, setStatsScrub] = useState(matchData.duration || 0);
+  const finalItemsLog = purchaseLogOf(selectedPlayer);
+  const acquiredAt = (name: string | null): number => {
+    if (!name) return 0;
+    const matches = finalItemsLog.filter((e: any) => e.key === name);
+    return matches.length ? (matches[matches.length - 1].time || 0) : 0;
+  };
+  const itemDim = (raw: any) => acquiredAt(resolveItemName(raw)) > statsScrub;
+
   const pb = matchData.picks_bans || [];
   const radBans = pb.filter((x: any) => x.team === 0 && !x.is_pick);
   const direBans = pb.filter((x: any) => x.team === 1 && !x.is_pick);
@@ -61,18 +118,42 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
     return ['tango', 'flask', 'clarity', 'mango', 'bottle'].includes(key);
   });
 
+  const countLogUpTo = (log: any, maxSecs: number) => {
+    let arr = log;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
+    if (!Array.isArray(arr)) return 0;
+    return arr.filter((e: any) => (e?.time ?? 0) <= maxSecs).length;
+  };
+  const arrAtMinute = (arr: any, min: number, fallback: number) => {
+    let a = arr;
+    if (typeof a === 'string') { try { a = JSON.parse(a); } catch { return fallback; } }
+    if (!Array.isArray(a) || a.length === 0) return fallback;
+    return a.length > min ? a[min] : a[a.length - 1];
+  };
+
+  // Real, time-sliced values (kills_log/deaths_log/lh_t/dn_t), not a
+  // proportional estimate off the final totals — level has no real
+  // per-time source anywhere in this app's data, so it stays scaled.
   const getTimelineStat = (min: number) => {
+    const secs = min * 60;
     const scale = Math.min(1, min / (matchData.duration / 60));
     return {
       level: Math.max(1, Math.floor(selectedPlayer.level * scale)),
-      kills: Math.floor(selectedPlayer.kills * scale),
-      deaths: Math.floor(selectedPlayer.deaths * scale),
-      assists: Math.floor(selectedPlayer.assists * scale),
-      gpm: selectedPlayer.gpm,
-      xpm: selectedPlayer.xpm,
-      lh: Math.floor(selectedPlayer.last_hits * scale),
-      dn: Math.floor(selectedPlayer.denies * scale)
+      kills: countLogUpTo(selectedPlayer.kills_log, secs),
+      deaths: countLogUpTo(selectedPlayer.deaths_log, secs),
+      assists: Math.floor((selectedPlayer.assists || 0) * scale),
+      gpm: selectedPlayer.gold_per_min ?? selectedPlayer.gpm ?? 0,
+      xpm: selectedPlayer.xp_per_min ?? selectedPlayer.xpm ?? 0,
+      lh: arrAtMinute(selectedPlayer.lh_t, min, 0),
+      dn: arrAtMinute(selectedPlayer.dn_t, min, 0),
     };
+  };
+
+  const countLogInRange = (log: any, start: number, end: number) => {
+    let arr = log;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
+    if (!Array.isArray(arr)) return 0;
+    return arr.filter((e: any) => (e?.time ?? 0) > start && (e?.time ?? 0) <= end).length;
   };
 
   const TimelineBracket = ({ min, title }: { min: number, title: string }) => {
@@ -81,6 +162,14 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
     const bracketEnd = min * 60;
     const bracketItems = importantItems.filter((l: any) => l.time > bracketStart && l.time <= bracketEnd);
     const bracketRegen = regenItems.filter((l: any) => l.time > bracketStart && l.time <= bracketEnd);
+    const bracketKills = countLogInRange(selectedPlayer.kills_log, bracketStart, bracketEnd);
+    const bracketDeaths = countLogInRange(selectedPlayer.deaths_log, bracketStart, bracketEnd);
+    // No assist-specific timestamped log exists anywhere in this app's data
+    // (the same real limitation MatchupCard's live K/D already documents) —
+    // the final total is scaled proportionally by bracket window as the
+    // best available approximation, not a made-up number.
+    const scaleAt = (secs: number) => Math.min(1, secs / matchData.duration);
+    const bracketAssists = Math.max(0, Math.floor((selectedPlayer.assists || 0) * scaleAt(bracketEnd)) - Math.floor((selectedPlayer.assists || 0) * scaleAt(bracketStart)));
     const stat = getTimelineStat(min);
 
     const laneMatchup = useMemo(() => {
@@ -98,8 +187,8 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
     return (
       <div style={{ marginBottom: '2rem' }}>
         <h3 className="gold-text-gradient" style={{ marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>{formatTime(min * 60)} {title}</h3>
-        <div style={{ display: 'flex', gap: '1.5rem' }}>
-          <div className="glass-surface" style={{ width: '280px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'stretch', minHeight: '200px' }}>
+          <div className="glass-surface" style={{ width: '280px', flexShrink: 0, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                <div style={{ position: 'relative' }}>
                  <img src={getHeroIcon(HEROES[selectedPlayer.hero_id]?.img_name)} alt="Hero" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
@@ -128,31 +217,46 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
 
           {min === 10 ? (
             <>
-              <div className="glass-surface" style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem', fontSize: '0.75rem' }}>
-                  <span className="text-secondary" style={{ fontWeight: 'bold' }}>NW</span>
-                  <span style={{ color: 'var(--radiant-green)' }}>■ Radiant</span>
-                  <span style={{ color: 'var(--dire-red)' }}>■ Dire</span>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {laneMatchup?.map((p: any) => {
-                     const isRad = p.player_slot < 128;
-                     const gold = p.gold_t?.[10] || (p.net_worth / (matchData.duration / 600));
-                     const maxGold = Math.max(1, ...laneMatchup.map((x:any) => x.gold_t?.[10] || (x.net_worth / (matchData.duration / 600))));
-                     const pct = Math.max(5, (gold / maxGold) * 100);
-                     return (
-                       <div key={p.player_slot} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                         <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} style={{ width: '32px', height: '32px', borderRadius: '50%', border: `1.5px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
-                         <div style={{ width: '20px', textAlign: 'center', fontSize: '0.85rem', fontWeight: 'bold' }}>{p.level || 6}</div>
-                         <div style={{ width: '50px', textAlign: 'right', fontSize: '0.9rem', fontFamily: 'monospace' }}>{Math.floor(gold).toLocaleString()}</div>
-                         <div style={{ flex: 1, height: '12px', background: 'rgba(0,0,0,0.5)', borderRadius: '6px', overflow: 'hidden' }}>
-                           <div style={{ height: '100%', width: `${pct}%`, background: isRad ? 'var(--radiant-green)' : 'var(--dire-red)', borderRadius: '6px' }} />
+              <div className="glass-surface" style={{ flex: 1, padding: '1.25rem', display: 'flex', gap: '1rem' }}>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '1.2rem', marginBottom: '1rem', fontSize: '0.68rem' }}>
+                    <span className="text-secondary" style={{ fontWeight: 'bold', letterSpacing: '0.5px' }}>NET WORTH</span>
+                    <span style={{ color: 'var(--radiant-green)' }}>■ Radiant</span>
+                    <span style={{ color: 'var(--dire-red)' }}>■ Dire</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                    {laneMatchup?.map((p: any) => {
+                       const isRad = p.player_slot < 128;
+                       const gold = p.gold_t?.[10] || (p.net_worth / (matchData.duration / 600));
+                       const maxGold = Math.max(1, ...laneMatchup.map((x:any) => x.gold_t?.[10] || (x.net_worth / (matchData.duration / 600))));
+                       const pct = Math.max(5, (gold / maxGold) * 100);
+                       return (
+                         <div key={p.player_slot} style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+                           <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} style={{ width: '24px', height: '24px', borderRadius: '50%', border: `1.5px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+                           <div style={{ width: '16px', textAlign: 'center', fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--text-secondary)' }}>{p.level || 6}</div>
+                           <div style={{ width: '46px', textAlign: 'right', fontSize: '0.78rem', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{Math.floor(gold).toLocaleString()}</div>
+                           <div style={{ flex: 1, height: '5px', background: 'rgba(0,0,0,0.5)', borderRadius: '3px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.06)' }}>
+                             <div style={{ height: '100%', width: `${pct}%`, background: isRad ? 'var(--radiant-green)' : 'var(--dire-red)', borderRadius: '3px' }} />
+                           </div>
                          </div>
-                       </div>
-                     );
-                  })}
-                  {(!laneMatchup || laneMatchup.length === 0) && <div className="text-secondary" style={{ textAlign: 'center' }}>No lane data</div>}
+                       );
+                    })}
+                    {(!laneMatchup || laneMatchup.length === 0) && <div className="text-secondary" style={{ textAlign: 'center' }}>No lane data</div>}
+                  </div>
                 </div>
+
+                {/* Lane overlay: real per-lane map crop (Stratz's own asset) with this lane's heroes shown on it */}
+                {selectedPlayer.lane && LANE_OVERLAY[selectedPlayer.lane] && (
+                  <div style={{ width: '110px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b', alignSelf: 'flex-start' }}>
+                    <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.6) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    <img src={LANE_OVERLAY[selectedPlayer.lane]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', gap: '3px', padding: '6px' }}>
+                      {laneMatchup?.map((p: any) => (
+                        <img key={p.player_slot} src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%', border: `1.5px solid ${p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="glass-surface" style={{ width: '300px', padding: '1rem' }}>
                 <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem' }}>Regen Purchased</h4>
@@ -178,11 +282,15 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
                     <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Kills</div>
-                    <strong style={{ color: 'var(--radiant-green)' }}>+{stat.kills}</strong>
+                    <strong style={{ color: 'var(--radiant-green)' }}>+{bracketKills}</strong>
                   </div>
                   <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
                     <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Deaths</div>
-                    <strong style={{ color: 'var(--dire-red)' }}>+{stat.deaths}</strong>
+                    <strong style={{ color: 'var(--dire-red)' }}>+{bracketDeaths}</strong>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
+                    <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Assists</div>
+                    <strong style={{ color: 'var(--text-primary)' }}>+{bracketAssists}</strong>
                   </div>
                 </div>
               </div>
@@ -204,8 +312,8 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                     )}
                   </div>
                 </div>
-                <div style={{ width: '160px', borderLeft: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
-                  <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={min * 60} controlledIsPlaying={false} />
+                <div style={{ width: '150px', flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.1)', padding: '0.75rem' }}>
+                  <TowersMiniMap matchData={matchData} currentTime={min * 60} />
                 </div>
               </div>
             </>
@@ -243,7 +351,7 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
       {/* 2. Post-Game Stats at the top */}
       <h3 className="gold-text-gradient" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Post-Game Stats</h3>
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '3rem', height: '220px' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '3rem', height: '240px' }}>
         {/* Col 1 & 2 wrapper */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 2 }}>
           <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
@@ -256,19 +364,30 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
               <h2 style={{ color: 'var(--accent-gold)', fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.net_worth?.toLocaleString()}</h2>
             </div>
           </div>
-          <div className="glass-surface" style={{ flex: 1.5, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', padding: '0.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
-              {[0, 1, 2, 3, 4, 5].map(i => <ItemIcon key={i} item={selectedPlayer[`item_${i}`]} size={30} />)}
+          <div className="glass-surface" style={{ flex: 1.5, display: 'flex', flexDirection: 'column', gap: '0.4rem', justifyContent: 'center', padding: '0.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                {[0, 1, 2, 3, 4, 5].map(i => <ItemIcon key={i} item={selectedPlayer[`item_${i}`]} size={30} dim={itemDim(selectedPlayer[`item_${i}`])} />)}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {selectedPlayer.item_neutral && selectedPlayer.item_neutral !== 'empty' && (
+                    <img src={getItemImage(resolveItemName(selectedPlayer.item_neutral) || '')} alt="Neutral" style={{ width: '100%', height: '100%', objectFit: 'cover' }} title={ITEMS[resolveItemName(selectedPlayer.item_neutral) || '']?.dname || 'Neutral item'} />
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {[0, 1, 2].map(i => <ItemIcon key={i} item={selectedPlayer[`backpack_${i}`]} size={18} dim={itemDim(selectedPlayer[`backpack_${i}`])} />)}
+                </div>
+              </div>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {selectedPlayer.item_neutral && selectedPlayer.item_neutral !== 'empty' && (
-                  <img src={getItemImage(resolveItemName(selectedPlayer.item_neutral) || '')} alt="Neutral" style={{ width: '100%', height: '100%', objectFit: 'cover' }} title={ITEMS[resolveItemName(selectedPlayer.item_neutral) || '']?.dname || selectedPlayer.item_neutral} />
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {[0, 1, 2].map(i => <ItemIcon key={i} item={selectedPlayer[`backpack_${i}`]} size={18} />)}
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.7rem', fontWeight: 700, padding: '0 0.5rem' }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{formatTime(statsScrub)}</span>
+              <input
+                type="range" min={0} max={matchData.duration || 0} value={statsScrub}
+                onChange={(e) => setStatsScrub(Number(e.target.value))}
+                style={{ flex: 1, accentColor: 'var(--accent-gold)' }}
+              />
+              <span style={{ color: 'rgba(255,255,255,0.3)' }}>{formatTime(matchData.duration || 0)}</span>
             </div>
           </div>
         </div>
@@ -495,8 +614,8 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
         </div>
 
         {/* Map */}
-        <div style={{ width: '200px', height: '200px', background: '#000', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden', alignSelf: 'center' }}>
-          <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={60} controlledIsPlaying={false} />
+        <div style={{ width: '200px', flexShrink: 0, alignSelf: 'center' }}>
+          <VisionMiniMap allPlayers={matchData.all_players} />
         </div>
 
         {/* Dire Wards List */}

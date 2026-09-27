@@ -101,7 +101,7 @@ function buildingKey(id: string): string {
  * matching Stratz's sparse marker look. When `currentTime` is given (the
  * page's shared playback clock), only buildings destroyed by that point
  * count as gone — scrubbing back earlier in the match brings them back. */
-function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: number }) {
+export function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: number }) {
   let objectives: any[] = [];
   try {
     objectives = typeof matchData?.objectives === 'string' ? JSON.parse(matchData.objectives) : (matchData?.objectives || []);

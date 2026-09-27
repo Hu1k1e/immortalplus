@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Trajan+Pro:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   /* Dota 2 Inspired Color Palette */
@@ -22,8 +22,8 @@
   --border-highlight: rgba(226, 183, 66, 0.3);
 
   /* Typography */
-  --font-display: 'Trajan Pro', 'Inter', serif; /* Classic Dota font fallback */
-  --font-sans: var(--font-display);
+  --font-display: 'Noto Sans', sans-serif;
+  --font-sans: 'Noto Sans', sans-serif;
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
