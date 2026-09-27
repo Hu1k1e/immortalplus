@@ -277,7 +277,17 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                       WebkitMaskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, WebkitMaskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat',
                       maskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, maskSize: '100% 100%', maskRepeat: 'no-repeat',
                     }}>
-                      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(1.9) saturate(0.4)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      {/* Deliberately NOT using the invert/hue-rotate/darken
+                          filter the main Towers panel applies for dark-theme
+                          consistency — that filter takes this asset's real
+                          natural light/near-white coloring and inverts it
+                          dark, which is exactly why this crop kept looking
+                          washed out no matter how much brightness was piled
+                          on. Showing it in its native light coloring (small
+                          contrast/brightness polish only) reads correctly
+                          against the dark card without fighting the source
+                          asset. */}
+                      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(1.2) contrast(1.05)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                     </div>
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '8px', ...LANE_ICON_ALIGN[selectedPlayer.lane] }}>
                       {laneMatchup?.map((p: any) => (

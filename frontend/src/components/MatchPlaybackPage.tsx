@@ -1,8 +1,8 @@
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
 import MatchMap from './MatchMap';
-import PlaybackPlayerRow, { ROW_GRID } from './PlaybackPlayerRow';
-import AdvantageGraph from './AdvantageGraph';
+import PlaybackPlayerRow from './PlaybackPlayerRow';
+import PlaybackAdvantageGraph from './PlaybackAdvantageGraph';
 import FullBleed from './FullBleed';
 import { interpAtTime, liveCount } from './LiveScoreboardPanel';
 import { useMatchPlayback } from '../hooks/useMatchPlayback';
@@ -59,21 +59,16 @@ function KillTicker({ allPlayers, currentTime }: { allPlayers: any[]; currentTim
   );
 }
 
-const HEADER_GRID = ROW_GRID;
-
 function TeamHeader({ label, color, Icon }: { label: string; color: string; Icon: any }) {
   return (
     <>
-      <h4 style={{ margin: '0 0 0.4rem', fontSize: '0.9rem', color, display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <Icon style={{ width: 16, height: 16 }} /> {label}
+      <h4 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem', color, display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Icon style={{ width: 18, height: 18 }} /> {label}
       </h4>
-      <div style={{ display: 'grid', gridTemplateColumns: HEADER_GRID, gap: '0.6rem', padding: '0 0.7rem', marginBottom: '0.35rem', fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-        <span>Player</span>
-        <span style={{ textAlign: 'center' }}>K / D / A</span>
-        <span style={{ textAlign: 'center' }}>CS</span>
-        <span style={{ textAlign: 'center' }}>GPM / XPM</span>
-        <span style={{ textAlign: 'center' }}>Heal / DMG / TD</span>
-        <span style={{ textAlign: 'right' }}>Items / Time Dead</span>
+      <div style={{ display: 'flex', gap: '0.8rem', padding: '0 0.7rem', marginBottom: '0.35rem', fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+        <span style={{ width: '160px', flexShrink: 0 }}>Player / HP / MP</span>
+        <span style={{ flex: 1, textAlign: 'center', minWidth: '140px' }}>K/D/A · CS · GPM/XPM · Heal/DMG/TD</span>
+        <span style={{ flexShrink: 0, textAlign: 'right' }}>Items / Backpack / Gold</span>
       </div>
     </>
   );
@@ -81,17 +76,18 @@ function TeamHeader({ label, color, Icon }: { label: string; color: string; Icon
 
 /**
  * Full-page, dedicated Match Playback view (its own tab, not the embedded
- * strip on Overview): an enlarged interactive map (with real, disappearing
- * building markers) beside two side-by-side live-updating team scoreboards,
- * transport controls, team totals, and the gold/XP advantage graph — all
- * sharing one clock, own to this page (independent of Overview's own
- * scrubber). Breaks out of the page's normal max-width container to use
- * the full available width (FullBleed).
+ * strip on Overview): a large interactive map with real, disappearing
+ * building markers spanning the full width, Radiant/Dire team scoreboards
+ * below it (side by side, each headed with the team's emblem and explicit
+ * column labels), transport controls, team totals, and — at the very
+ * bottom — a dedicated advantage graph with a moving position indicator
+ * and killed-hero portrait markers. Breaks out of the page's normal
+ * max-width container to use the full available width (FullBleed).
  *
- * HP/Mana bars are shown as labeled, honestly-empty slots — real
- * continuous HP/Mana reconstruction is a separate, not-yet-built backend
- * effort (see PlaybackPlayerRow's VitalBarPlaceholder), not something this
- * page fabricates numbers for.
+ * HP/Mana bars show a real max (real hero stats + level, see
+ * lib/heroVitals.ts) but the fill only tracks alive/dead — no timestamped
+ * combat-log data exists anywhere in this app to reconstruct real per-hit
+ * damage over time, so this doesn't fabricate a moment-to-moment curve.
  */
 export default function MatchPlaybackPage({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
   const playback = useMatchPlayback(4, matchData?.duration || 0);
@@ -117,34 +113,32 @@ export default function MatchPlaybackPage({ matchData, allPlayers }: { matchData
       <div className="animate-fade-in">
         <KillTicker allPlayers={allPlayers} currentTime={currentTime} />
 
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-          <div style={{ flex: '0 0 auto', width: '42%', minWidth: '420px', maxWidth: '900px' }}>
-            <MatchMap
-              matchData={matchData}
-              selectedPlayer={undefined}
-              compact={false}
-              controlledTime={playback.currentTime}
-              controlledIsPlaying={playback.isPlaying}
-              controlledSpeed={playback.playbackSpeed}
-              onControlledTimeChange={playback.setCurrentTime}
-              onControlledPlayingChange={playback.setIsPlaying}
-              onControlledSpeedChange={playback.setPlaybackSpeed}
-              hideControls
-            />
-          </div>
+        {/* Big map, full width */}
+        <MatchMap
+          matchData={matchData}
+          selectedPlayer={undefined}
+          compact={false}
+          controlledTime={playback.currentTime}
+          controlledIsPlaying={playback.isPlaying}
+          controlledSpeed={playback.playbackSpeed}
+          onControlledTimeChange={playback.setCurrentTime}
+          onControlledPlayingChange={playback.setIsPlaying}
+          onControlledSpeedChange={playback.setPlaybackSpeed}
+          hideControls
+        />
 
-          <div style={{ flex: 1, display: 'flex', gap: '1rem', minWidth: 0 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <TeamHeader label="Radiant" color="var(--radiant-green)" Icon={IconRadiant} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {radiant.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
-              </div>
+        {/* Team scoreboards, side by side, below the map */}
+        <div style={{ display: 'flex', gap: '1.25rem', marginTop: '1.25rem' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TeamHeader label="Radiant" color="var(--radiant-green)" Icon={IconRadiant} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {radiant.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <TeamHeader label="Dire" color="var(--dire-red)" Icon={IconDire} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                {dire.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
-              </div>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <TeamHeader label="Dire" color="var(--dire-red)" Icon={IconDire} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {dire.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
             </div>
           </div>
         </div>
@@ -201,8 +195,11 @@ export default function MatchPlaybackPage({ matchData, allPlayers }: { matchData
           </table>
         </div>
 
+        {/* Bottom graph: real gold/XP advantage, a moving position bar synced
+            to the clock above, and kill markers showing the killed hero's
+            portrait */}
         <div className="glass-surface" style={{ marginTop: '1rem', padding: '1rem' }}>
-          <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={280} currentTime={currentTime} />
+          <PlaybackAdvantageGraph matchData={matchData} allPlayers={allPlayers} currentTime={currentTime} height={280} />
         </div>
       </div>
     </FullBleed>

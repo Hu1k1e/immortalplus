@@ -303,7 +303,7 @@ export default function MatchMap({
         style={{
           position: 'relative',
           width: mapSize,
-          maxWidth: '900px',
+          maxWidth: '1400px',
           aspectRatio: '1/1',
           background: '#0a0a0a',
           borderRadius: '8px',
