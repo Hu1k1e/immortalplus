@@ -87,8 +87,8 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
       }}
     >
       {hero && (
-        <div style={{ width: '100%', aspectRatio: '1 / 0.95', overflow: 'hidden', borderRadius: 'var(--radius-md) var(--radius-md) 0 0', flexShrink: 0 }}>
-          <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 30%', display: 'block' }} />
+        <div style={{ width: '100%', aspectRatio: '3 / 2', overflow: 'hidden', borderRadius: 'var(--radius-md) var(--radius-md) 0 0', flexShrink: 0, background: '#0b0d10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
         </div>
       )}
 

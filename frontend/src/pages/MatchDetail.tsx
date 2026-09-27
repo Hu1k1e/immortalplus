@@ -186,6 +186,8 @@ export default function MatchDetail() {
         </button>
       </div>
 
+      <MatchNavBar matchData={matchData} />
+
       <div className="glass-surface" style={{
         marginBottom: '1.5rem', overflow: 'hidden',
         backgroundImage: 'linear-gradient(90deg, rgba(81,164,69,0.16) 0%, rgba(81,164,69,0.04) 30%, rgba(0,0,0,0) 50%, rgba(194,53,43,0.04) 70%, rgba(194,53,43,0.16) 100%)',
@@ -233,7 +235,7 @@ export default function MatchDetail() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.4rem', flexWrap: 'wrap' }}>
             {modeMeta && <span>{modeMeta}</span>}
             {regionLabel && <span>🌐 {regionLabel}</span>}
-            <span>📋 {matchData.match_id}</span>
+            <span>{matchData.match_id}</span>
             {rankLabel && (
               <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 {rankBadge && <img src={rankBadge} alt={rankLabel} style={{ width: '16px', height: '16px' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
@@ -244,8 +246,6 @@ export default function MatchDetail() {
           {dateLabel && <span>{dateLabel}</span>}
         </div>
       </div>
-
-      <MatchNavBar matchData={matchData} />
 
       {/* Main Tabs Navigation */}
       <div className="glass-surface" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem 1rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)' }}>
@@ -296,7 +296,7 @@ export default function MatchDetail() {
 
       {mainTab === 'Benchmarks' && <BenchmarksTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Performances' && <PerformancesTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
-      {mainTab === 'Laning' && <LaningTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Laning' && <LaningTab matchData={matchData} allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Combat' && <CombatTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Farm' && <FarmTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Items' && <ItemsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}

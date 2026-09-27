@@ -2,9 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { HEROES } from '../lib/heroes';
 import abilitiesData from '../lib/constants/abilities.json';
 import itemsData from '../lib/constants/items.json';
-import { getHeroImage, getItemImage, getAbilityImage } from '../lib/dota';
+import { getHeroImage, getHeroIcon, getItemImage, getAbilityImage } from '../lib/dota';
+import { getPlayerPosition, POSITION_INFO } from '../lib/roles';
+import PositionIcon from './PositionIcon';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
-import { Trophy } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowLeftRight } from 'lucide-react';
 import { IconRadiant, IconDire } from './Icons';
 import AdvantageGraph from './AdvantageGraph';
 
@@ -354,96 +356,249 @@ export function PerformancesTab({ allPlayers, radiantWin }: { allPlayers: any[];
 }
 
 // ================ LANING TAB ================
-export function LaningTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
-  const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
 
-  const getLaneName = (lane: number | null) => {
-    switch (lane) { case 1: return 'Safe'; case 2: return 'Mid'; case 3: return 'Off'; default: return '-'; }
-  };
+// Real per-lane tier-1 tower status, derived the same way TowersLaneRow.tsx
+// reads the map: from the match's `objectives` building_kill log (reliable
+// even for locally-parsed matches), not the OpenDota summary bitmask. No
+// continuous tower HP telemetry exists anywhere in this app's data sources,
+// so this reports the real binary state (standing, or destroyed at its real
+// timestamp) instead of fabricating an intermediate health percentage.
+function t1ObjectiveKey(side: 'radiant' | 'dire', laneKey: 'top' | 'mid' | 'bot'): string {
+  return `npc_dota_${side === 'radiant' ? 'good' : 'bad'}guys_tower1_${laneKey}`;
+}
+function getT1Status(matchData: any, side: 'radiant' | 'dire', laneKey: 'top' | 'mid' | 'bot'): { alive: boolean; destroyedAt?: number } {
+  let objectives: any[] = [];
+  try { objectives = typeof matchData?.objectives === 'string' ? JSON.parse(matchData.objectives) : (matchData?.objectives || []); } catch { objectives = []; }
+  const key = t1ObjectiveKey(side, laneKey);
+  const kill = objectives.find((o: any) => o?.type === 'building_kill' && o.key === key);
+  return kill ? { alive: false, destroyedAt: kill.time } : { alive: true };
+}
+function fmtClock(t: number) {
+  const sign = t < 0 ? '-' : '';
+  const abs = Math.abs(Math.round(t));
+  return `${sign}${Math.floor(abs / 60)}:${(abs % 60).toString().padStart(2, '0')}`;
+}
 
-  const laningCols = [
-    { key: 'select', label: '', render: (p: any) => (
-      <input 
-        type="radio" 
-        name="laning-select" 
-        checked={selectedPlayer?.player_slot === p.player_slot} 
-        onChange={() => setSelectedPlayer(p)} 
-        style={{ cursor: 'pointer', accentColor: 'var(--accent-gold)' }} 
-      />
-    )},
-    { key: 'side', label: 'SIDE', render: (p: any) => <span style={{ color: p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)' }}>{p.player_slot < 128 ? 'Radiant' : 'Dire'}</span> },
-    { key: 'lane', label: 'LANE', render: (p: any) => getLaneName(p.lane) },
-    { key: 'win', label: 'WIN', render: (p: any) => {
-        // Determine lane winner based on highest efficiency in their lane
-        const lanePlayers = allPlayers.filter(x => x.lane === p.lane);
-        if (lanePlayers.length < 2 || !p.lane) return '-';
-        const maxEff = Math.max(...lanePlayers.map(x => x.lane_efficiency_pct || 0));
-        const isWinner = (p.lane_efficiency_pct || 0) === maxEff && maxEff > 0;
-        return isWinner ? <Trophy size={16} color="var(--accent-gold)" /> : <span style={{ color: 'var(--text-muted)' }}>-</span>;
-    }},
-    { key: 'cs_over_time', label: 'CS OVER TIME', render: (p: any) => {
-        if (!p.lh_t || p.lh_t.length < 10) return <span style={{ color: 'var(--text-muted)' }}>-</span>;
-        
-        // Find maximum CS (LH + DN) in any single minute for scaling
-        let maxCs = 1;
-        const minutes = [];
-        for (let m = 1; m <= 10; m++) {
-          const lh = (p.lh_t[m] || 0) - (p.lh_t[m-1] || 0);
-          const dn = (p.dn_t[m] || 0) - (p.dn_t[m-1] || 0);
-          minutes.push({ lh: Math.max(0, lh), dn: Math.max(0, dn) });
-          maxCs = Math.max(maxCs, lh + dn);
-        }
+function TowerVial({ alive, destroyedAt, color }: { alive: boolean; destroyedAt?: number; color: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', flexShrink: 0 }}
+      title={alive ? 'T1 Tower — Standing' : `T1 Tower — Destroyed @ ${fmtClock(destroyedAt || 0)}`}>
+      <div style={{ width: '13px', height: '38px', borderRadius: '3px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.12)', overflow: 'hidden', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+        <div style={{ width: '100%', height: alive ? '100%' : '0%', background: `linear-gradient(180deg, ${color}, ${color}88)` }} />
+      </div>
+      <span style={{ fontSize: '0.6rem', color: alive ? color : 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+        {alive ? 'Standing' : fmtClock(destroyedAt || 0)}
+      </span>
+    </div>
+  );
+}
 
-        return (
-          <div style={{ display: 'flex', alignItems: 'flex-end', height: '24px', gap: '2px', justifyContent: 'center' }}>
-            {minutes.map((m, i) => {
-               const lhHeight = (m.lh / maxCs) * 100;
-               const dnHeight = (m.dn / maxCs) * 100;
-               return (
-                 <div key={i} title={`Min ${i+1}: ${m.lh} LH, ${m.dn} DN`} style={{ width: '8px', height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
-                   <div style={{ height: `${dnHeight}%`, background: 'var(--dire-red)', width: '100%' }} />
-                   <div style={{ height: `${lhHeight}%`, background: '#66bb6a', width: '100%' }} />
-                 </div>
-               );
-            })}
+// CS (LH+DN) at a given minute mark expressed as a % of the highest CS any
+// of the 10 real players in THIS match had reached at that same minute —
+// a relative, fully-data-derived figure (no assumed "max possible CS"
+// curve, which would be an estimate), matching the @5/@10 columns' spirit.
+function csAtMinute(p: any, min: number): number {
+  const lh = p.lh_t && p.lh_t.length > min ? p.lh_t[min] : (p.lh_t?.length ? p.lh_t[p.lh_t.length - 1] : 0);
+  const dn = p.dn_t && p.dn_t.length > min ? p.dn_t[min] : (p.dn_t?.length ? p.dn_t[p.dn_t.length - 1] : 0);
+  return (lh || 0) + (dn || 0);
+}
+
+const LANE_KEY: Record<number, 'top' | 'mid' | 'bot'> = { 3: 'top', 2: 'mid', 1: 'bot' };
+const LANE_LABEL: Record<number, string> = { 3: 'Top Lane', 2: 'Mid Lane', 1: 'Bottom Lane' };
+const LANE_ARROW: Record<number, 'up' | 'swap' | 'down'> = { 3: 'up', 2: 'swap', 1: 'down' };
+
+function LaneArrowIcon({ dir, size = 16 }: { dir: 'up' | 'swap' | 'down'; size?: number }) {
+  if (dir === 'up') return <ArrowUp size={size} />;
+  if (dir === 'down') return <ArrowDown size={size} />;
+  return <ArrowLeftRight size={size} />;
+}
+
+function LaneGroup({ matchData, allPlayers, lane, selectedSlot, onSelect, maxNetWorth, maxXp }: {
+  matchData: any; allPlayers: any[]; lane: number; selectedSlot?: number; onSelect: (p: any) => void; maxNetWorth: number; maxXp: number;
+}) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const laneKey = LANE_KEY[lane];
+  const radiant = allPlayers.filter((p) => p.lane === lane && p.player_slot < 128);
+  const dire = allPlayers.filter((p) => p.lane === lane && p.player_slot >= 128);
+  const players = [...radiant, ...dire];
+
+  const radKda = radiant.reduce((s, p) => ({ k: s.k + (p.kills || 0), d: s.d + (p.deaths || 0), a: s.a + (p.assists || 0) }), { k: 0, d: 0, a: 0 });
+  const direKda = dire.reduce((s, p) => ({ k: s.k + (p.kills || 0), d: s.d + (p.deaths || 0), a: s.a + (p.assists || 0) }), { k: 0, d: 0, a: 0 });
+
+  let winner: 'radiant' | 'dire' | null = null;
+  if (radiant.length && dire.length) {
+    const radiantEff = radiant.reduce((s, p) => s + (p.lane_efficiency_pct || 0), 0);
+    const direEff = dire.reduce((s, p) => s + (p.lane_efficiency_pct || 0), 0);
+    if (radiantEff || direEff) winner = radiantEff >= direEff ? 'radiant' : 'dire';
+  }
+
+  const radTower = getT1Status(matchData, 'radiant', laneKey);
+  const direTower = getT1Status(matchData, 'dire', laneKey);
+
+  const renderHeroIcons = (team: any[]) => team.map((p) => {
+    const hero = HEROES[p.hero_id as keyof typeof HEROES];
+    return hero ? (
+      <img key={p.player_slot} src={getHeroIcon(hero.img_name)} alt={hero.name} title={hero.name}
+        style={{ width: '30px', height: '30px', objectFit: 'cover', borderRadius: '50%', border: '2px solid var(--border-color)' }}
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+    ) : null;
+  });
+
+  const totalXp = (p: any) => (p.xp_t && p.xp_t.length ? p.xp_t[p.xp_t.length - 1] : 0);
+  const netWorthOf = (p: any) => p.net_worth ?? p.networth ?? 0;
+
+  return (
+    <div className="glass-surface" style={{ marginBottom: '1.25rem', overflow: 'hidden' }}>
+      {/* Section header: radiant summary | hero matchup + result | dire summary */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '1rem', padding: '0.9rem 1.1rem', background: 'rgba(255,255,255,0.02)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+          <TowerVial alive={radTower.alive} destroyedAt={radTower.destroyedAt} color="var(--radiant-green)" />
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>T1 Tower</div>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{radKda.k} / {radKda.d} / {radKda.a}</div>
           </div>
-        );
-    }},
-    { key: 'eff', label: 'EFF@10', render: (p: any) => {
-         const eff = p.lane_efficiency_pct ? p.lane_efficiency_pct : (p.lane_efficiency ? p.lane_efficiency * 100 : 0);
-         if (!eff) return '-';
-         return (
-           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', maxWidth: '100px', margin: '0 auto' }}>
-              <span style={{ fontSize: '0.85rem' }}>{fmt(eff, 2)}%</span>
-              <div style={{ width: '40px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px' }}>
-                 <div style={{ width: `${Math.min(100, eff)}%`, height: '100%', background: '#66bb6a', borderRadius: '2px' }} />
-              </div>
-           </div>
-         );
-    }},
-    { key: 'lh10', label: 'LH@10', render: (p: any) => {
-         const lh = p.lh_t && p.lh_t.length > 10 ? p.lh_t[10] : (p.lh_t?.length > 0 ? p.lh_t[p.lh_t.length - 1] : 0);
-         return (
-           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
-             <span>{lh}</span>
-             <div style={{ width: '30px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px' }}>
-               <div style={{ width: `${Math.min(100, (lh/80)*100)}%`, height: '100%', background: 'var(--accent-gold)', borderRadius: '2px' }} />
-             </div>
-           </div>
-         );
-    }},
-    { key: 'dn10', label: 'DN@10', render: (p: any) => {
-         const dn = p.dn_t && p.dn_t.length > 10 ? p.dn_t[10] : 0;
-         return (
-           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
-             <span>{dn}</span>
-             <div style={{ width: '30px', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px' }}>
-               <div style={{ width: `${Math.min(100, (dn/30)*100)}%`, height: '100%', background: 'var(--accent-gold)', borderRadius: '2px' }} />
-             </div>
-           </div>
-         );
-    }},
-  ];
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            <span style={{ color: 'var(--radiant-green)', display: 'flex' }}><LaneArrowIcon dir={LANE_ARROW[lane]} /></span>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>{LANE_LABEL[lane]}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            {renderHeroIcons(radiant)}
+            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: '0 0.3rem' }}>vs</span>
+            {renderHeroIcons(dire)}
+          </div>
+          {winner && (
+            <span style={{
+              fontSize: '0.68rem', fontWeight: 700, padding: '0.12rem 0.6rem', borderRadius: '3px',
+              color: '#000', background: winner === 'radiant' ? 'var(--radiant-green)' : 'var(--dire-red)',
+            }}>
+              {winner === 'radiant' ? 'Radiant Won' : 'Dire Won'}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', justifyContent: 'flex-end' }}>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>T1 Tower</div>
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{direKda.k} / {direKda.d} / {direKda.a}</div>
+          </div>
+          <TowerVial alive={direTower.alive} destroyedAt={direTower.destroyedAt} color="var(--dire-red)" />
+        </div>
+      </div>
+
+      {/* Player rows */}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={th}>Hero</th>
+            <th style={th}>Player</th>
+            <th style={{ ...th, textAlign: 'center' }}>K / D / A</th>
+            <th style={{ ...th, textAlign: 'center', minWidth: '160px' }}>Net Worth</th>
+            <th style={{ ...th, textAlign: 'center', minWidth: '120px' }}>Experience</th>
+            <th style={{ ...th, textAlign: 'center' }}>LH / DN</th>
+            <th style={{ ...th, textAlign: 'center' }}>@5</th>
+            <th style={{ ...th, textAlign: 'center' }}>@10</th>
+            <th style={{ ...th, textAlign: 'center' }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {players.map((p) => {
+            const hero = HEROES[p.hero_id as keyof typeof HEROES];
+            const isRadiant = p.player_slot < 128;
+            const teamColor = isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)';
+            const nw = netWorthOf(p);
+            const xp = totalXp(p);
+            const teamPlayers = allPlayers.filter((x) => (x.player_slot < 128) === isRadiant);
+            const posNum = getPlayerPosition(p, teamPlayers);
+            const posInfo = posNum ? POSITION_INFO[posNum] : null;
+            const cs5 = csAtMinute(p, 5);
+            const cs10 = csAtMinute(p, 10);
+            const maxCs5 = Math.max(1, ...allPlayers.map((x) => csAtMinute(x, 5)));
+            const maxCs10 = Math.max(1, ...allPlayers.map((x) => csAtMinute(x, 10)));
+            const pct5 = Math.round((cs5 / maxCs5) * 100);
+            const pct10 = Math.round((cs10 / maxCs10) * 100);
+            const isSelected = selectedSlot === p.player_slot;
+            const isExpanded = expanded === p.player_slot;
+
+            return (
+              <React.Fragment key={p.player_slot}>
+                <tr
+                  onClick={() => onSelect(p)}
+                  style={{ cursor: 'pointer', background: isSelected ? 'rgba(226,183,66,0.08)' : 'transparent', transition: 'background 0.15s' }}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.03)'; }}
+                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <td style={{ ...td, width: '1%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '38px', height: '22px', objectFit: 'cover', borderRadius: '3px', border: `1px solid ${teamColor}` }} />}
+                      {posInfo && <PositionIcon short={posInfo.short} size={13} />}
+                    </div>
+                  </td>
+                  <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                    <span style={{ color: teamColor }}>●</span> {p.persona || p.personaname || 'Anonymous'}
+                  </td>
+                  <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    <span style={{ color: 'var(--text-primary)' }}>{p.kills || 0}</span>
+                    <span style={{ color: 'var(--text-muted)' }}> / </span>
+                    <span style={{ color: 'var(--dire-red)' }}>{p.deaths || 0}</span>
+                    <span style={{ color: 'var(--text-muted)' }}> / </span>
+                    <span style={{ color: 'var(--text-secondary)' }}>{p.assists || 0}</span>
+                  </td>
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                      <span style={{ fontSize: '0.8rem' }}>{nw.toLocaleString()}</span>
+                      <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(100, (nw / maxNetWorth) * 100)}%`, height: '100%', background: teamColor }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ ...td, textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                      <span style={{ fontSize: '0.8rem' }}>{Math.round(xp).toLocaleString()}</span>
+                      <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(100, (xp / maxXp) * 100)}%`, height: '100%', background: 'rgba(255,255,255,0.4)' }} />
+                      </div>
+                    </div>
+                  </td>
+                  <td style={{ ...td, textAlign: 'center', whiteSpace: 'nowrap' }}>{p.last_hits ?? 0} / {p.denies ?? 0}</td>
+                  <td style={{ ...td, textAlign: 'center', color: 'var(--text-secondary)' }}>{pct5}%</td>
+                  <td style={{ ...td, textAlign: 'center', color: 'var(--text-secondary)' }}>{pct10}%</td>
+                  <td style={{ ...td, textAlign: 'center', width: '1%' }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setExpanded(isExpanded ? null : p.player_slot); }}
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid var(--border-color)', borderRadius: '3px', color: 'var(--text-secondary)', width: '20px', height: '20px', cursor: 'pointer', fontSize: '0.8rem', lineHeight: 1 }}
+                    >
+                      {isExpanded ? '−' : '+'}
+                    </button>
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr>
+                    <td colSpan={9} style={{ ...td, background: 'rgba(0,0,0,0.2)' }}>
+                      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                        <span>GPM: <strong style={{ color: 'var(--text-primary)' }}>{p.gpm ?? '-'}</strong></span>
+                        <span>XPM: <strong style={{ color: 'var(--text-primary)' }}>{p.xpm ?? '-'}</strong></span>
+                        <span>Hero Damage: <strong style={{ color: 'var(--text-primary)' }}>{(p.hero_damage ?? 0).toLocaleString()}</strong></span>
+                        <span>Camps Stacked: <strong style={{ color: 'var(--text-primary)' }}>{p.camps_stacked ?? 0}</strong></span>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function LaningTab({ matchData, allPlayers, radiantWin: _radiantWin }: { matchData: any; allPlayers: any[]; radiantWin: boolean }) {
+  const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
+  const maxNetWorth = Math.max(1, ...allPlayers.map((p) => p.net_worth ?? p.networth ?? 0));
+  const maxXp = Math.max(1, ...allPlayers.map((p) => (p.xp_t && p.xp_t.length ? p.xp_t[p.xp_t.length - 1] : 0)));
 
   // Prepare Heatmap Points for Selected Player
   let heatmapPoints: any[] = [];
@@ -458,31 +613,25 @@ export function LaningTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
     });
   }
 
-  // Prepare data for the LineChart (Last Hits + Denies over first 15 mins)
-  const laningChartData = [];
-  for (let m = 1; m <= 15; m++) {
-    const dataPoint: any = { time: m };
-    allPlayers.forEach(p => {
-       const lh = p.lh_t && p.lh_t.length > m ? p.lh_t[m] : (p.lh_t && p.lh_t.length > 0 ? p.lh_t[p.lh_t.length - 1] : 0);
-       const dn = p.dn_t && p.dn_t.length > m ? p.dn_t[m] : (p.dn_t && p.dn_t.length > 0 ? p.dn_t[p.dn_t.length - 1] : 0);
-       dataPoint[`player_${p.player_slot}`] = lh + dn;
-    });
-    laningChartData.push(dataPoint);
-  }
-
-  const PLAYER_COLORS: Record<number, string> = {
-    0: '#3375FF', 1: '#66FFBF', 2: '#BF00BF', 3: '#F3F00B', 4: '#FF6B00',
-    128: '#FE86C2', 129: '#A1B447', 130: '#65D9F7', 131: '#008321', 132: '#A46900'
-  };
-
   return (
     <div className="animation-fade-in">
-      <TeamTable title="All Players" players={allPlayers} columns={laningCols} />
-      
-      <div style={{ display: 'flex', gap: '2rem', marginTop: '2rem', flexWrap: 'wrap' }}>
+      {[3, 2, 1].map((lane) => (
+        <LaneGroup
+          key={lane}
+          matchData={matchData}
+          allPlayers={allPlayers}
+          lane={lane}
+          selectedSlot={selectedPlayer?.player_slot}
+          onSelect={setSelectedPlayer}
+          maxNetWorth={maxNetWorth}
+          maxXp={maxXp}
+        />
+      ))}
+
+      <div style={{ display: 'flex', gap: '2rem', marginTop: '1.5rem', flexWrap: 'wrap' }}>
         {/* Heatmap Section */}
         <div className="glass-surface" style={{ flex: '1 1 300px', maxWidth: '350px', padding: '1rem', borderRadius: '4px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>Laning Map</h3>
+          <h3 style={{ fontSize: '1rem', marginBottom: '1rem', color: 'var(--text-primary)' }}>Laning Map {selectedPlayer && <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>— {selectedPlayer.persona || selectedPlayer.personaname || 'Anonymous'}</span>}</h3>
           {selectedPlayer ? (
             <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', background: '#0a0a0a', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
               <img src="/minimap.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.8 }} />
@@ -507,47 +656,15 @@ export function LaningTab({ allPlayers, radiantWin: _radiantWin }: { allPlayers:
               })}
             </div>
           ) : (
-            <div style={{ width: '100%', aspectRatio: '1/1', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '4px' }}>
-              Select a player to view heatmap
+            <div style={{ width: '100%', aspectRatio: '1/1', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '4px', padding: '1rem' }}>
+              Click a player row above to view their laning heatmap
             </div>
           )}
         </div>
 
-        {/* Chart Section */}
+        {/* Graph Section — same Gold/XP advantage graph as Overview */}
         <div className="glass-surface" style={{ flex: '2 1 500px', padding: '1rem', borderRadius: '4px' }}>
-          <h3 style={{ fontSize: '1rem', marginBottom: '1rem', textAlign: 'center', color: 'var(--text-primary)' }}>Last Hits + Denies (First 15 Minutes)</h3>
-          <div style={{ height: '350px', width: '100%' }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={laningChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                <XAxis dataKey="time" stroke="var(--text-muted)" tickFormatter={(t) => `${t}:00`} />
-                <YAxis stroke="var(--text-muted)" />
-                <Tooltip 
-                  contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '4px' }}
-                  labelFormatter={(t) => `Minute ${t}`}
-                />
-                <Legend formatter={(value) => {
-                   const slot = parseInt(value.split('_')[1]);
-                   const p = allPlayers.find(x => x.player_slot === slot);
-                   return <span style={{ color: selectedPlayer?.player_slot === slot ? '#fff' : 'inherit', fontWeight: selectedPlayer?.player_slot === slot ? 'bold' : 'normal' }}>{p ? HEROES[p.hero_id as keyof typeof HEROES]?.name || `Player ${slot}` : value}</span>;
-                }} />
-                {allPlayers.map((p) => {
-                  const isSelected = selectedPlayer?.player_slot === p.player_slot;
-                  return (
-                    <Line 
-                      key={p.player_slot}
-                      type="monotone" 
-                      dataKey={`player_${p.player_slot}`} 
-                      stroke={PLAYER_COLORS[p.player_slot] || 'var(--text-primary)'} 
-                      strokeWidth={isSelected ? 4 : 2}
-                      opacity={selectedPlayer && !isSelected ? 0.3 : 1}
-                      dot={false}
-                    />
-                  );
-                })}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          <AdvantageGraph matchData={matchData} allPlayers={allPlayers} height={340} />
         </div>
       </div>
     </div>
