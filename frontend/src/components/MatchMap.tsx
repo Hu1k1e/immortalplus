@@ -24,13 +24,15 @@ interface MatchMapProps {
   // transport controls driving the same controlled clock (e.g. a
   // page-level sticky bar) — avoids two redundant, easy-to-desync controls.
   hideControls?: boolean;
+  // If set to 'lanes', the map ignores controlledTime and displays heroes spread out in their starting lanes.
+  mode?: 'playback' | 'lanes';
 }
 
 export default function MatchMap({
   matchData, selectedPlayer, compact,
   controlledTime, controlledIsPlaying, controlledSpeed,
   onControlledTimeChange, onControlledPlayingChange, onControlledSpeedChange,
-  autoPlayOnMount, hideControls,
+  autoPlayOnMount, hideControls, mode = 'playback'
 }: MatchMapProps) {
   const duration = matchData?.duration || 0;
   const [internalTime, setInternalTime] = useState(0);
@@ -181,6 +183,34 @@ export default function MatchMap({
 
   const heroPositions = useMemo(() => {
     if (!matchData?.all_players) return [];
+
+    if (mode === 'lanes') {
+      const laneCounts: Record<string, number> = {};
+      const getLanePos = (p: any) => {
+         const isRad = p.player_slot < 128;
+         const laneKey = `${isRad ? 'R' : 'D'}_${p.lane || 0}`;
+         laneCounts[laneKey] = (laneCounts[laneKey] || 0) + 1;
+         const offset = (laneCounts[laneKey] - 1) * 6; // offset to avoid overlap
+         
+         if (isRad) {
+            if (p.lane === 1) return { left: 80 - offset, top: 85 - offset }; // Bot
+            if (p.lane === 2) return { left: 45 - offset, top: 55 + offset }; // Mid
+            if (p.lane === 3) return { left: 15 + offset, top: 40 + offset }; // Top
+            return { left: 30 + offset, top: 70 - offset }; // Jungle/Unknown
+         } else {
+            if (p.lane === 1) return { left: 85 - offset, top: 60 + offset }; // Bot
+            if (p.lane === 2) return { left: 55 + offset, top: 45 - offset }; // Mid
+            if (p.lane === 3) return { left: 20 + offset, top: 15 + offset }; // Top
+            return { left: 70 - offset, top: 30 + offset }; // Jungle/Unknown
+         }
+      };
+
+      return matchData.all_players.map((p: any) => {
+        const pos = getLanePos(p);
+        return { playerSlot: p.player_slot, heroId: p.hero_id, left: pos.left, top: pos.top };
+      });
+    }
+
     const positions: any[] = [];
 
     matchData.all_players.forEach((p: any) => {
@@ -226,7 +256,7 @@ export default function MatchMap({
       }
     });
     return positions;
-  }, [matchData, heroWaypoints, currentTime]);
+  }, [matchData, heroWaypoints, currentTime, mode]);
 
   const mapSize = compact ? '320px' : '100%';
 
@@ -297,9 +327,9 @@ export default function MatchMap({
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}>
           <img 
-            src="/assets/images/dota2/Game_map_7.41.jpg" 
+            src="https://dota.hulksmash.ca/assets/images/dota2/minimap_geometry_current.png" 
             alt="Dota 2 Map"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7, pointerEvents: 'none' }}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
             onError={(e) => {
               e.currentTarget.style.display = 'none';
             }}
@@ -324,7 +354,7 @@ export default function MatchMap({
           ))}
 
           {/* Hero Positions */}
-          {heroPositions.map((hp, i) => {
+          {heroPositions.map((hp: any, i: number) => {
             const isRad = hp.playerSlot < 128;
             const isSelected = selectedPlayer && selectedPlayer.player_slot === hp.playerSlot;
             if (selectedPlayer && !isSelected) return null; // hide others if one selected

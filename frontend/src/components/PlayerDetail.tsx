@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { HEROES } from '../lib/heroes';
 import { ITEMS, getHeroImage, getItemImage, getAbilityImage, getHeroIcon } from '../lib/dota';
 import abilityIdsJson from '../lib/constants/ability_ids.json';
@@ -82,6 +83,18 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
     const bracketRegen = regenItems.filter((l: any) => l.time > bracketStart && l.time <= bracketEnd);
     const stat = getTimelineStat(min);
 
+    const laneMatchup = useMemo(() => {
+      if (min !== 10) return null;
+      const lane = selectedPlayer.lane;
+      if (!lane) return [];
+      const playersInLane = matchData.all_players.filter((p: any) => p.lane === lane);
+      return playersInLane.sort((a: any, b: any) => {
+        const aGold = a.gold_t?.[10] || (a.net_worth / (matchData.duration / 600));
+        const bGold = b.gold_t?.[10] || (b.net_worth / (matchData.duration / 600));
+        return bGold - aGold;
+      });
+    }, [min, selectedPlayer, matchData]);
+
     return (
       <div style={{ marginBottom: '2rem' }}>
         <h3 className="gold-text-gradient" style={{ marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>{formatTime(min * 60)} {title}</h3>
@@ -112,62 +125,96 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                </div>
              </div>
           </div>
-          <div className="glass-surface" style={{ width: '120px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-            {min === 10 ? (
-              <div className="text-secondary" style={{ textAlign: 'center', fontSize: '0.8rem' }}>NW<br/>Unavailable</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
-                  <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Kills</div>
-                  <strong style={{ color: 'var(--radiant-green)' }}>+{stat.kills}</strong>
+
+          {min === 10 ? (
+            <>
+              <div className="glass-surface" style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '1.5rem', marginBottom: '1.5rem', fontSize: '0.75rem' }}>
+                  <span className="text-secondary" style={{ fontWeight: 'bold' }}>NW</span>
+                  <span style={{ color: 'var(--radiant-green)' }}>■ Radiant</span>
+                  <span style={{ color: 'var(--dire-red)' }}>■ Dire</span>
                 </div>
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
-                  <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Deaths</div>
-                  <strong style={{ color: 'var(--dire-red)' }}>+{stat.deaths}</strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {laneMatchup?.map((p: any) => {
+                     const isRad = p.player_slot < 128;
+                     const gold = p.gold_t?.[10] || (p.net_worth / (matchData.duration / 600));
+                     const maxGold = Math.max(1, ...laneMatchup.map((x:any) => x.gold_t?.[10] || (x.net_worth / (matchData.duration / 600))));
+                     const pct = Math.max(5, (gold / maxGold) * 100);
+                     return (
+                       <div key={p.player_slot} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                         <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} style={{ width: '32px', height: '32px', borderRadius: '50%', border: `1.5px solid ${isRad ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+                         <div style={{ width: '20px', textAlign: 'center', fontSize: '0.85rem', fontWeight: 'bold' }}>{p.level || 6}</div>
+                         <div style={{ width: '50px', textAlign: 'right', fontSize: '0.9rem', fontFamily: 'monospace' }}>{Math.floor(gold).toLocaleString()}</div>
+                         <div style={{ flex: 1, height: '12px', background: 'rgba(0,0,0,0.5)', borderRadius: '6px', overflow: 'hidden' }}>
+                           <div style={{ height: '100%', width: `${pct}%`, background: isRad ? 'var(--radiant-green)' : 'var(--dire-red)', borderRadius: '6px' }} />
+                         </div>
+                       </div>
+                     );
+                  })}
+                  {(!laneMatchup || laneMatchup.length === 0) && <div className="text-secondary" style={{ textAlign: 'center' }}>No lane data</div>}
                 </div>
               </div>
-            )}
-          </div>
-          <div className="glass-surface" style={{ flex: 1, padding: '0', display: 'flex', flexDirection: 'row' }}>
-            <div style={{ flex: 1, padding: '1rem' }}>
-              <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem' }}>{min === 10 ? 'Regen Purchased' : 'Significant Items Purchased'}</h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {(min === 10 ? bracketRegen : bracketItems).map((item: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '0.2rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <ItemIcon item={item.key} size={28} />
-                      <span style={{ fontSize: '0.8rem' }}>{ITEMS[item.key.replace('item_', '')]?.dname || item.key}</span>
+              <div className="glass-surface" style={{ width: '300px', padding: '1rem' }}>
+                <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem' }}>Regen Purchased</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {bracketRegen.map((item: any, i: number) => (
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '0.2rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <ItemIcon item={item.key} size={28} />
+                        <span style={{ fontSize: '0.8rem' }}>{ITEMS[item.key.replace('item_', '')]?.dname || item.key}</span>
+                      </div>
+                      <span className="text-secondary" style={{ fontSize: '0.75rem' }}>{formatTime(item.time)}</span>
                     </div>
-                    <span className="text-secondary" style={{ fontSize: '0.75rem' }}>{formatTime(item.time)}</span>
-                  </div>
-                ))}
-                {(min === 10 ? bracketRegen : bracketItems).length === 0 && (
-                  <div className="text-secondary" style={{ fontSize: '0.8rem' }}>No {min === 10 ? 'regen' : 'significant items'} were purchased within this time period.</div>
-                )}
+                  ))}
+                  {bracketRegen.length === 0 && (
+                    <div className="text-secondary" style={{ fontSize: '0.8rem' }}>No regen were purchased within this time period.</div>
+                  )}
+                </div>
               </div>
-            </div>
-            <div style={{ width: '160px', borderLeft: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
-              <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={min * 60} controlledIsPlaying={false} />
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              <div className="glass-surface" style={{ width: '120px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
+                    <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Kills</div>
+                    <strong style={{ color: 'var(--radiant-green)' }}>+{stat.kills}</strong>
+                  </div>
+                  <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
+                    <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Deaths</div>
+                    <strong style={{ color: 'var(--dire-red)' }}>+{stat.deaths}</strong>
+                  </div>
+                </div>
+              </div>
+              <div className="glass-surface" style={{ flex: 1, padding: '0', display: 'flex', flexDirection: 'row' }}>
+                <div style={{ flex: 1, padding: '1rem' }}>
+                  <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem' }}>Significant Items Purchased</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    {bracketItems.map((item: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '0.2rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <ItemIcon item={item.key} size={28} />
+                          <span style={{ fontSize: '0.8rem' }}>{ITEMS[item.key.replace('item_', '')]?.dname || item.key}</span>
+                        </div>
+                        <span className="text-secondary" style={{ fontSize: '0.75rem' }}>{formatTime(item.time)}</span>
+                      </div>
+                    ))}
+                    {bracketItems.length === 0 && (
+                      <div className="text-secondary" style={{ fontSize: '0.8rem' }}>No significant items were purchased within this time period.</div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ width: '160px', borderLeft: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
+                  <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={min * 60} controlledIsPlaying={false} />
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
   };
 
-  const getWardsInFirstMin = (players: any[]) => {
-    let obs = 0; let sen = 0;
-    players.forEach(p => {
-      let ol = p.obs_log; let sl = p.sen_log;
-      if (typeof ol === 'string') { try { ol = JSON.parse(ol); } catch { ol = []; } }
-      if (typeof sl === 'string') { try { sl = JSON.parse(sl); } catch { sl = []; } }
-      if (Array.isArray(ol)) obs += ol.filter((e:any) => e.time <= 60).length;
-      if (Array.isArray(sl)) sen += sl.filter((e:any) => e.time <= 60).length;
-    });
-    return { obs, sen };
-  };
-  const radWards = getWardsInFirstMin(radiant);
-  const direWards = getWardsInFirstMin(dire);
 
   return (
     <div className="animate-fade-in" style={{ padding: '0 1rem 4rem 1rem' }}>
@@ -196,35 +243,38 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
       {/* 2. Post-Game Stats at the top */}
       <h3 className="gold-text-gradient" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Post-Game Stats</h3>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: '80px', gap: '0.5rem', marginBottom: '3rem' }}>
-        {/* Col 1 */}
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Level</div>
-          <h2 style={{ fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.level}</h2>
-        </div>
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', gap: '0.5rem', justifyContent: 'center', alignItems: 'center', padding: '0.5rem' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
-            {[0, 1, 2, 3, 4, 5].map(i => <ItemIcon key={i} item={selectedPlayer[`item_${i}`]} size={30} />)}
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '3rem', height: '220px' }}>
+        {/* Col 1 & 2 wrapper */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 2 }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flex: 1 }}>
+            <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Level</div>
+              <h2 style={{ fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.level}</h2>
+            </div>
+            <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+              <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Net Worth</div>
+              <h2 style={{ color: 'var(--accent-gold)', fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.net_worth?.toLocaleString()}</h2>
+            </div>
           </div>
-          <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {selectedPlayer.item_neutral && selectedPlayer.item_neutral !== 'empty' && (
-              <img src={getItemImage(resolveItemName(selectedPlayer.item_neutral) || '')} alt="Neutral" style={{ width: '100%', height: '100%', objectFit: 'cover' }} title={ITEMS[resolveItemName(selectedPlayer.item_neutral) || '']?.dname || selectedPlayer.item_neutral} />
-            )}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {[0, 1, 2].map(i => <ItemIcon key={i} item={selectedPlayer[`backpack_${i}`]} size={18} />)}
+          <div className="glass-surface" style={{ flex: 1.5, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', padding: '0.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+              {[0, 1, 2, 3, 4, 5].map(i => <ItemIcon key={i} item={selectedPlayer[`item_${i}`]} size={30} />)}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {selectedPlayer.item_neutral && selectedPlayer.item_neutral !== 'empty' && (
+                  <img src={getItemImage(resolveItemName(selectedPlayer.item_neutral) || '')} alt="Neutral" style={{ width: '100%', height: '100%', objectFit: 'cover' }} title={ITEMS[resolveItemName(selectedPlayer.item_neutral) || '']?.dname || selectedPlayer.item_neutral} />
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[0, 1, 2].map(i => <ItemIcon key={i} item={selectedPlayer[`backpack_${i}`]} size={18} />)}
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Col 2 */}
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Net Worth</div>
-          <h2 style={{ color: 'var(--accent-gold)', fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.net_worth?.toLocaleString()}</h2>
-        </div>
-        <div style={{ gridRow: 'span 1' }}></div>
 
         {/* Col 3: Stacked K/D/A */}
-        <div style={{ gridRow: 'span 2', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
           <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Kills</div>
             <strong style={{ color: 'var(--radiant-green)', fontSize: '1.1rem' }}>{selectedPlayer.kills}</strong>
@@ -240,43 +290,51 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
         </div>
 
         {/* Col 4 */}
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>IMP</div>
-          <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.imp || '-33'}</strong>
-        </div>
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Kill Contribution</div>
-          <strong style={{ fontSize: '1.3rem' }}>{Math.round(((selectedPlayer.kills + selectedPlayer.assists) / (selectedPlayer.player_slot < 128 ? matchData.radiant_score : matchData.dire_score)) * 100) || 0}%</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1.2 }}>
+          <div className="glass-surface" style={{ flex: 1.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>IMP</div>
+            <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.imp || '-33'}</strong>
+          </div>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Kill Contribution</div>
+            <strong style={{ fontSize: '1.3rem' }}>{Math.round(((selectedPlayer.kills + selectedPlayer.assists) / (selectedPlayer.player_slot < 128 ? matchData.radiant_score : matchData.dire_score)) * 100) || 0}%</strong>
+          </div>
         </div>
 
         {/* Col 5 */}
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>GPM</div>
-          <strong style={{ color: 'var(--accent-gold)', fontSize: '1.3rem' }}>{selectedPlayer.gold_per_min || selectedPlayer.gpm || 0}</strong>
-        </div>
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>XPM</div>
-          <strong style={{ color: 'var(--radiant-green)', fontSize: '1.3rem' }}>{selectedPlayer.xp_per_min || selectedPlayer.xpm || 0}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>GPM</div>
+            <strong style={{ color: 'var(--accent-gold)', fontSize: '1.3rem' }}>{selectedPlayer.gold_per_min || selectedPlayer.gpm || 0}</strong>
+          </div>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>XPM</div>
+            <strong style={{ color: 'var(--radiant-green)', fontSize: '1.3rem' }}>{selectedPlayer.xp_per_min || selectedPlayer.xpm || 0}</strong>
+          </div>
         </div>
 
         {/* Col 6 */}
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Last Hits</div>
-          <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.last_hits}</strong>
-        </div>
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Denies</div>
-          <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.denies}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Last Hits</div>
+            <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.last_hits}</strong>
+          </div>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Denies</div>
+            <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.denies}</strong>
+          </div>
         </div>
 
         {/* Col 7 */}
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Hero Damage</div>
-          <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.hero_damage?.toLocaleString()}</strong>
-        </div>
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Tower Damage</div>
-          <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.tower_damage?.toLocaleString()}</strong>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1.2 }}>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Hero Damage</div>
+            <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.hero_damage?.toLocaleString()}</strong>
+          </div>
+          <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Tower Damage</div>
+            <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.tower_damage?.toLocaleString()}</strong>
+          </div>
         </div>
       </div>
 
@@ -409,28 +467,55 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
           </div>
         </div>
         <div className="glass-surface" style={{ flex: 1, padding: '0', position: 'relative', overflow: 'hidden' }}>
-          <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={100} controlledIsPlaying={false} />
+          <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls mode="lanes" />
         </div>
       </div>
 
       {/* 6. Vision by First Minute */}
       <h3 className="gold-text-gradient" style={{ marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>01:00 Vision by First Minute</h3>
-      <div className="glass-surface" style={{ display: 'flex', padding: '1.5rem', gap: '2rem', marginBottom: '3rem', alignItems: 'center' }}>
-        <div style={{ flex: 1, textAlign: 'right' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.5rem', marginBottom: '1rem' }}>Radiant Ward Placements <IconRadiant style={{ width: '16px' }} /></div>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ color: '#eab308' }}>👁</span> <strong>{radWards.obs}</strong> <span className="text-secondary">Observer</span></div>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ color: '#3b82f6' }}>👁</span> <strong>{radWards.sen}</strong> <span className="text-secondary">Sentry</span></div>
+      <div className="glass-surface" style={{ display: 'flex', padding: '1.5rem', gap: '2rem', marginBottom: '3rem', alignItems: 'flex-start' }}>
+        {/* Radiant Wards List */}
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}><IconRadiant style={{ width: '16px' }} /> <strong style={{ color: 'var(--radiant-green)' }}>Radiant Ward Placements</strong></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+             {matchData.all_players.filter((p:any) => p.player_slot < 128).flatMap((p:any) => p.obs_log?.filter((w:any) => w.time <= 60).map((w:any) => ({...w, hero: p.hero_id, type: 'obs'})) || []).concat(
+               matchData.all_players.filter((p:any) => p.player_slot < 128).flatMap((p:any) => p.sen_log?.filter((w:any) => w.time <= 60).map((w:any) => ({...w, hero: p.hero_id, type: 'sen'})) || [])
+             ).sort((a:any, b:any) => a.time - b.time).map((ward:any, i:number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                     <ItemIcon item={ward.type === 'obs' ? 'ward_observer' : 'ward_sentry'} size={24} />
+                     <span className="text-secondary">planted by</span>
+                     <img src={getHeroIcon(HEROES[ward.hero]?.img_name)} style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                     <span style={{ color: 'var(--radiant-green)', fontWeight: 600 }}>{HEROES[ward.hero]?.name}</span>
+                   </div>
+                   <span className="text-secondary">{formatTime(ward.time)}</span>
+                </div>
+             ))}
           </div>
         </div>
-        <div style={{ width: '200px', height: '200px', background: '#000', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
-          <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} compact hideControls controlledTime={60} controlledIsPlaying={false} />
+
+        {/* Map */}
+        <div style={{ width: '200px', height: '200px', background: '#000', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden', alignSelf: 'center' }}>
+          <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={60} controlledIsPlaying={false} />
         </div>
+
+        {/* Dire Wards List */}
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}><IconDire style={{ width: '16px' }} /> Dire Ward Placements</div>
-          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-start' }}>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ color: '#eab308' }}>👁</span> <strong>{direWards.obs}</strong> <span className="text-secondary">Observer</span></div>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ color: '#3b82f6' }}>👁</span> <strong>{direWards.sen}</strong> <span className="text-secondary">Sentry</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}><IconDire style={{ width: '16px' }} /> <strong style={{ color: 'var(--dire-red)' }}>Dire Ward Placements</strong></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+             {matchData.all_players.filter((p:any) => p.player_slot >= 128).flatMap((p:any) => p.obs_log?.filter((w:any) => w.time <= 60).map((w:any) => ({...w, hero: p.hero_id, type: 'obs'})) || []).concat(
+               matchData.all_players.filter((p:any) => p.player_slot >= 128).flatMap((p:any) => p.sen_log?.filter((w:any) => w.time <= 60).map((w:any) => ({...w, hero: p.hero_id, type: 'sen'})) || [])
+             ).sort((a:any, b:any) => a.time - b.time).map((ward:any, i:number) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                     <ItemIcon item={ward.type === 'obs' ? 'ward_observer' : 'ward_sentry'} size={24} />
+                     <span className="text-secondary">planted by</span>
+                     <img src={getHeroIcon(HEROES[ward.hero]?.img_name)} style={{ width: '20px', height: '20px', borderRadius: '50%' }} />
+                     <span style={{ color: 'var(--dire-red)', fontWeight: 600 }}>{HEROES[ward.hero]?.name}</span>
+                   </div>
+                   <span className="text-secondary">{formatTime(ward.time)}</span>
+                </div>
+             ))}
           </div>
         </div>
       </div>
