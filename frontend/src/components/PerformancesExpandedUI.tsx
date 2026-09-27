@@ -18,7 +18,11 @@ export default function PerformancesExpandedUI({ player, matchData }: { player: 
   const maxSecs = scrubMinutes * 60;
   
   // Abilities
-  const abilityOrder = getAbilityBuildOrder(heroNpcName, player.ability_upgrades_arr).filter(a => !a.isTalent);
+  let abilityUpgrades = player.ability_upgrades_arr || [];
+  if (typeof abilityUpgrades === 'string') {
+    try { abilityUpgrades = JSON.parse(abilityUpgrades); } catch { abilityUpgrades = []; }
+  }
+  const abilityOrder = getAbilityBuildOrder(heroNpcName, abilityUpgrades).filter(a => !a.isTalent);
   
   const uniqueAbilities = Array.from(new Set(abilityOrder.map(a => a.name))).slice(0, 4);
 
@@ -40,7 +44,10 @@ export default function PerformancesExpandedUI({ player, matchData }: { player: 
   const hh = player.hero_healing || 0;
 
   // Damage breakdown for circular rings
-  const damageTargets = player.damage_targets || {};
+  let damageTargets = player.damage_targets || {};
+  if (typeof damageTargets === 'string') {
+    try { damageTargets = JSON.parse(damageTargets); } catch { damageTargets = {}; }
+  }
   const damageList = Object.entries(damageTargets)
     .filter(([k]) => k.startsWith('npc_dota_hero_'))
     .map(([k, v]) => ({ name: k.replace('npc_dota_hero_', ''), damage: v as number }))
@@ -62,7 +69,7 @@ export default function PerformancesExpandedUI({ player, matchData }: { player: 
         <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-start' }}>
           <img src="/assets/images/dota2/talent_tree.svg" alt="Talent" style={{ width: '30px', height: '30px', opacity: 0.6 }} />
           {uniqueAbilities.map((name) => {
-            const level = player.ability_upgrades_arr?.filter((a: any) => a === name).length || 0; // approximation
+            const level = abilityUpgrades.filter((a: any) => a === name).length || 0; // approximation
             return (
               <div key={name} style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                 <img src={getAbilityImage(name)} alt={name} style={{ width: '30px', height: '30px', objectFit: 'cover', borderRadius: '4px' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />

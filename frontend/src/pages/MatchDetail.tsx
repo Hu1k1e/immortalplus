@@ -30,6 +30,9 @@ export default function MatchDetail() {
 
   const [refetching, setRefetching] = useState(false);
 
+  const playback = useMatchPlayback(4, matchData?.duration || 0);
+  const currentTime = playback.currentTime;
+
   const fetchMatchData = async (isPolling = false) => {
     if (!matchId || matchId === 'undefined') return null;
     try {
@@ -127,9 +130,6 @@ export default function MatchDetail() {
   if (!matchData) return <div style={{ padding: '2rem' }}>Match not found.</div>;
 
   const allPlayers = matchData.all_players || [];
-  
-  const playback = useMatchPlayback(4, matchData?.duration || 0);
-  const currentTime = playback.currentTime;
 
   const getLiveKills = (players: any[], time: number) => {
     if (!matchData?.is_parsed) {
