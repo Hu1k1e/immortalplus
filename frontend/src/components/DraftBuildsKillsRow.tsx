@@ -203,11 +203,15 @@ function KillBreakdownTable({ allPlayers }: { allPlayers: any[] }) {
   );
 }
 
-export default function DraftBuildsKillsRow({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
+export { KillBreakdownTable };
+
+// Kill Breakdown lives after Builds on the Overview page now (MatchOverview
+// renders it separately via the named export above), so this default
+// export is just the Draft section.
+export default function DraftBuildsKillsRow({ matchData }: { matchData: any }) {
   return (
-    <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div style={{ marginTop: '1.5rem' }}>
       <DraftGrid matchData={matchData} />
-      <KillBreakdownTable allPlayers={allPlayers} />
     </div>
   );
 }

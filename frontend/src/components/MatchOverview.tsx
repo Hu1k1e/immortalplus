@@ -4,7 +4,7 @@ import { ITEMS } from '../lib/items';
 import MatchMap from './MatchMap';
 import MatchupGrid from './MatchupGrid';
 import TowersLaneRow from './TowersLaneRow';
-import DraftBuildsKillsRow from './DraftBuildsKillsRow';
+import DraftBuildsKillsRow, { KillBreakdownTable } from './DraftBuildsKillsRow';
 import BuildsPanel from './BuildsPanel';
 import PlaybackSection from './PlaybackSection';
 import GlobalPlaybackBar from './GlobalPlaybackBar';
@@ -74,8 +74,11 @@ function OverviewBody({ matchData, allPlayers, setSelectedPlayer }: { matchData:
       <div className="animate-fade-in" style={{ paddingBottom: isParsed ? '76px' : 0 }}>
         <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} currentTime={isParsed ? playback.currentTime : undefined} />
         <TowersLaneRow matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
-        <DraftBuildsKillsRow matchData={matchData} allPlayers={allPlayers} />
+        <DraftBuildsKillsRow matchData={matchData} />
         <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
+        <div style={{ marginTop: '1.5rem' }}>
+          <KillBreakdownTable allPlayers={allPlayers} />
+        </div>
         <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} />
       </div>
       {isParsed && (

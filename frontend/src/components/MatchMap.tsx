@@ -245,6 +245,7 @@ export default function MatchMap({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom <= 1) return; // panning only makes sense once zoomed in
+    e.preventDefault(); // stop the drag from turning into a text/image selection
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
@@ -278,7 +279,10 @@ export default function MatchMap({
           overflow: 'hidden',
           border: '1px solid var(--border-color)',
           margin: compact ? '0' : '0 auto',
-          cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+          cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          touchAction: 'none',
         }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}

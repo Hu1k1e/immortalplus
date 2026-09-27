@@ -186,7 +186,10 @@ export default function MatchDetail() {
         </button>
       </div>
 
-      <div className="glass-surface" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
+      <div className="glass-surface" style={{
+        marginBottom: '1.5rem', overflow: 'hidden',
+        backgroundImage: 'linear-gradient(90deg, rgba(81,164,69,0.16) 0%, rgba(81,164,69,0.04) 30%, rgba(0,0,0,0) 50%, rgba(194,53,43,0.04) 70%, rgba(194,53,43,0.16) 100%)',
+      }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 2rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flex: 1 }}>
             <div style={{ width: '52px', height: '52px', borderRadius: '8px', background: 'rgba(81,164,69,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

@@ -6,20 +6,29 @@ const LANE_NAMES: Record<number, string> = { 1: 'Bottom Lane', 2: 'Middle Lane',
 
 // Real building screen positions (top%/left% on a square map view) — the
 // patch 7.33 set (buildingData733.ts), the coordinate set OpenDota's own
-// frontend vendors. These percentages are calibrated against OpenDota's
-// OWN reference map image (map/simple.png), which is NOT a plain edge-to-
-// edge crop — measured its actual terrain content (via pixel-scanning for
-// the black-padding boundary) at 6.05%-93.85% of the canvas on both axes,
-// i.e. a ~6% inset margin. Stratz's minimap_geometry_current.png (used
-// here) has no such margin — terrain fills 0-100% edge to edge — so
-// applying OpenDota's percentages directly put every building
-// systematically off (worse near the edges, where most towers are).
-// remapPct() rescales from "OpenDota's padded canvas" space into "this
-// asset's edge-to-edge" space before rendering.
-const PAD_START = 6.05;
-const PAD_END = 93.85;
+// frontend vendors. These percentages are calibrated against a SPECIFIC
+// reference image: OpenDota's own DotaMap.tsx pairs buildingData733.ts with
+// map/detailed_733.jpg (confirmed by reading that component directly, not
+// guessed) — a textured, vignetted map render, not the plain outline image
+// (map/simple.png) an earlier pass here wrongly assumed and measured
+// instead, which has a much larger hard black margin and made things
+// worse, not better. Decoded detailed_733.jpg (temporarily installed
+// jpeg-js/pngjs, `npm install --no-save`, removed immediately after — no
+// package.json changes) and pixel-scanned its actual vignette boundary:
+// content spans 0.78%-98.56% horizontally and 3.11%-96.00% vertically (a
+// thin, asymmetric vignette, not a large uniform margin). Stratz's
+// minimap_geometry_current.png (the asset actually rendered here) fills
+// 0-100% edge to edge, so remapPct/remapPctY rescale from that reference
+// image's real content bounds into this asset's edge-to-edge space.
+const PAD_X_START = 0.78;
+const PAD_X_END = 98.56;
+const PAD_Y_START = 3.11;
+const PAD_Y_END = 96.0;
 function remapPct(v: number): number {
-  return ((v - PAD_START) / (PAD_END - PAD_START)) * 100;
+  return ((v - PAD_X_START) / (PAD_X_END - PAD_X_START)) * 100;
+}
+function remapPctY(v: number): number {
+  return ((v - PAD_Y_START) / (PAD_Y_END - PAD_Y_START)) * 100;
 }
 
 interface BuildingEntry { id: string; top: number; left: number; }
@@ -121,7 +130,7 @@ function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: num
         key={b.id}
         title={`${buildingLabel(b.id)} — ${isRadiant ? 'Radiant' : 'Dire'} — Standing`}
         style={{
-          position: 'absolute', top: `${remapPct(b.top)}%`, left: `${remapPct(b.left)}%`, transform: 'translate(-50%,-50%)',
+          position: 'absolute', top: `${remapPctY(b.top)}%`, left: `${remapPct(b.left)}%`, transform: 'translate(-50%,-50%)',
           width: isAncient ? '9px' : '7px', height: isAncient ? '9px' : '7px', borderRadius: '2px',
           background: '#ff8c1a',
           border: '1px solid rgba(0,0,0,0.6)',
@@ -135,7 +144,7 @@ function MiniMap({ matchData, currentTime }: { matchData: any; currentTime?: num
       <img
         src="/assets/images/dota2/minimap_geometry_current.png"
         alt="Map"
-        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.75) saturate(0.9)' }}
+        style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.6) saturate(0.9)' }}
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
       {RADIANT_BUILDINGS.map((b) => renderBuilding(b, true))}
