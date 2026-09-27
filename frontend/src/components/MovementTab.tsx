@@ -34,12 +34,17 @@ function getAggregatedHeatmap(players: any[]) {
   return { points, maxHeat };
 }
 
+const PLAYER_COLORS: Record<number, string> = {
+  0: '#3375FF', 1: '#66FFBF', 2: '#BF00BF', 3: '#F3F00B', 4: '#FF6B00',
+  128: '#FE86C2', 129: '#A1B447', 130: '#65D9F7', 131: '#008321', 132: '#A46900'
+};
+
 const RoleIcon = ({ role, size = 18 }: { role: number, size?: number }) => {
-  if (role === 1) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#5c6bc0" strokeWidth="2"><path d="M4 20 L16 8 M16 8 L13 8 M16 8 L16 11"/></svg>; 
-  if (role === 2) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#26c6da" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>; 
-  if (role === 3) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ff9800" strokeWidth="2"><path d="M12 3 L20 6 V11 C20 16 16.5 19.5 12 21 C7.5 19.5 4 16 4 11 V6 Z"/></svg>; 
-  if (role === 4) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ef5350" strokeWidth="2"><path d="M12 2 C12 2 18 8 18 14 A6 6 0 0 1 6 14 C6 8 12 2 12 2 Z"/></svg>; 
-  if (role === 5) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#66bb6a" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M9 12h6 M12 9v6"/></svg>; 
+  if (role === 1) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#5c6bc0" strokeWidth="2"><title>Carry</title><path d="M4 20 L16 8 M16 8 L13 8 M16 8 L16 11"/></svg>; 
+  if (role === 2) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#26c6da" strokeWidth="2"><title>Mid</title><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>; 
+  if (role === 3) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ff9800" strokeWidth="2"><title>Offlane</title><path d="M12 3 L20 6 V11 C20 16 16.5 19.5 12 21 C7.5 19.5 4 16 4 11 V6 Z"/></svg>; 
+  if (role === 4) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#ef5350" strokeWidth="2"><title>Soft Support</title><path d="M12 2 C12 2 18 8 18 14 A6 6 0 0 1 6 14 C6 8 12 2 12 2 Z"/></svg>; 
+  if (role === 5) return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#66bb6a" strokeWidth="2"><title>Hard Support</title><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M9 12h6 M12 9v6"/></svg>; 
   return null;
 }
 
@@ -68,11 +73,11 @@ function LargeMovementMap({ allPlayers, defaultCheckedSlots }: { allPlayers: any
           return (
             <div key={p.player_slot} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }} onClick={() => handleToggle(p.player_slot)}>
               <div style={{ 
-                width: '18px', height: '18px', border: '1px solid var(--border-color)', borderRadius: '3px',
-                background: checkedSlots.has(p.player_slot) ? 'var(--radiant-green)' : 'rgba(0,0,0,0.3)',
+                width: '18px', height: '18px', border: 'none', borderRadius: '3px',
+                background: checkedSlots.has(p.player_slot) ? (PLAYER_COLORS[p.player_slot] || 'var(--radiant-green)') : 'rgba(0,0,0,0.4)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
               }}>
-                {checkedSlots.has(p.player_slot) && <span style={{ color: '#000', fontSize: '14px', lineHeight: 1 }}>✓</span>}
+                {checkedSlots.has(p.player_slot) && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
               </div>
               {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '40px', height: '22px', objectFit: 'cover', borderRadius: '3px' }} />}
             </div>
@@ -87,7 +92,7 @@ function LargeMovementMap({ allPlayers, defaultCheckedSlots }: { allPlayers: any
           const left = ((pt.x - 64) / 128) * 100;
           const top = (1 - ((pt.y - 64) / 128)) * 100;
           const intensity = maxHeat > 0 ? pt.count / maxHeat : 0;
-          const hue = (1 - intensity) * 240;
+          const hue = intensity * 60;
           return (
             <div key={i} style={{
               position: 'absolute', left: `${left}%`, top: `${top}%`,
@@ -106,11 +111,11 @@ function LargeMovementMap({ allPlayers, defaultCheckedSlots }: { allPlayers: any
           return (
             <div key={p.player_slot} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', flexDirection: 'row-reverse' }} onClick={() => handleToggle(p.player_slot)}>
               <div style={{ 
-                width: '18px', height: '18px', border: '1px solid var(--border-color)', borderRadius: '3px',
-                background: checkedSlots.has(p.player_slot) ? 'var(--dire-red)' : 'rgba(0,0,0,0.3)',
+                width: '18px', height: '18px', border: 'none', borderRadius: '3px',
+                background: checkedSlots.has(p.player_slot) ? (PLAYER_COLORS[p.player_slot] || 'var(--dire-red)') : 'rgba(0,0,0,0.4)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
               }}>
-                {checkedSlots.has(p.player_slot) && <span style={{ color: '#000', fontSize: '14px', lineHeight: 1 }}>✓</span>}
+                {checkedSlots.has(p.player_slot) && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
               </div>
               {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '40px', height: '22px', objectFit: 'cover', borderRadius: '3px' }} />}
             </div>
@@ -137,7 +142,7 @@ function MiniMovementMap({ players, isTeamControl, isRadiant, singleHero }: { pl
         if (isTeamControl) {
            bg = `radial-gradient(circle, ${colorHex}${Math.floor((intensity * 0.8 + 0.1)*255).toString(16).padStart(2,'0')} 0%, transparent 60%)`;
         } else {
-           const hue = (1 - intensity) * 240;
+           const hue = intensity * 60;
            bg = `radial-gradient(circle, hsla(${hue}, 100%, 50%, ${intensity * 0.8 + 0.2}) 0%, transparent 70%)`;
         }
         
