@@ -22,6 +22,26 @@ the same heroes.json the frontend ships) and the standard Dota formulas
 matching frontend's lib/heroVitals.ts), plus Dota's known
 respawn-time-by-level formula for the one piece the combat log has no
 explicit event for (respawn).
+
+Also reconstructs real cumulative hero-damage-dealt, healing-dealt, and
+tower-damage-dealt per player from the same combat-log walk, independent
+of real_mode (these have nothing to do with the HP/Mana fields the fork
+added — they're derived from per-instance combat-log events either way).
+Existing hero_damage_t/hero_healing_t (computed by /blob's own
+CreateParsedDataBlob.java) already cover the first two when a full local
+deep-parse has run and populated them, but this doesn't depend on that —
+it's on-demand from the same replay this module already downloads.
+Tower-damage-over-time has no source anywhere else in this app at any
+granularity (not even a final scalar from our own local parser — only
+OpenDota/Stratz's remote APIs ever provide one), so this is a genuinely
+new capability, not a fallback for an existing one.
+
+Attribution matches CreateParsedDataBlob.java's own real convention
+(matches Valve's scoreboard definitions): uses `sourcename` (the actual
+casting hero), not `attackername` (which can be a DOT/projectile/ward
+entity instead of the hero itself), excludes damage/heals landing on
+illusions (targetillusion), and excludes self-damage/self-heal
+(target == source).
 """
 
 import asyncio
@@ -128,8 +148,11 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
     `players` is the already-stored all_players list (need hero_id and
     deaths_log per player_slot to seed level/respawn logic). Returns
     { player_slot: {"time": [...], "hp": [...], "mana": [...],
-                     "max_hp": [...], "max_mana": [...]} }, sampled every
-    2 real seconds, or None on failure.
+                     "max_hp": [...], "max_mana": [...], "dmg": [...],
+                     "heal": [...], "td": [...]} }, sampled every 2 real
+    seconds, or None on failure. "dmg"/"heal"/"td" are real cumulative
+    hero-damage-dealt/healing-dealt/tower-damage-dealt totals as of each
+    sample time — independent of the hp/mana real_mode choice above.
     """
     url = f"http://replay{cluster_id}.valve.net/570/{match_id}_{replay_salt}.dem.bz2"
 
@@ -161,13 +184,24 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         raw_text = resp.text
 
     slot_to_player_slot: dict[int, int] = {}
-    npc_name_by_slot: dict[int, str] = {}
     level_by_slot: dict[int, int] = {}
     real_mode: Optional[bool] = None
 
     # hero_id per player_slot, from the already-stored all_players data —
     # needed to look up real base stats.
     hero_id_by_player_slot = {p.get('player_slot'): p.get('hero_id') for p in players if p.get('player_slot') is not None}
+
+    # Real npc name (e.g. "npc_dota_hero_antimage") -> player_slot, built
+    # once upfront from heroes.json rather than discovered incrementally —
+    # hero identities don't change mid-match, and this is needed both for
+    # targetname (existing hp/mana reconstruction) and sourcename (new
+    # damage/heal/tower-damage-dealt attribution) lookups below.
+    _stats_by_id = _hero_stats()
+    name_to_pslot: dict[str, int] = {}
+    for _ps, _hid in hero_id_by_player_slot.items():
+        _hero_entry = _stats_by_id.get(str(_hid)) if _hid else None
+        if _hero_entry and _hero_entry.get('name'):
+            name_to_pslot[_hero_entry['name']] = _ps
 
     # State per player_slot as we walk the stream in time order.
     hp: dict[int, float] = {}
@@ -176,7 +210,18 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
     dead_until: dict[int, float] = {}
     series: dict[int, dict[str, list]] = {}
 
+    # Real cumulative combat stats, independent of the hp/mana real_mode
+    # choice — updated for every player from the same combat-log walk.
+    hero_dmg_cum: dict[int, float] = {}
+    heal_cum: dict[int, float] = {}
+    tower_dmg_cum: dict[int, float] = {}
+
+    def _new_series() -> dict[str, list]:
+        return {"time": [], "hp": [], "mana": [], "max_hp": [], "max_mana": [], "dmg": [], "heal": [], "td": []}
+
     def ensure_init(pslot: int, t: float):
+        if pslot not in series:
+            series[pslot] = _new_series()
         if pslot in hp:
             return
         lvl = level_by_slot.get(pslot, 1)
@@ -185,7 +230,6 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         hp[pslot] = max_hp
         mana[pslot] = max_mana
         last_time[pslot] = t
-        series[pslot] = {"time": [], "hp": [], "mana": [], "max_hp": [], "max_mana": []}
 
     def advance_regen(pslot: int, t: float):
         hero_id = hero_id_by_player_slot.get(pslot)
@@ -229,12 +273,15 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         s["mana"].append(round(max(0.0, mana.get(pslot, 0.0)), 1))
         s["max_hp"].append(round(max_hp, 1))
         s["max_mana"].append(round(max_mana, 1))
+        s["dmg"].append(round(hero_dmg_cum.get(pslot, 0.0), 1))
+        s["heal"].append(round(heal_cum.get(pslot, 0.0), 1))
+        s["td"].append(round(tower_dmg_cum.get(pslot, 0.0), 1))
 
     real_last_sample: dict[int, float] = {}
 
     def maybe_sample_real(pslot: int, t: float, hp_v: float, max_hp_v: float, mana_v: float, max_mana_v: float):
         if pslot not in series:
-            series[pslot] = {"time": [], "hp": [], "mana": [], "max_hp": [], "max_mana": []}
+            series[pslot] = _new_series()
         if t - real_last_sample.get(pslot, -999) < 2:
             return
         real_last_sample[pslot] = t
@@ -244,6 +291,9 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         s["mana"].append(round(max(0.0, mana_v), 1))
         s["max_hp"].append(round(max_hp_v, 1))
         s["max_mana"].append(round(max_mana_v, 1))
+        s["dmg"].append(round(hero_dmg_cum.get(pslot, 0.0), 1))
+        s["heal"].append(round(heal_cum.get(pslot, 0.0), 1))
+        s["td"].append(round(tower_dmg_cum.get(pslot, 0.0), 1))
 
     for line in raw_text.split("\n"):
         line = line.strip()
@@ -296,34 +346,57 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
             # this pre-game entry) — nothing to sample either way yet.
             continue
 
-        # Fallback only: combat log damage/heal, used to reconstruct HP/Mana
-        # when the parser stream doesn't carry real hp/mana on interval
-        # entries (see module docstring). Skipped entirely once real_mode
+        if etype not in ("DOTA_COMBATLOG_DAMAGE", "DOTA_COMBATLOG_HEAL"):
+            continue
+
+        t = entry.get("time")
+        value = entry.get("value")
+        if t is None or value is None:
+            continue
+        target_name = entry.get("targetname") or ""
+        source_name = entry.get("sourcename") or ""
+
+        # Real cumulative hero-damage-dealt / healing-dealt, attributed to
+        # the true casting hero (sourcename, not attackername — see module
+        # docstring), matching CreateParsedDataBlob.java's own filter
+        # exactly: target must be a real (non-illusion) hero, and exclude
+        # self-damage/self-heal. Runs regardless of real_mode — this has
+        # nothing to do with the hp/mana reconstruction choice. Unlike
+        # CreateParsedDataBlob.java's per-minute pre-scan (needed there
+        # because combat-log entries can arrive after the same-minute
+        # interval entry in the stream), this accumulates continuously and
+        # samples every 2 real seconds, so a same-instant ordering quirk
+        # only shifts an event into the next sample a moment later rather
+        # than dropping it.
+        if (
+            entry.get("targethero")
+            and not entry.get("targetillusion")
+            and target_name
+            and target_name != source_name
+        ):
+            src_pslot = name_to_pslot.get(source_name)
+            if src_pslot is not None:
+                if etype == "DOTA_COMBATLOG_DAMAGE":
+                    hero_dmg_cum[src_pslot] = hero_dmg_cum.get(src_pslot, 0.0) + float(value)
+                else:
+                    heal_cum[src_pslot] = heal_cum.get(src_pslot, 0.0) + float(value)
+
+        # Real cumulative tower-damage-dealt — no source anywhere else in
+        # this app at any granularity (see module docstring). Tower npc
+        # names always contain "_tower" (e.g. npc_dota_goodguys_tower1_mid).
+        if etype == "DOTA_COMBATLOG_DAMAGE" and "_tower" in target_name:
+            src_pslot = name_to_pslot.get(source_name)
+            if src_pslot is not None:
+                tower_dmg_cum[src_pslot] = tower_dmg_cum.get(src_pslot, 0.0) + float(value)
+
+        # Fallback-only: reconstruct HP/Mana from target-side damage/heal
+        # instances when the parser stream doesn't carry real hp/mana on
+        # interval entries (see module docstring). Skipped once real_mode
         # is confirmed true, since real per-second values are already exact.
         if real_mode:
             continue
-        if etype in ("DOTA_COMBATLOG_DAMAGE", "DOTA_COMBATLOG_HEAL") and entry.get("targethero"):
-            target_name = entry.get("targetname") or ""
-            t = entry.get("time")
-            value = entry.get("value")
-            if t is None or value is None:
-                continue
-            # Find which player_slot this npc name belongs to (cached).
-            pslot = None
-            for ps, name in npc_name_by_slot.items():
-                if name == target_name:
-                    pslot = ps
-                    break
-            if pslot is None:
-                # First time seeing this hero's npc name — match it against
-                # hero_id_by_player_slot via the heroes.json npc_name field.
-                stats_by_id = _hero_stats()
-                for ps, hid in hero_id_by_player_slot.items():
-                    hero_entry = stats_by_id.get(str(hid))
-                    if hero_entry and hero_entry.get('name') == target_name:
-                        npc_name_by_slot[ps] = target_name
-                        pslot = ps
-                        break
+        if entry.get("targethero"):
+            pslot = name_to_pslot.get(target_name)
             if pslot is None:
                 continue
 

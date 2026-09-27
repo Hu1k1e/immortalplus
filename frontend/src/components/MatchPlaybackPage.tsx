@@ -63,6 +63,10 @@ function fmtClock(t: number) {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+function fmtK(n: number) {
+  return Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n)}`;
+}
+
 function teamTotals(players: any[], currentTime: number) {
   return players.reduce((acc, p) => {
     acc.kills += liveCount(p, 'kills_log', currentTime);
@@ -71,9 +75,16 @@ function teamTotals(players: any[], currentTime: number) {
     acc.cs += Math.round(interpAtTime(p.lh_t, currentTime));
     acc.gold += interpAtTime(p.gold_t, currentTime);
     acc.xp += interpAtTime(p.xp_t, currentTime);
-    acc.heal += Math.round(interpAtTime(p.hero_healing_t, currentTime));
-    acc.dmg += Math.round(interpAtTime(p.hero_damage_t, currentTime));
-    acc.td += Math.round(interpAtTime(p.tower_damage_t, currentTime));
+    // Heal/Hero Damage/Tower Damage prefer the real per-second
+    // reconstruction (vitals_t) over the older, not-always-present
+    // per-minute hero_healing_t/hero_damage_t — see PlaybackPlayerRow.tsx.
+    // Tower damage has no per-minute fallback anywhere in the app (no
+    // "tower_damage_t" field has ever existed), so it only ever
+    // contributes once vitals_t's "td" series exists for that player.
+    const real = getRealVitals(p, currentTime);
+    acc.heal += Math.round(real?.heal ?? interpAtTime(p.hero_healing_t, currentTime));
+    acc.dmg += Math.round(real?.dmg ?? interpAtTime(p.hero_damage_t, currentTime));
+    if (real?.td != null) acc.td += Math.round(real.td);
     acc.netWorth += interpAtTime(p.networth_t, currentTime) || interpAtTime(p.gold_t, currentTime);
     return acc;
   }, { kills: 0, deaths: 0, assists: 0, cs: 0, gold: 0, xp: 0, heal: 0, dmg: 0, td: 0, netWorth: 0 });
@@ -161,9 +172,9 @@ function TeamStatRow({ label, color, Icon, totals, vitals, isLeading, currentTim
           <Stat label="CS" value={totals.cs} />
           <Stat label="GPM" value={Math.round(totals.gold / Math.max(1 / 60, currentTime / 60))} />
           <Stat label="XPM" value={Math.round(totals.xp / Math.max(1 / 60, currentTime / 60))} />
-          <Stat label="Heal" value={totals.heal.toLocaleString()} />
-          <Stat label="DMG" value={totals.dmg.toLocaleString()} />
-          <Stat label="TD" value={totals.td.toLocaleString()} />
+          <Stat label="Heal" value={totals.heal ? fmtK(totals.heal) : '-'} />
+          <Stat label="Hero DMG" value={totals.dmg ? fmtK(totals.dmg) : '-'} />
+          <Stat label="Tower DMG" value={totals.td ? fmtK(totals.td) : '-'} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
           <div style={{ height: '10px', borderRadius: '2px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--radiant-green)55', overflow: 'hidden' }}>

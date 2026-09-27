@@ -20,6 +20,10 @@ function fmtClock(t: number) {
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
+function fmtK(n: number) {
+  return Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, '')}k` : `${Math.round(n)}`;
+}
+
 /** Real dead/respawn status from per-second position data (`pos_t.life_state`,
  * 0 = alive, 1/2 = dead) — only present when the deeper local parse ran.
  * Returns null (unknown) rather than guessing when that data is missing, so
@@ -44,13 +48,17 @@ export function getDeadStatus(player: any, currentTime: number): { dead: boolean
   return { dead: true, deadSince };
 }
 
-/** Real HP/Mana from `player.vitals_t` (see backend/services/vitals_parser.py
- * — reconstructed from real combat-log damage/heal instances plus real
- * hero stats/regen, on-demand per match, not always present) — interpolates
+/** Real HP/Mana (+ real cumulative hero-damage-dealt/healing-dealt/
+ * tower-damage-dealt) from `player.vitals_t` (see
+ * backend/services/vitals_parser.py — reconstructed from the real
+ * combat-log, on-demand per match, not always present) — interpolates
  * between its ~2-second samples. Returns null when that data hasn't been
  * computed for this match yet, so the caller can fall back to the
- * max-only placeholder instead of showing nothing. */
-export function getRealVitals(player: any, currentTime: number): { hp: number; mana: number; maxHp: number; maxMana: number } | null {
+ * max-only HP/MP placeholder and the older per-minute _t arrays instead of
+ * showing nothing. `dmg`/`heal`/`td` are undefined (not 0) when a vitals_t
+ * was computed before those fields existed, so the caller can still fall
+ * back per-stat rather than treating an old payload as "genuinely zero". */
+export function getRealVitals(player: any, currentTime: number): { hp: number; mana: number; maxHp: number; maxMana: number; dmg?: number; heal?: number; td?: number } | null {
   const v = player.vitals_t;
   if (!v?.time?.length) return null;
   let i0 = 0;
@@ -61,7 +69,11 @@ export function getRealVitals(player: any, currentTime: number): { hp: number; m
   const t0 = v.time[i0], t1 = v.time[i1];
   const frac = t1 > t0 ? Math.min(1, Math.max(0, (currentTime - t0) / (t1 - t0))) : 0;
   const lerp = (arr: number[]) => (arr[i0] ?? 0) + ((arr[i1] ?? arr[i0] ?? 0) - (arr[i0] ?? 0)) * frac;
-  return { hp: lerp(v.hp), mana: lerp(v.mana), maxHp: lerp(v.max_hp), maxMana: lerp(v.max_mana) };
+  const lerpOpt = (arr: number[] | undefined) => (Array.isArray(arr) && arr.length ? lerp(arr) : undefined);
+  return {
+    hp: lerp(v.hp), mana: lerp(v.mana), maxHp: lerp(v.max_hp), maxMana: lerp(v.max_mana),
+    dmg: lerpOpt(v.dmg), heal: lerpOpt(v.heal), td: lerpOpt(v.td),
+  };
 }
 
 function VitalBar({ label, value, max, color, approximate }: { label: string; value: number; max: number; color: string; approximate?: boolean }) {
@@ -92,9 +104,6 @@ export default function PlaybackPlayerRow({ player, currentTime }: { player: any
   const gpm = Math.round(interpAtTime(player.gold_t, currentTime) / minutesElapsed);
   const xpm = Math.round(xp / minutesElapsed);
   const cs = Math.round(interpAtTime(player.lh_t, currentTime));
-  const heal = Math.round(interpAtTime(player.hero_healing_t, currentTime));
-  const dmg = Math.round(interpAtTime(player.hero_damage_t, currentTime));
-  const td = Math.round(interpAtTime(player.tower_damage_t, currentTime));
   const kills = liveCount(player, 'kills_log', currentTime);
   const deaths = liveCount(player, 'deaths_log', currentTime);
 
@@ -118,6 +127,17 @@ export default function PlaybackPlayerRow({ player, currentTime }: { player: any
   const vitals = realVitals
     ? { hp: realVitals.hp, mana: realVitals.mana, maxHp: realVitals.maxHp, maxMana: realVitals.maxMana, approximate: false }
     : getHeroVitals(player, level, !isDead);
+
+  // Heal/Hero Damage prefer the real per-second reconstruction (vitals_t,
+  // regardless of the hp/mana real_mode — see vitals_parser.py) and fall
+  // back to the older per-minute hero_healing_t/hero_damage_t (real when
+  // a full local deep-parse populated them, but not always present).
+  // Tower damage has no per-minute fallback anywhere in this app — no
+  // "tower_damage_t" field has ever existed — so it only ever shows a
+  // real value once vitals_t's "td" series exists, "-" otherwise.
+  const heal = Math.round(realVitals?.heal ?? interpAtTime(player.hero_healing_t, currentTime));
+  const dmg = Math.round(realVitals?.dmg ?? interpAtTime(player.hero_damage_t, currentTime));
+  const td = realVitals?.td != null ? Math.round(realVitals.td) : null;
 
   const StatCell = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div style={{ textAlign: 'center' }}>
@@ -168,9 +188,9 @@ export default function PlaybackPlayerRow({ player, currentTime }: { player: any
         <StatCell label="K / D / A"><span style={{ color: 'var(--radiant-green)' }}>{kills}</span>/<span style={{ color: 'var(--dire-red)' }}>{deaths}</span>/<span style={{ color: 'var(--text-secondary)' }}>{player.assists ?? 0}</span></StatCell>
         <StatCell label="CS">{cs}</StatCell>
         <StatCell label="GPM / XPM">{gpm} / {xpm}</StatCell>
-        <StatCell label="Heal">{heal || '-'}</StatCell>
-        <StatCell label="Damage">{dmg || '-'}</StatCell>
-        <StatCell label="Tower DMG">{td || '-'}</StatCell>
+        <StatCell label="Heal">{heal ? fmtK(heal) : '-'}</StatCell>
+        <StatCell label="Hero Damage">{dmg ? fmtK(dmg) : '-'}</StatCell>
+        <StatCell label="Tower DMG">{td ? fmtK(td) : '-'}</StatCell>
       </div>
 
       {/* Inventory: 6 main slots (2x3, real inventory layout) + backpack + gold */}
