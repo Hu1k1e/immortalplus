@@ -24,12 +24,13 @@ const resolveItemName = (item: any) => {
 
 const ItemIcon = ({ item, size = 44 }: { item: any; size?: number }) => {
   const itemName = resolveItemName(item);
+  const dname = itemName ? (ITEMS[itemName]?.dname || itemName) : '';
   if (!itemName || itemName === 'empty' || itemName === 'null') {
-    return <div style={{ width: `${size * 1.35}px`, height: `${size}px`, background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)', borderRadius: '4px' }} />;
+    return <div style={{ width: `${size * 1.35}px`, height: `${size}px`, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px' }} />;
   }
   return (
-    <div style={{ width: `${size * 1.35}px`, height: `${size}px`, background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)', borderRadius: '4px', overflow: 'hidden' }}>
-      <img src={getItemImage(itemName)} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+    <div title={dname} style={{ width: `${size * 1.35}px`, height: `${size}px`, background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '4px', overflow: 'hidden' }}>
+      <img src={getItemImage(itemName)} alt={dname} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
     </div>
   );
 };
@@ -84,16 +85,16 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
     return (
       <div style={{ marginBottom: '2rem' }}>
         <h3 className="gold-text-gradient" style={{ marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>{formatTime(min * 60)} {title}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(250px, 1fr) minmax(200px, 1fr) minmax(250px, 1fr)', gap: '1.5rem' }}>
-          <div className="glass-surface" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '1.5rem' }}>
+          <div className="glass-surface" style={{ width: '280px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                <div style={{ position: 'relative' }}>
                  <img src={getHeroIcon(HEROES[selectedPlayer.hero_id]?.img_name)} alt="Hero" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
                  <div style={{ position: 'absolute', bottom: -5, left: -5, background: '#000', borderRadius: '50%', width: '22px', height: '22px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', border: '1px solid rgba(255,255,255,0.5)' }}>{stat.level}</div>
                </div>
-               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
-                 {bracketItems.slice(0,6).map((item: any, i: number) => <ItemIcon key={i} item={item.key} size={24} />)}
-                 {Array.from({ length: Math.max(0, 6 - bracketItems.length) }).map((_, i) => <ItemIcon key={`empty-${i}`} item={null} size={24} />)}
+               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                 {bracketItems.slice(0,6).map((item: any, i: number) => <ItemIcon key={i} item={item.key} size={28} />)}
+                 {Array.from({ length: Math.max(0, 6 - bracketItems.length) }).map((_, i) => <ItemIcon key={`empty-${i}`} item={null} size={28} />)}
                </div>
              </div>
              <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '0.5rem' }}>
@@ -111,38 +112,42 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                </div>
              </div>
           </div>
-          <div className="glass-surface" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div className="glass-surface" style={{ width: '120px', padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
             {min === 10 ? (
-              <div className="text-secondary" style={{ textAlign: 'center' }}>Top Net Worth (Unavailable)</div>
+              <div className="text-secondary" style={{ textAlign: 'center', fontSize: '0.8rem' }}>NW<br/>Unavailable</div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'center' }}>
-                <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Kills</div>
-                <strong style={{ color: 'var(--radiant-green)' }}>+ {stat.kills}</strong>
-                <div className="text-secondary" style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>Deaths</div>
-                <strong style={{ color: 'var(--dire-red)' }}>+ {stat.deaths}</strong>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
+                  <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Kills</div>
+                  <strong style={{ color: 'var(--radiant-green)' }}>+{stat.kills}</strong>
+                </div>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '0.5rem', textAlign: 'center', borderRadius: '4px' }}>
+                  <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Deaths</div>
+                  <strong style={{ color: 'var(--dire-red)' }}>+{stat.deaths}</strong>
+                </div>
               </div>
             )}
           </div>
-          <div className="glass-surface" style={{ padding: '0', display: 'flex', flexDirection: 'row' }}>
+          <div className="glass-surface" style={{ flex: 1, padding: '0', display: 'flex', flexDirection: 'row' }}>
             <div style={{ flex: 1, padding: '1rem' }}>
               <h4 style={{ margin: '0 0 1rem 0', fontSize: '0.85rem' }}>{min === 10 ? 'Regen Purchased' : 'Significant Items Purchased'}</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {(min === 10 ? bracketRegen : bracketItems).map((item: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px dashed rgba(255,255,255,0.05)', paddingBottom: '0.2rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <ItemIcon item={item.key} size={24} />
+                      <ItemIcon item={item.key} size={28} />
                       <span style={{ fontSize: '0.8rem' }}>{ITEMS[item.key.replace('item_', '')]?.dname || item.key}</span>
                     </div>
                     <span className="text-secondary" style={{ fontSize: '0.75rem' }}>{formatTime(item.time)}</span>
                   </div>
                 ))}
                 {(min === 10 ? bracketRegen : bracketItems).length === 0 && (
-                  <div className="text-secondary" style={{ fontSize: '0.8rem' }}>No {min === 10 ? 'regen' : 'significant items'} purchased.</div>
+                  <div className="text-secondary" style={{ fontSize: '0.8rem' }}>No {min === 10 ? 'regen' : 'significant items'} were purchased within this time period.</div>
                 )}
               </div>
             </div>
-            <div style={{ width: '120px', borderLeft: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
-              <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} compact hideControls controlledTime={min * 60} controlledIsPlaying={false} />
+            <div style={{ width: '160px', borderLeft: '1px solid rgba(255,255,255,0.1)', position: 'relative', overflow: 'hidden' }}>
+              <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={min * 60} controlledIsPlaying={false} />
             </div>
           </div>
         </div>
@@ -169,19 +174,19 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
       
       {/* 1. Top Header Hero Selector */}
       <div className="glass-surface" style={{ display: 'flex', gap: '2rem', padding: '1rem', alignItems: 'center', overflowX: 'auto', marginBottom: '2rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <IconRadiant style={{ width: '24px', height: '24px' }} />
           {radiant.map((p: any) => (
-            <div key={p.player_slot} onClick={() => setSelectedPlayer(p)} style={{ cursor: 'pointer', transition: 'all 0.2s', opacity: p.player_slot === selectedPlayer.player_slot ? 1 : 0.4, border: p.player_slot === selectedPlayer.player_slot ? '2px solid var(--radiant-green)' : '2px solid transparent', borderRadius: '50%' }}>
-              <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="Hero" style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
+            <div key={p.player_slot} onClick={() => setSelectedPlayer(p)} style={{ cursor: 'pointer', transition: 'all 0.2s', opacity: p.player_slot === selectedPlayer.player_slot ? 1 : 0.4, border: p.player_slot === selectedPlayer.player_slot ? '2px solid var(--radiant-green)' : '2px solid transparent', borderRadius: '50%', padding: '2px' }}>
+              <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="Hero" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
             </div>
           ))}
         </div>
         <div style={{ width: '2px', height: '40px', background: 'rgba(255,255,255,0.1)' }} />
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           {dire.map((p: any) => (
-            <div key={p.player_slot} onClick={() => setSelectedPlayer(p)} style={{ cursor: 'pointer', transition: 'all 0.2s', opacity: p.player_slot === selectedPlayer.player_slot ? 1 : 0.4, border: p.player_slot === selectedPlayer.player_slot ? '2px solid var(--dire-red)' : '2px solid transparent', borderRadius: '50%' }}>
-              <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="Hero" style={{ width: '44px', height: '44px', borderRadius: '50%' }} />
+            <div key={p.player_slot} onClick={() => setSelectedPlayer(p)} style={{ cursor: 'pointer', transition: 'all 0.2s', opacity: p.player_slot === selectedPlayer.player_slot ? 1 : 0.4, border: p.player_slot === selectedPlayer.player_slot ? '2px solid var(--dire-red)' : '2px solid transparent', borderRadius: '50%', padding: '2px' }}>
+              <img src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="Hero" style={{ width: '44px', height: '44px', borderRadius: '50%', objectFit: 'cover' }} />
             </div>
           ))}
           <IconDire style={{ width: '24px', height: '24px' }} />
@@ -189,10 +194,7 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
       </div>
 
       {/* 2. Post-Game Stats at the top */}
-      <h3 className="gold-text-gradient" style={{ marginBottom: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Post-Game Stats</h3>
-      <div className="text-secondary" style={{ fontSize: '0.75rem', marginBottom: '1.5rem' }}>
-        The small numbers below each stat show how much the stat is above or below average. (Averages are taken from all matches on this hero of similar rank, position, and duration.)
-      </div>
+      <h3 className="gold-text-gradient" style={{ marginBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>Post-Game Stats</h3>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridAutoRows: '80px', gap: '0.5rem', marginBottom: '3rem' }}>
         {/* Col 1 */}
@@ -200,17 +202,17 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Level</div>
           <h2 style={{ fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.level}</h2>
         </div>
-        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', gap: '0.5rem', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
-            {[0, 1, 2, 3, 4, 5].map(i => <ItemIcon key={i} item={selectedPlayer[`item_${i}`]} size={28} />)}
+        <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', gap: '0.5rem', justifyContent: 'center', alignItems: 'center', padding: '0.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+            {[0, 1, 2, 3, 4, 5].map(i => <ItemIcon key={i} item={selectedPlayer[`item_${i}`]} size={30} />)}
           </div>
-          <div style={{ width: '28px', height: '28px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)' }}>
-            {selectedPlayer.neutral_item && selectedPlayer.neutral_item !== 'empty' && (
-              <img src={getItemImage(resolveItemName(selectedPlayer.neutral_item) || '')} alt="Neutral" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{ width: '32px', height: '32px', borderRadius: '50%', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {selectedPlayer.item_neutral && selectedPlayer.item_neutral !== 'empty' && (
+              <img src={getItemImage(resolveItemName(selectedPlayer.item_neutral) || '')} alt="Neutral" style={{ width: '100%', height: '100%', objectFit: 'cover' }} title={ITEMS[resolveItemName(selectedPlayer.item_neutral) || '']?.dname || selectedPlayer.item_neutral} />
             )}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {[0, 1, 2].map(i => <ItemIcon key={i} item={selectedPlayer.backpack?.[i]} size={18} />)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {[0, 1, 2].map(i => <ItemIcon key={i} item={selectedPlayer[`backpack_${i}`]} size={18} />)}
           </div>
         </div>
 
@@ -218,7 +220,6 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Net Worth</div>
           <h2 style={{ color: 'var(--accent-gold)', fontSize: '1.3rem', margin: '0' }}>{selectedPlayer.net_worth?.toLocaleString()}</h2>
-          <div style={{ fontSize: '0.7rem', color: 'var(--dire-red)', display: 'flex', alignItems: 'center', gap: '0.2rem', marginTop: '0.2rem' }}><span>▼</span> {Math.floor(selectedPlayer.net_worth * 0.35)?.toLocaleString()}</div>
         </div>
         <div style={{ gridRow: 'span 1' }}></div>
 
@@ -227,17 +228,14 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
           <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Kills</div>
             <strong style={{ color: 'var(--radiant-green)', fontSize: '1.1rem' }}>{selectedPlayer.kills}</strong>
-            <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>▼ {Math.round(selectedPlayer.kills * 0.8) + 1}</div>
           </div>
           <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Deaths</div>
             <strong style={{ color: 'var(--dire-red)', fontSize: '1.1rem' }}>{selectedPlayer.deaths}</strong>
-            <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>^ {Math.round(selectedPlayer.deaths * 0.5) + 1}</div>
           </div>
           <div className="glass-surface" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
             <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Assists</div>
             <strong style={{ fontSize: '1.1rem' }}>{selectedPlayer.assists}</strong>
-            <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>▼ {Math.round(selectedPlayer.assists * 0.7) + 1}</div>
           </div>
         </div>
 
@@ -254,36 +252,31 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
         {/* Col 5 */}
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>GPM</div>
-          <strong style={{ color: 'var(--accent-gold)', fontSize: '1.3rem' }}>{selectedPlayer.gpm}</strong>
+          <strong style={{ color: 'var(--accent-gold)', fontSize: '1.3rem' }}>{selectedPlayer.gold_per_min || selectedPlayer.gpm || 0}</strong>
         </div>
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>XPM</div>
-          <strong style={{ color: 'var(--radiant-green)', fontSize: '1.3rem' }}>{selectedPlayer.xpm}</strong>
-          <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>▼ {Math.floor(selectedPlayer.xpm * 0.3)}</div>
+          <strong style={{ color: 'var(--radiant-green)', fontSize: '1.3rem' }}>{selectedPlayer.xp_per_min || selectedPlayer.xpm || 0}</strong>
         </div>
 
         {/* Col 6 */}
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Last Hits</div>
           <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.last_hits}</strong>
-          <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>▼ {Math.round(selectedPlayer.last_hits * 0.1)}</div>
         </div>
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Denies</div>
           <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.denies}</strong>
-          <div style={{ fontSize: '0.65rem', color: 'var(--accent-gold)' }}>-</div>
         </div>
 
         {/* Col 7 */}
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Hero Damage</div>
           <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.hero_damage?.toLocaleString()}</strong>
-          <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>▼ {Math.floor(selectedPlayer.hero_damage * 0.4)?.toLocaleString()}</div>
         </div>
         <div className="glass-surface" style={{ gridRow: 'span 1', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="text-secondary" style={{ fontSize: '0.75rem' }}>Tower Damage</div>
           <strong style={{ fontSize: '1.3rem' }}>{selectedPlayer.tower_damage?.toLocaleString()}</strong>
-          <div style={{ fontSize: '0.65rem', color: 'var(--dire-red)' }}>▼ {Math.floor(selectedPlayer.tower_damage * 0.6 + 100)?.toLocaleString()}</div>
         </div>
       </div>
 
@@ -356,15 +349,18 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
              <span style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}><IconRadiant style={{ width: '16px' }} /> Radiant Ban Nominations</span>
              <span style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>Dire Ban Nominations <IconDire style={{ width: '16px' }} /></span>
            </div>
-           <div style={{ padding: '2rem', display: 'flex', justifyContent: 'space-between' }}>
+           <div style={{ padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                {radBans.map((b: any) => <div key={b.order} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><img src={getHeroImage(HEROES[b.hero_id]?.img_name)} style={{ width: '40px', borderRadius: '4px', filter: 'grayscale(100%)' }} /> <span className="text-secondary">{HEROES[b.hero_id]?.name}</span></div>)}
+             </div>
+             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text-muted)' }}>
+               {radBans.length === 0 && direBans.length === 0 && "No hero nominated"}
              </div>
              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
                {direBans.map((b: any) => <div key={b.order} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexDirection: 'row-reverse' }}><img src={getHeroImage(HEROES[b.hero_id]?.img_name)} style={{ width: '40px', borderRadius: '4px', filter: 'grayscale(100%)' }} /> <span className="text-secondary">{HEROES[b.hero_id]?.name}</span></div>)}
              </div>
            </div>
-           {radBans.length === 0 && direBans.length === 0 && <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No hero nominated</div>}
+
         </div>
 
         <div className="glass-surface" style={{ flex: 1, padding: '0' }}>
@@ -413,7 +409,7 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
           </div>
         </div>
         <div className="glass-surface" style={{ flex: 1, padding: '0', position: 'relative', overflow: 'hidden' }}>
-          <MatchMap matchData={matchData} selectedPlayer={selectedPlayer} compact hideControls controlledTime={100} controlledIsPlaying={false} />
+          <MatchMap matchData={matchData} selectedPlayer={undefined} compact hideControls controlledTime={100} controlledIsPlaying={false} />
         </div>
       </div>
 
