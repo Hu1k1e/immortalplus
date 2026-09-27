@@ -132,12 +132,19 @@ of the storage limit:
   existing marble instead of just being thrown away. The result stays a
   fair, representative sample of everything ever seen, forever, without
   the bucket ever growing past 300.
+
+  **Important refinement**: keep two separate 300-marble samples per
+  bucket, not one — one for matches this player's team won, one for
+  matches they lost. This is what makes it possible to actually answer
+  "does this number matter" (see Phase 3a below) instead of just "what's
+  typical overall." Two samples instead of one is still tiny — no real
+  storage cost, just a design detail worth getting right from the start.
 - **Map-position data** (where players stand, where wards get placed) —
   a fixed grid over the map, where each square just counts how often
   something happened there. The grid size never changes.
 
 A "bucket" everywhere above means one specific combination — e.g., "Lich,
-playing support, Legend rank, patch 7.38, last-hits-at-10-minutes."
+playing support, Legend rank, patch 7.38, last-hits-at-10-minutes, won."
 
 ---
 
@@ -161,12 +168,37 @@ this project has always handled missing data: disclose it, don't fake it.
 
 ## Phase 3: Build the two things that actually produce advice
 
-### 3a. The book (mostly already covered above)
+### 3a. The book — and the two questions it actually needs to answer
 
-Once buckets have enough matches, the book is just: for this hero, this
-role, this rank, this patch — here's the normal range for each category
-in `coaching_categories.md`, and here's what winning players specifically
-do differently from losing players.
+Once buckets have enough matches (separately for wins and losses — see
+Phase 1e), the book answers two different questions for every category,
+not one:
+
+**1. Does this actually matter at this rank, and how much?** Compare the
+winning-matches sample against the losing-matches sample, at the *same*
+rank. If they look basically the same, this category isn't deciding
+games at this rank — don't lean on it hard in the advice. If there's a
+real gap, it matters, and the size of the gap is exactly how much weight
+this category should carry when scoring a player's own match (this is
+the same thing the earlier planning called "decision impact" — it's not
+guessed, it's measured, per rank, per category). This was the real gap
+in the original plan, caught by a real question during this project: it
+generalizes what was originally only written up as an example for the
+lane-setup category into the standard method for every single one.
+
+**2. What should this player work toward to actually climb, not just
+win slightly more often at their current rank?** Compare this rank's
+typical winning-side number against the *next rank up's* typical
+winning-side number. A real, separate risk exists here: comparing someone
+only to their own rank's winners can plateau them — if winning players at
+a given rank still make a mistake constantly (because everyone at that
+rank does), it won't show up as a big winners-vs-losers gap in question 1
+above, even though it's precisely the kind of thing that separates that
+rank from the next one up. This second comparison is what catches that
+case. Both numbers get shown: "this is what's deciding your games right
+now" and "this is what separates your rank from the next one," clearly
+labeled as two different things — not blended into one score, because
+they answer two different real questions a player has.
 
 ### 3b. The win-chance model ("training" — explained plainly)
 
@@ -218,20 +250,30 @@ recent game):
 3. For each category, compare this player's real number against the book
    entry for their exact hero/role/rank/patch. How far off from normal
    were they, and in which direction?
-4. Weight each category by how much it actually tends to matter for
-   winning (this is what the win-chance model from Phase 3b is for — it
-   lets us say "missing this fight cost you roughly X% win chance," not
-   just "you missed a fight").
-5. Add up all the categories into one overall score, plus a breakdown by
-   category, plus a short list of the specific worst moments, named
-   plainly — e.g. "18:03 — your team fought at Roshan and you were
-   farming the jungle instead; players in your rank join this fight about
-   7 times out of 10."
-6. Show this to the user. The natural place is a new tab/section on the
-   match page, similar in spirit to how a chess app shows you exactly
-   where a game was won or lost, move by move — except here it's built
-   from real statistics about real players at your rank, not a search
-   engine.
+4. Weight each category two ways, matching the two questions from Phase
+   3a — don't blend them into one number:
+   - **Right now**: how much does this category actually separate
+     winners from losers at this player's own rank (this is what the
+     win-chance model from Phase 3b is for — it lets us say "missing
+     this fight cost you roughly X% win chance," not just "you missed a
+     fight").
+   - **To climb**: how big is the gap between this player's rank and the
+     next rank up, for this category — flagged separately, even for
+     things that aren't costing many games yet at their current rank,
+     since those can still be exactly what's holding them back from
+     climbing out of it.
+5. Add up the "right now" numbers into one overall score plus a
+   breakdown by category, plus a short list of the specific worst
+   moments, named plainly — e.g. "18:03 — your team fought at Roshan and
+   you were farming the jungle instead; players in your rank join this
+   fight about 7 times out of 10." Keep the "to climb" list separate and
+   clearly labeled as a different kind of feedback.
+6. Show both to the user, clearly separated. The natural place is a new
+   tab/section on the match page, similar in spirit to how a chess app
+   shows you exactly where a game was won or lost, move by move — except
+   here it's built from real statistics about real players at your rank
+   (for "what's costing you games") and the rank above you (for "what to
+   work on next"), not a search engine.
 
 If a hero/role/rank bucket doesn't have enough data yet (Phase 2), that
 category should visibly say so instead of guessing — same honesty rule

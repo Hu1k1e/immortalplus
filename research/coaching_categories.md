@@ -19,6 +19,37 @@ Each item follows the same shape:
 - **Priority** — High / Medium / Low (my starting guess — change these).
 - **Notes** — blank, for you.
 
+### The one rule every category has to follow, no exceptions
+
+Don't just measure "what's typical" and assume being different is bad.
+**For every category, at every rank, measure it separately for winners
+and for losers, and look at the gap between them.** If winning players
+and losing players at a given rank have basically the same number for
+something, that thing isn't actually deciding games at that rank, and the
+advice shouldn't lean on it hard. If the gap is big, it matters a lot and
+is worth pointing out clearly. This is what actually tells us *how much*
+a category matters, not just what the average looks like — without it,
+"you're below normal" is a weak, possibly misleading statement; with it,
+it becomes "players who do this tend to win noticeably more/less often,"
+which is a real, useful thing to tell someone.
+
+### The second rule: comparing someone only to their own rank isn't enough on its own
+
+If we only ever show a Herald player "what wins at Herald," and winning
+Heralds still make plenty of real mistakes (they just win anyway because
+the other team made bigger ones), the advice risks teaching someone to
+become a slightly-better Herald forever instead of actually helping them
+climb — because nothing in Herald's own data can show what separates
+Herald from Legend. So every category should ideally carry **two**
+numbers, not one: how much it matters *within the player's own rank right
+now* (rule above), and **how big the gap is between this rank's typical
+number and the next rank up's typical number** — even a mistake that
+isn't costing many games today, because everyone at this rank makes it,
+can still be exactly the thing worth working on to climb out of this
+rank. Show both. They answer different questions ("what's costing me
+games right now" vs. "what do I need to get better at to climb") and
+neither one alone is the full picture.
+
 ---
 
 ## The raw ingredients: what a parsed replay actually gives us
