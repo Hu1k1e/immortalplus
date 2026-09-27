@@ -213,14 +213,24 @@ def update_gsi_draft_state(gsi_data: dict):
 
     IMPORTANT — this was never verified against a real live match before
     this pass (the user flagged it as an untested first draft, and that
-    was correct: the original version used team2/team3 keys and a nested
-    picks[]/bans[] array shape, both wrong against the real GSI schema).
-    This version uses team0/team1 and the flat pickN_id/pickN_class,
-    banN_id/banN_class shape, matching the real, community-verified GSI
-    schema (Valve's own documentation doesn't cover this well). It also
-    logs the raw draft block below so the very first real match played
-    with this confirms or corrects the remaining assumptions from actual
-    evidence — see the logger.info call at the end of this function.
+    was correct). The original version's team2/team3 keys turned out to
+    be right (matches Dota's real team-number convention: 2=Radiant,
+    3=Dire — confirmed against raw, non-AI-summarized source from an
+    independent GSI library), but its nested picks[]/bans[] array shape
+    was wrong — real GSI uses flat pickN_id/pickN_class, banN_id/banN_class
+    fields per team, which this version reads instead. (An intermediate
+    pass briefly changed the team keys to team0/team1 based on an
+    imprecise secondhand summary of a different library — reverted once
+    checked against that library's actual raw text.) Also logs the raw
+    draft block below so real matches confirm or correct any remaining
+    assumption from actual evidence — see the logger.info calls in this
+    function. Real testing this session (Ranked All Pick, via a private
+    bot lobby) showed the "draft" block itself coming back completely
+    empty every time, which community reports elsewhere confirm is a
+    known Valve-side gap for some game modes (Captain's Mode is the one
+    mode with confirmed-working draft GSI data) — see
+    research/build_plan.md or the project changelog for the current
+    understanding of which modes this actually works in.
     """
     map_data = gsi_data.get("map", {})
     game_state = map_data.get("game_state", "")
@@ -241,24 +251,29 @@ def update_gsi_draft_state(gsi_data: dict):
             f"draft_present={'draft' in gsi_data} draft_raw={draft!r}"
         )
         if draft:
-            # Real GSI team keys are team0/team1, not team2/team3 — fixed.
-            # Each side's "home_team" flag (or, defensively, team_name on
-            # the player block) is what actually says which one is ours,
-            # rather than assuming a fixed team2="dire" mapping.
+            # Real GSI team keys are team2 (Radiant) and team3 (Dire) —
+            # matching Dota's real internal team-number convention
+            # (DOTA_TEAM_GOODGUYS=2, DOTA_TEAM_BADGUYS=3). An earlier pass
+            # changed this to team0/team1 based on an imprecise secondhand
+            # read of a different library; verified directly against raw
+            # (non-AI-summarized) source from a second, independent GSI
+            # library confirming team2/team3 explicitly, so reverted back
+            # to what the very first version of this file already had.
+            # Still use the "home_team" flag rather than hardcoding
+            # team2=Radiant, since that's the one genuinely documented,
+            # authoritative signal for which side is which.
             player_team_name = gsi_data.get("player", {}).get("team_name")
-            team0 = draft.get("team0", {})
-            team1 = draft.get("team1", {})
-            team0_is_home = team0.get("home_team")
+            team2 = draft.get("team2", {})
+            team3 = draft.get("team3", {})
+            team2_is_home = team2.get("home_team")
 
             # "home_team" in GSI corresponds to Radiant. Fall back to the
             # player's own team_name if home_team isn't present for some
-            # reason, rather than silently guessing team0.
-            if team0_is_home is not None:
-                radiant_team, dire_team = (team0, team1) if team0_is_home else (team1, team0)
-            elif player_team_name in ("radiant", "dire"):
-                radiant_team, dire_team = (team0, team1)
+            # reason, rather than silently guessing team2.
+            if team2_is_home is not None:
+                radiant_team, dire_team = (team2, team3) if team2_is_home else (team3, team2)
             else:
-                radiant_team, dire_team = (team0, team1)
+                radiant_team, dire_team = (team2, team3)
 
             ally_is_radiant = player_team_name != "dire"
             ally_team_data = radiant_team if ally_is_radiant else dire_team
@@ -276,7 +291,7 @@ def update_gsi_draft_state(gsi_data: dict):
             )
 
             logger.info(
-                f"[GSI draft] raw team0={team0} team1={team1} player_team={player_team_name} "
+                f"[GSI draft] raw team2={team2} team3={team3} player_team={player_team_name} "
                 f"-> parsed ally_picks={_gsi_state['ally_picks']} "
                 f"enemy_picks={_gsi_state['enemy_picks']} bans={_gsi_state['bans']}"
             )
