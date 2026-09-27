@@ -2769,13 +2769,19 @@ export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayer
         <div style={{ width: '100%', height: '400px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 10, right: 30, left: 30, bottom: 0 }}>
+              <defs>
+                <filter id="glowLine" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.4" />
+                </filter>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + ':00'} />
               <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => val.toLocaleString()} />
               <Tooltip content={<CustomLineTooltip />} />
               <Legend 
                 wrapperStyle={{ paddingTop: '20px' }} 
-                iconType="circle"
+                iconType="square"
+                iconSize={10}
               />
               {allPlayers.map((p, idx) => (
                 <Line 
@@ -2784,7 +2790,8 @@ export function GraphsTab({ matchData, allPlayers }: { matchData: any; allPlayer
                   dataKey={`player_${idx}`} 
                   name={getHeroName(p.player_slot)} 
                   stroke={playerColors[idx]} 
-                  strokeWidth={2} 
+                  strokeWidth={2.5} 
+                  style={{ filter: 'url(#glowLine)' }}
                   dot={false}
                   activeDot={{ r: 6, strokeWidth: 0 }}
                 />

@@ -134,7 +134,7 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
   const senCount = player.purchase_ward_sentry || 0;
 
   return (
-    <div className="glass-surface" style={{ padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)' }}>
+    <div className="glass-surface card-interactive" style={{ padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
         {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '42px', height: '42px', objectFit: 'cover', objectPosition: 'center 30%', borderRadius: '4px', flexShrink: 0 }} />}
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>

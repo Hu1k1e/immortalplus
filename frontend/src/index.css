@@ -22,8 +22,8 @@
   --border-highlight: rgba(226, 183, 66, 0.3);
 
   /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Trajan Pro', 'Inter', serif; /* Classic Dota font fallback */
+  --font-sans: var(--font-display);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
@@ -98,6 +98,11 @@ button {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-color);
+}
+
+/* Recharts Typography Override */
+.recharts-wrapper, .recharts-wrapper * {
+  font-family: var(--font-display) !important;
 }
 
 /* Base Utility Classes */
