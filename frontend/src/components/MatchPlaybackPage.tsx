@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
 import MatchMap from './MatchMap';
@@ -7,6 +8,53 @@ import FullBleed from './FullBleed';
 import { interpAtTime, liveCount } from './LiveScoreboardPanel';
 import { useMatchPlayback } from '../hooks/useMatchPlayback';
 import { IconRadiant, IconDire } from './Icons';
+import api from '../lib/api';
+
+/**
+ * Triggers the on-demand HP/Mana reconstruction (backend/services/
+ * vitals_parser.py) the first time this page is opened for a match that
+ * doesn't have it yet, then polls for it to land — mirroring the same
+ * request+poll pattern MatchDetail.tsx already uses for the main replay
+ * parse. Returns the real vitals-augmented players once available,
+ * otherwise the original list unchanged (PlaybackPlayerRow falls back to
+ * its own max-only placeholder in that case).
+ */
+function useVitalsData(matchId: number | undefined, isParsed: boolean, allPlayers: any[]) {
+  const [players, setPlayers] = useState(allPlayers);
+  const triedRef = useRef(false);
+
+  useEffect(() => { setPlayers(allPlayers); triedRef.current = false; }, [matchId]);
+
+  useEffect(() => {
+    if (!matchId || !isParsed || triedRef.current) return;
+    if (allPlayers.some((p) => p.vitals_t)) return;
+    triedRef.current = true;
+
+    let cancelled = false;
+    let attempts = 0;
+
+    const poll = async () => {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await api.get(`/matches/${matchId}`);
+        const fresh = res.data?.all_players;
+        const list = typeof fresh === 'string' ? JSON.parse(fresh) : fresh;
+        if (Array.isArray(list) && list.some((p: any) => p.vitals_t)) {
+          if (!cancelled) setPlayers(list);
+          return;
+        }
+      } catch { /* keep polling */ }
+      if (attempts < 12 && !cancelled) setTimeout(poll, 8000);
+    };
+
+    api.post(`/matches/${matchId}/parse-vitals`).then(() => setTimeout(poll, 8000)).catch(() => { /* silently keep placeholder vitals */ });
+
+    return () => { cancelled = true; };
+  }, [matchId, isParsed, allPlayers]);
+
+  return players;
+}
 
 function fmtClock(t: number) {
   const s = Math.max(0, Math.round(t));
@@ -84,13 +132,17 @@ function TeamHeader({ label, color, Icon }: { label: string; color: string; Icon
  * and killed-hero portrait markers. Breaks out of the page's normal
  * max-width container to use the full available width (FullBleed).
  *
- * HP/Mana bars show a real max (real hero stats + level, see
- * lib/heroVitals.ts) but the fill only tracks alive/dead — no timestamped
- * combat-log data exists anywhere in this app to reconstruct real per-hit
- * damage over time, so this doesn't fabricate a moment-to-moment curve.
+ * HP/Mana bars: triggers an on-demand backend reconstruction
+ * (services/vitals_parser.py, from real combat-log damage/heal instances)
+ * the first time this page opens for a match that doesn't have it yet —
+ * see useVitalsData below. Until that lands (or if it fails), falls back
+ * to a real max (real hero stats + level, lib/heroVitals.ts) with the
+ * fill tracking only alive/dead, never a fabricated moment-to-moment
+ * curve without the real data to back it.
  */
-export default function MatchPlaybackPage({ matchData, allPlayers }: { matchData: any; allPlayers: any[] }) {
+export default function MatchPlaybackPage({ matchData, allPlayers: allPlayersProp }: { matchData: any; allPlayers: any[] }) {
   const playback = useMatchPlayback(4, matchData?.duration || 0);
+  const allPlayers = useVitalsData(matchData?.match_id, !!matchData?.is_parsed, allPlayersProp);
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
   const duration = matchData?.duration || 0;

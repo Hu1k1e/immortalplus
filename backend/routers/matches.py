@@ -409,6 +409,88 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int):
         logger.error(f"Background local parse failed for {match_id}: {e}", exc_info=True)
 
 
+@router.post("/{match_id}/parse-vitals")
+async def request_vitals_parse(match_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+    """
+    On-demand HP/Mana reconstruction (see services/vitals_parser.py) —
+    deliberately NOT part of the automatic parse pipeline every match goes
+    through (unlike pos_t): this re-downloads and re-parses the full
+    replay a second time purely for combat-log data, so it only runs when
+    a user actually opens the Playback page for a match that doesn't have
+    it yet, matching the original plan's "on-demand only" requirement to
+    keep background parser load bounded.
+    """
+    match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    if not match.is_parsed or not match.all_players:
+        raise HTTPException(status_code=400, detail="Match must be fully parsed first")
+
+    try:
+        players = json.loads(match.all_players)
+    except Exception:
+        raise HTTPException(status_code=400, detail="all_players data is malformed")
+
+    if any(p.get("vitals_t") for p in players):
+        return {"status": "already_computed"}
+
+    settings = session.exec(select(UserSettings)).first()
+    od_client = get_opendota_client(settings.opendota_api_key if settings else None)
+    stratz_data = None
+    if settings and settings.stratz_api_token:
+        from services.stratz import get_stratz_client
+        stratz_client = get_stratz_client(settings.stratz_api_token)
+        if stratz_client:
+            try:
+                stratz_data = await stratz_client.get_match(match_id)
+            except Exception as e:
+                logger.info(f"[{match_id}] Stratz lookup failed during vitals parse (non-fatal): {e}")
+
+    cluster, salt = await resolve_cluster_salt(
+        match, od_client, steam_api_key=settings.steam_api_key if settings else None, stratz_data=stratz_data
+    )
+    session.commit()
+
+    if not (cluster and salt):
+        raise HTTPException(status_code=422, detail="Could not resolve replay location for this match")
+
+    background_tasks.add_task(_do_vitals_parse_and_update, match_id, cluster, salt)
+    return {"status": "parse_started", "message": "Vitals parse started — check back in ~30-60 seconds"}
+
+
+async def _do_vitals_parse_and_update(match_id: int, cluster: int, salt: int):
+    """Background task: reconstruct HP/Mana and merge into the stored match."""
+    from database import SessionLocal
+    from services.vitals_parser import parse_hero_vitals
+
+    logger.info(f"Background vitals parse starting for match {match_id} (cluster={cluster}, salt={salt})")
+
+    session = SessionLocal()
+    try:
+        match = session.exec(select(Match).where(Match.match_id == match_id)).first()
+        if not match or not match.all_players:
+            logger.warning(f"[{match_id}] Match or all_players missing before vitals parse")
+            return
+
+        players = json.loads(match.all_players)
+        vitals = await parse_hero_vitals(match_id, cluster, salt, players)
+        if not vitals:
+            logger.error(f"[{match_id}] Vitals parse returned no data")
+            return
+
+        for p in players:
+            v = vitals.get(p.get("player_slot"))
+            if v:
+                p["vitals_t"] = v
+
+        match.all_players = json.dumps(players)
+        session.add(match)
+        session.commit()
+        logger.info(f"[{match_id}] Vitals parse merged into all_players")
+    except Exception as e:
+        logger.error(f"[{match_id}] Background vitals parse failed: {e}", exc_info=True)
+    finally:
+        session.close()
 
 @router.post("/{match_id}/refetch")
 async def refetch_match(match_id: int, session: Session = Depends(get_session)):

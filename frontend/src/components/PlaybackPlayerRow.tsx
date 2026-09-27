@@ -44,6 +44,26 @@ function getDeadStatus(player: any, currentTime: number): { dead: boolean; deadS
   return { dead: true, deadSince };
 }
 
+/** Real HP/Mana from `player.vitals_t` (see backend/services/vitals_parser.py
+ * — reconstructed from real combat-log damage/heal instances plus real
+ * hero stats/regen, on-demand per match, not always present) — interpolates
+ * between its ~2-second samples. Returns null when that data hasn't been
+ * computed for this match yet, so the caller can fall back to the
+ * max-only placeholder instead of showing nothing. */
+function getRealVitals(player: any, currentTime: number): { hp: number; mana: number; maxHp: number; maxMana: number } | null {
+  const v = player.vitals_t;
+  if (!v?.time?.length) return null;
+  let i0 = 0;
+  for (let i = 0; i < v.time.length; i++) {
+    if (v.time[i] <= currentTime) i0 = i; else break;
+  }
+  const i1 = Math.min(v.time.length - 1, i0 + 1);
+  const t0 = v.time[i0], t1 = v.time[i1];
+  const frac = t1 > t0 ? Math.min(1, Math.max(0, (currentTime - t0) / (t1 - t0))) : 0;
+  const lerp = (arr: number[]) => (arr[i0] ?? 0) + ((arr[i1] ?? arr[i0] ?? 0) - (arr[i0] ?? 0)) * frac;
+  return { hp: lerp(v.hp), mana: lerp(v.mana), maxHp: lerp(v.max_hp), maxMana: lerp(v.max_mana) };
+}
+
 function VitalBar({ label, value, max, color, approximate }: { label: string; value: number; max: number; color: string; approximate?: boolean }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
@@ -99,7 +119,10 @@ export default function PlaybackPlayerRow({ player, allPlayers, currentTime }: {
   const deadStatus = getDeadStatus(player, currentTime);
   const isDead = deadStatus?.dead ?? false;
   const timeDeadSoFar = isDead && deadStatus?.deadSince != null ? currentTime - deadStatus.deadSince : 0;
-  const vitals = getHeroVitals(player, level, !isDead);
+  const realVitals = getRealVitals(player, currentTime);
+  const vitals = realVitals
+    ? { hp: realVitals.hp, mana: realVitals.mana, maxHp: realVitals.maxHp, maxMana: realVitals.maxMana, approximate: false }
+    : getHeroVitals(player, level, !isDead);
 
   const StatCell = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div style={{ textAlign: 'center' }}>
