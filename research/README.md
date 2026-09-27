@@ -28,6 +28,11 @@ whether we have that data yet — lives in
 be edited directly as the category list gets refined, then handed to a
 building agent when ready.
 
+**The complete end-to-end build plan — collect data → build the book →
+train the win-chance model → serve personalized advice to a user on their
+own match — lives in [build_plan.md](build_plan.md),** written plainly
+enough to hand directly to a future building agent.
+
 ## How much do we actually need to store? (resolved)
 
 Storing every individual match (raw or parsed) doesn't scale — millions of
