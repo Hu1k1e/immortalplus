@@ -26,6 +26,7 @@ async def background_sync_loop():
     Background task: periodically syncs match history and meta data.
     Replay parsing is handled by the separate auto_parse_worker task.
     """
+    from datetime import datetime, timedelta
     from sqlmodel import select
     from database import SessionLocal
     from models import Player, UserSettings
@@ -33,10 +34,19 @@ async def background_sync_loop():
         sync_player_matches, create_progress_snapshot,
         sync_hero_meta, sync_hero_matchups,
     )
+    from services.protracker import sync_hero_position_meta
 
     # Wait for app to fully start
     await asyncio.sleep(10)
     logger.info("Background sync loop started")
+
+    # protracker_enabled/protracker_interval_hours have existed as
+    # UserSettings fields since early in this project but were never
+    # actually read anywhere — this is the first real use of them. Runs
+    # on its own longer interval (default 6h) rather than every cycle
+    # like meta/matchups above, since it's a heavier browser-automation
+    # fetch (see services/protracker.py), not a plain API call.
+    last_protracker_sync: datetime | None = None
 
     while True:
         settings = None
@@ -66,6 +76,22 @@ async def background_sync_loop():
             if settings:
                 await sync_hero_meta(session, settings)
                 await sync_hero_matchups(session, settings)
+
+                # Dota2ProTracker: real per-position (Carry/Mid/Offlane/
+                # Soft Support/Hard Support) hero win rates — data
+                # OpenDota's bulk endpoints don't have at all. Heavier
+                # than the syncs above (real browser automation, not a
+                # plain API call — see services/protracker.py for why),
+                # so runs on its own longer interval instead of every
+                # cycle.
+                interval_hours = settings.protracker_interval_hours or 6
+                due = (
+                    last_protracker_sync is None
+                    or datetime.utcnow() - last_protracker_sync >= timedelta(hours=interval_hours)
+                )
+                if settings.protracker_enabled and due:
+                    await sync_hero_position_meta(session, settings)
+                    last_protracker_sync = datetime.utcnow()
 
             session.close()
 

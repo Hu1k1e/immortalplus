@@ -202,6 +202,26 @@ class HeroMatchup(SQLModel, table=True):
     updated_at: Optional[datetime] = None
 
 
+class HeroPositionMeta(SQLModel, table=True):
+    """
+    Per-hero, per-position (1-5: Carry/Mid/Offlane/Soft Support/Hard
+    Support) win rate + match count, from Dota2ProTracker's real
+    /api/heroes/list endpoint (7000+ MMR + pro matches — explicitly not
+    rank-specific; see services/protracker.py). This is what
+    HeroMeta/HeroMatchup can't give: OpenDota's bulk endpoints don't break
+    hero performance down by position at all.
+    """
+    __tablename__ = "hero_position_meta"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    hero_id: int = Field(index=True)
+    position: int = Field(index=True)  # 1-5
+    matches: int = 0
+    winrate: Optional[float] = None
+    d2pt_rating: Optional[float] = None
+    updated_at: Optional[datetime] = None
+
+
 class ProMeta(SQLModel, table=True):
     __tablename__ = "pro_meta"
 
