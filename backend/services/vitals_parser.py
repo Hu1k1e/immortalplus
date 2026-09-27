@@ -1,37 +1,27 @@
 """
 Hero HP/Mana time-series reconstruction.
 
-Unlike position (pos_t, see position_parser.py's own comment on how that
-was discovered), there is no field anywhere in odota/parser's raw stream
-that directly reports a hero's current health or mana — confirmed by
-reading the parser's actual source (Parse.java on GitHub): the per-second
-"interval" entries it emits carry level/kills/deaths/gold/xp/position/
-life_state, but nothing about HP or mana, and there's no "unit state"
-entry type that would.
+Primary path: real data. Upstream odota/parser's per-second "interval"
+entries never carried health/mana, so we forked it (see ../../parser/,
+built as ghcr.io/hu1k1e/immortalplus-parser and referenced by
+docker-compose.yml in place of odota/parser:latest) to add four fields —
+hp/max_hp/mana/max_mana — read directly off the hero entity
+(m_iHealth/m_iMaxHealth/m_flMana/m_flMaxMana) the same way life_state
+already was. These are real observed values, including mana spent on
+ability casts, which no combat-log event ever recorded.
 
-What IS real and available: the raw stream's combat-log entries
-(onCombatLogEntry in Parse.java), which include `type` (the real Source
-combat-log event name, e.g. "DOTA_COMBATLOG_DAMAGE"/"DOTA_COMBATLOG_HEAL"),
-`attackername`, `targetname`, `targethero` (bool), and `value` (the real
-damage or heal amount) — genuine per-instance combat events, not an
-estimate. Combined with each hero's real base stats (base_health/
-base_mana/base_str/str_gain/base_int/int_gain/base_health_regen/
-base_mana_regen — read from the same heroes.json the frontend already
-ships, so backend and frontend agree on the same real numbers) and the
-standard, stable Dota formulas (MaxHP = base_health + Strength*22,
-MaxMana = base_mana + Intelligence*12, matching frontend's
-lib/heroVitals.ts), this reconstructs a real HP/Mana curve: start at full,
-apply real regen between events, subtract real damage instances, add real
-heal instances, clamp to the real level-scaled max, and reset to full at
-each real respawn (using the already-stored, already-real deaths_log
-timestamps plus Dota's own known respawn-time-by-level formula — the one
-piece here that's a real game formula rather than directly-observed data,
-since no explicit "respawn" event exists in the combat log either).
-
-This has NOT been run against a real deployed parser (no Docker/
-replay-parser container available in this sandbox, the same constraint
-position_parser.py was originally written under) — needs verification
-against a real match before being trusted blindly.
+Fallback path: if a stream comes back without those fields (e.g. briefly
+mid-rollout, before every deployment is running the patched parser image),
+this reconstructs HP/Mana from combat-log damage/heal instances instead —
+real per-instance events, but blind to ability-cast mana cost, so the mana
+curve in that path tracks regen and heals accurately but not spell casts.
+Combined with each hero's real base stats (base_health/base_mana/base_str/
+str_gain/base_int/int_gain/base_health_regen/base_mana_regen — read from
+the same heroes.json the frontend ships) and the standard Dota formulas
+(MaxHP = base_health + Strength*22, MaxMana = base_mana + Intelligence*12,
+matching frontend's lib/heroVitals.ts), plus Dota's known
+respawn-time-by-level formula for the one piece the combat log has no
+explicit event for (respawn).
 """
 
 import asyncio
@@ -171,9 +161,9 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         raw_text = resp.text
 
     slot_to_player_slot: dict[int, int] = {}
-    hero_id_by_slot: dict[int, int] = {}
     npc_name_by_slot: dict[int, str] = {}
     level_by_slot: dict[int, int] = {}
+    real_mode: Optional[bool] = None
 
     # hero_id per player_slot, from the already-stored all_players data —
     # needed to look up real base stats.
@@ -240,6 +230,21 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         s["max_hp"].append(round(max_hp, 1))
         s["max_mana"].append(round(max_mana, 1))
 
+    real_last_sample: dict[int, float] = {}
+
+    def maybe_sample_real(pslot: int, t: float, hp_v: float, max_hp_v: float, mana_v: float, max_mana_v: float):
+        if pslot not in series:
+            series[pslot] = {"time": [], "hp": [], "mana": [], "max_hp": [], "max_mana": []}
+        if t - real_last_sample.get(pslot, -999) < 2:
+            return
+        real_last_sample[pslot] = t
+        s = series[pslot]
+        s["time"].append(round(t, 1))
+        s["hp"].append(round(max(0.0, hp_v), 1))
+        s["mana"].append(round(max(0.0, mana_v), 1))
+        s["max_hp"].append(round(max_hp_v, 1))
+        s["max_mana"].append(round(max_mana_v, 1))
+
     for line in raw_text.split("\n"):
         line = line.strip()
         if not line:
@@ -267,18 +272,27 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
             if t is None:
                 continue
             level_by_slot[pslot] = entry.get("level") or level_by_slot.get(pslot, 1)
-            ensure_init(pslot, t)
-            advance_regen(pslot, t)
-            maybe_sample(pslot, t)
+
+            if real_mode is None:
+                real_mode = entry.get("hp") is not None and entry.get("mana") is not None
+
+            if real_mode:
+                hp_v, max_hp_v = entry.get("hp"), entry.get("max_hp")
+                mana_v, max_mana_v = entry.get("mana"), entry.get("max_mana")
+                if hp_v is not None and max_hp_v is not None and mana_v is not None and max_mana_v is not None:
+                    maybe_sample_real(pslot, t, float(hp_v), float(max_hp_v), float(mana_v), float(max_mana_v))
+            else:
+                ensure_init(pslot, t)
+                advance_regen(pslot, t)
+                maybe_sample(pslot, t)
             continue
 
-        # Combat log damage/heal — the real per-instance data no interval
-        # entry carries. Only heroes matter here (targethero), and only
-        # damage/heal change HP/mana directly (mana COST from casting
-        # abilities isn't in the combat log at all — a real, disclosed gap:
-        # this reconstruction tracks mana regen and heals accurately, but
-        # not ability/item mana spend, since no data source available here
-        # records that per-instance either).
+        # Fallback only: combat log damage/heal, used to reconstruct HP/Mana
+        # when the parser stream doesn't carry real hp/mana on interval
+        # entries (see module docstring). Skipped entirely once real_mode
+        # is confirmed true, since real per-second values are already exact.
+        if real_mode:
+            continue
         if etype in ("DOTA_COMBATLOG_DAMAGE", "DOTA_COMBATLOG_HEAL") and entry.get("targethero"):
             target_name = entry.get("targetname") or ""
             t = entry.get("time")

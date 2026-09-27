@@ -6,7 +6,7 @@ import { resolveItemIdName } from '../lib/itemId';
 import { purchaseLogOf } from './BuildsPanel';
 import { interpAtTime, liveCount } from './LiveScoreboardPanel';
 
-function GoldIcon({ size = 13 }: { size?: number }) {
+function GoldIcon({ size = 15 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
       <circle cx="12" cy="12" r="10" fill="#e2b742" stroke="#a87f1f" strokeWidth="1.5" />
@@ -25,7 +25,7 @@ function fmtClock(t: number) {
  * Returns null (unknown) rather than guessing when that data is missing, so
  * the row falls back to always showing "alive" instead of a fabricated
  * dead state. */
-function getDeadStatus(player: any, currentTime: number): { dead: boolean; deadSince?: number; respawnAt?: number } | null {
+export function getDeadStatus(player: any, currentTime: number): { dead: boolean; deadSince?: number; respawnAt?: number } | null {
   const pos = player.pos_t;
   if (!pos?.time?.length || !pos.life_state) return null;
   let idx = -1;
@@ -50,7 +50,7 @@ function getDeadStatus(player: any, currentTime: number): { dead: boolean; deadS
  * between its ~2-second samples. Returns null when that data hasn't been
  * computed for this match yet, so the caller can fall back to the
  * max-only placeholder instead of showing nothing. */
-function getRealVitals(player: any, currentTime: number): { hp: number; mana: number; maxHp: number; maxMana: number } | null {
+export function getRealVitals(player: any, currentTime: number): { hp: number; mana: number; maxHp: number; maxMana: number } | null {
   const v = player.vitals_t;
   if (!v?.time?.length) return null;
   let i0 = 0;
@@ -71,25 +71,20 @@ function VitalBar({ label, value, max, color, approximate }: { label: string; va
       style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
       title={approximate ? `${label}: ${value}/${max} — real max (real hero stats + level), but the fill only tracks alive/dead: no timestamped combat-log data exists to track per-hit damage, so this isn't a real moment-to-moment curve.` : undefined}
     >
-      <div style={{ flex: 1, height: '13px', borderRadius: '2px', background: 'rgba(0,0,0,0.5)', border: `1px solid ${color}55`, position: 'relative', overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: '17px', borderRadius: '3px', background: 'rgba(0,0,0,0.5)', border: `1px solid ${color}55`, position: 'relative', overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: color, transition: 'width 0.15s linear' }} />
-        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
-          {Math.round(value)} / {max}
+        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,0.9)' }}>
+          {Math.round(value)} / {Math.round(max)}
         </span>
       </div>
     </div>
   );
 }
 
-export default function PlaybackPlayerRow({ player, allPlayers, currentTime }: { player: any; allPlayers: any[]; currentTime: number }) {
+export default function PlaybackPlayerRow({ player, currentTime }: { player: any; currentTime: number }) {
   const hero = HEROES[player.hero_id];
   const isRadiant = player.player_slot < 128;
   const teamColor = isRadiant ? 'var(--radiant-green)' : 'var(--dire-red)';
-
-  const netWorth = interpAtTime(player.networth_t, currentTime) || interpAtTime(player.gold_t, currentTime);
-  const teammates = allPlayers.filter((p) => (p.player_slot < 128) === isRadiant);
-  const teamAvgNw = teammates.reduce((s, p) => s + (interpAtTime(p.networth_t, currentTime) || interpAtTime(p.gold_t, currentTime)), 0) / Math.max(1, teammates.length);
-  const nwDelta = Math.round(netWorth - teamAvgNw);
 
   const xp = interpAtTime(player.xp_t, currentTime);
   const level = levelFromXp(xp);
@@ -126,51 +121,50 @@ export default function PlaybackPlayerRow({ player, allPlayers, currentTime }: {
 
   const StatCell = ({ label, children }: { label: string; children: React.ReactNode }) => (
     <div style={{ textAlign: 'center' }}>
-      <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</div>
-      <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 }}>{children}</div>
+      <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{label}</div>
+      <div style={{ fontSize: '1rem', color: 'var(--text-primary)', fontWeight: 600 }}>{children}</div>
     </div>
   );
 
   return (
     <div className="glass-surface" style={{
-      display: 'flex', gap: '0.8rem', padding: '0.7rem', borderRadius: 'var(--radius-md)',
+      display: 'flex', gap: '1rem', padding: '0.9rem', borderRadius: 'var(--radius-md)',
       borderLeft: `4px solid ${teamColor}`, opacity: isDead ? 0.7 : 1, transition: 'opacity 0.2s',
     }}>
       {/* Portrait + HP/MP + name */}
-      <div style={{ width: '160px', flexShrink: 0 }}>
+      <div style={{ width: '195px', flexShrink: 0 }}>
         <div style={{ position: 'relative' }}>
           {hero && (
             <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{
-              width: '100%', height: '90px', objectFit: 'cover', borderRadius: '6px',
+              width: '100%', height: '115px', objectFit: 'cover', borderRadius: '6px',
               filter: isDead ? 'grayscale(100%) brightness(0.5)' : 'none',
             }} />
           )}
           <span style={{
-            position: 'absolute', bottom: '-6px', left: '-6px', width: '24px', height: '24px', borderRadius: '50%',
-            background: '#000', border: '2px solid rgba(255,255,255,0.5)', fontSize: '0.75rem', fontWeight: 700,
+            position: 'absolute', bottom: '-7px', left: '-7px', width: '29px', height: '29px', borderRadius: '50%',
+            background: '#000', border: '2px solid rgba(255,255,255,0.5)', fontSize: '0.85rem', fontWeight: 700,
             display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-primary)',
           }}>{level}</span>
           {isDead && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ color: 'var(--dire-red)', fontWeight: 900, fontSize: '1.8rem', textShadow: '0 0 4px #000' }}>✕</span>
-              <span style={{ fontSize: '0.65rem', color: 'var(--accent-gold)', background: 'rgba(0,0,0,0.85)', padding: '1px 5px', borderRadius: '3px' }}>Dead {fmtClock(timeDeadSoFar)}</span>
+              <span style={{ color: 'var(--dire-red)', fontWeight: 900, fontSize: '2.1rem', textShadow: '0 0 4px #000' }}>✕</span>
+              <span style={{ fontSize: '0.72rem', color: 'var(--accent-gold)', background: 'rgba(0,0,0,0.85)', padding: '1px 6px', borderRadius: '3px' }}>Dead {fmtClock(timeDeadSoFar)}</span>
             </div>
           )}
         </div>
-        <div style={{ fontSize: '0.78rem', color: 'var(--text-primary)', margin: '0.35rem 0 0.3rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', margin: '0.4rem 0 0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {player.persona || player.personaname || 'Anonymous'}
         </div>
         {vitals ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <VitalBar label="HP" value={vitals.hp} max={vitals.maxHp} color="var(--radiant-green)" approximate={vitals.approximate} />
             <VitalBar label="MP" value={vitals.mana} max={vitals.maxMana} color="#4da6ff" approximate={vitals.approximate} />
           </div>
-        ) : <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>HP/MP unavailable</div>}
-        <div style={{ fontSize: '0.68rem', fontWeight: 700, color: nwDelta >= 0 ? teamColor : 'var(--text-muted)', marginTop: '3px' }}>{nwDelta >= 0 ? '+' : ''}{nwDelta} net worth</div>
+        ) : <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>HP/MP unavailable</div>}
       </div>
 
       {/* Labeled stats */}
-      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(2, 1fr)', gap: '0.5rem 0.4rem', alignContent: 'center', minWidth: '140px' }}>
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(2, 1fr)', gap: '0.7rem 0.5rem', alignContent: 'center', minWidth: '170px' }}>
         <StatCell label="K / D / A"><span style={{ color: 'var(--radiant-green)' }}>{kills}</span>/<span style={{ color: 'var(--dire-red)' }}>{deaths}</span>/<span style={{ color: 'var(--text-secondary)' }}>{player.assists ?? 0}</span></StatCell>
         <StatCell label="CS">{cs}</StatCell>
         <StatCell label="GPM / XPM">{gpm} / {xpm}</StatCell>
@@ -180,29 +174,29 @@ export default function PlaybackPlayerRow({ player, allPlayers, currentTime }: {
       </div>
 
       {/* Inventory: 6 main slots (2x3, real inventory layout) + backpack + gold */}
-      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'flex-end' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.35rem', alignItems: 'flex-end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '3px' }}>
           {mainSlotNames.map((key, i) => {
             const taken = acquiredAt(key) <= currentTime;
             return (
-              <div key={i} style={{ width: '28px', height: '20px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div key={i} style={{ width: '36px', height: '26px', background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
                 {key && <img src={getItemImage(key)} alt={key} title={ITEMS[key]?.dname || key.replace(/_/g, ' ')} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: taken ? 'none' : 'grayscale(100%) brightness(0.4)', opacity: taken ? 1 : 0.5 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
               </div>
             );
           })}
         </div>
-        <div style={{ display: 'flex', gap: '2px' }}>
+        <div style={{ display: 'flex', gap: '3px' }}>
           {backpackNames.map((key, i) => {
             const taken = acquiredAt(key) <= currentTime;
             return (
-              <div key={i} style={{ width: '20px', height: '15px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '2px', overflow: 'hidden' }}>
+              <div key={i} style={{ width: '26px', height: '19px', background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '3px', overflow: 'hidden' }}>
                 {key && <img src={getItemImage(key)} alt={key} title={ITEMS[key]?.dname || key} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: taken ? 'none' : 'grayscale(100%) brightness(0.4)', opacity: taken ? 1 : 0.5 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
               </div>
             );
           })}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.7rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
-          <GoldIcon size={11} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
+          <GoldIcon size={15} />
           {Math.round(interpAtTime(player.gold_t, currentTime)).toLocaleString()}
         </div>
       </div>

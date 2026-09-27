@@ -26,9 +26,10 @@ services:
       - backend
     restart: unless-stopped
 
-  # Replay Parser (OpenDota Java Clarity Service)
+  # Replay Parser (fork of OpenDota's Java Clarity Service — see parser/README.md
+  # for the patch that adds real per-second HP/Mana to interval entries)
   replay_parser:
-    image: odota/parser:latest
+    image: ghcr.io/hu1k1e/immortalplus-parser:main
     container_name: immortalplus_parser
     ports:
       - "5600:5600"

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
+import { getHeroVitals } from '../lib/heroVitals';
+import { levelFromXp } from '../lib/heroLevel';
 import MatchMap from './MatchMap';
-import PlaybackPlayerRow from './PlaybackPlayerRow';
+import PlaybackPlayerRow, { getDeadStatus, getRealVitals } from './PlaybackPlayerRow';
 import PlaybackAdvantageGraph from './PlaybackAdvantageGraph';
 import FullBleed from './FullBleed';
 import { interpAtTime, liveCount } from './LiveScoreboardPanel';
@@ -71,9 +73,31 @@ function teamTotals(players: any[], currentTime: number) {
     acc.xp += interpAtTime(p.xp_t, currentTime);
     acc.heal += Math.round(interpAtTime(p.hero_healing_t, currentTime));
     acc.dmg += Math.round(interpAtTime(p.hero_damage_t, currentTime));
+    acc.td += Math.round(interpAtTime(p.tower_damage_t, currentTime));
     acc.netWorth += interpAtTime(p.networth_t, currentTime) || interpAtTime(p.gold_t, currentTime);
     return acc;
-  }, { kills: 0, deaths: 0, assists: 0, cs: 0, gold: 0, xp: 0, heal: 0, dmg: 0, netWorth: 0 });
+  }, { kills: 0, deaths: 0, assists: 0, cs: 0, gold: 0, xp: 0, heal: 0, dmg: 0, td: 0, netWorth: 0 });
+}
+
+/** Team-total HP/Mana: sums each player's current vitals (real per-second
+ * data from vitals_t when present, otherwise the same max/alive-dead
+ * fallback each player row already uses) — a genuinely derived total, not
+ * a separate estimate. */
+function teamVitals(players: any[], currentTime: number) {
+  return players.reduce((acc, p) => {
+    const xp = interpAtTime(p.xp_t, currentTime);
+    const level = levelFromXp(xp);
+    const isDead = getDeadStatus(p, currentTime)?.dead ?? false;
+    const real = getRealVitals(p, currentTime);
+    const v = real ? { hp: real.hp, mana: real.mana, maxHp: real.maxHp, maxMana: real.maxMana } : getHeroVitals(p, level, !isDead);
+    if (v) {
+      acc.hp += Math.max(0, v.hp);
+      acc.maxHp += v.maxHp;
+      acc.mana += Math.max(0, v.mana);
+      acc.maxMana += v.maxMana;
+    }
+    return acc;
+  }, { hp: 0, maxHp: 0, mana: 0, maxMana: 0 });
 }
 
 /** Kill-event ticker: every kill up to currentTime, small killer-hero icons
@@ -107,15 +131,62 @@ function KillTicker({ allPlayers, currentTime }: { allPlayers: any[]; currentTim
   );
 }
 
+/** Compact per-team stats row (team emblem + K/D/A/CS/GPM/XPM/Heal/DMG/TD +
+ * team HP/Mana totals + net worth), sized to sit beside the advantage graph
+ * rather than spanning the full page width. Values are real (same source
+ * as teamTotals's wide table, plus the new teamVitals HP/Mana sums). */
+function TeamStatRow({ label, color, Icon, totals, vitals, isLeading, currentTime }: { label: string; color: string; Icon: any; totals: ReturnType<typeof teamTotals>; vitals: ReturnType<typeof teamVitals>; isLeading: boolean; currentTime: number }) {
+  const Stat = ({ label: l, value }: { label: string; value: React.ReactNode }) => (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>{l}</div>
+      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>{value}</div>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0' }}>
+      <div style={{
+        flexShrink: 0, width: '56px', height: '56px', borderRadius: '8px',
+        background: `${color}1a`, border: `1px solid ${color}55`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon style={{ width: 34, height: 34 }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '3px' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color }}>{label}</span>
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: isLeading ? 'var(--accent-gold)' : 'var(--text-muted)' }}>{Math.round(totals.netWorth).toLocaleString()} net worth</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '2px 3px', marginBottom: '4px' }}>
+          <Stat label="K/D/A" value={<>{totals.kills}/{totals.deaths}/{totals.assists}</>} />
+          <Stat label="CS" value={totals.cs} />
+          <Stat label="GPM" value={Math.round(totals.gold / Math.max(1 / 60, currentTime / 60))} />
+          <Stat label="XPM" value={Math.round(totals.xp / Math.max(1 / 60, currentTime / 60))} />
+          <Stat label="Heal" value={totals.heal.toLocaleString()} />
+          <Stat label="DMG" value={totals.dmg.toLocaleString()} />
+          <Stat label="TD" value={totals.td.toLocaleString()} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <div style={{ height: '10px', borderRadius: '2px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--radiant-green)55', overflow: 'hidden' }}>
+            <div style={{ width: `${vitals.maxHp > 0 ? Math.min(100, (vitals.hp / vitals.maxHp) * 100) : 0}%`, height: '100%', background: 'var(--radiant-green)' }} />
+          </div>
+          <div style={{ height: '10px', borderRadius: '2px', background: 'rgba(0,0,0,0.5)', border: '1px solid #4da6ff55', overflow: 'hidden' }}>
+            <div style={{ width: `${vitals.maxMana > 0 ? Math.min(100, (vitals.mana / vitals.maxMana) * 100) : 0}%`, height: '100%', background: '#4da6ff' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TeamHeader({ label, color, Icon }: { label: string; color: string; Icon: any }) {
   return (
     <>
       <h4 style={{ margin: '0 0 0.4rem', fontSize: '0.95rem', color, display: 'flex', alignItems: 'center', gap: '6px' }}>
         <Icon style={{ width: 18, height: 18 }} /> {label}
       </h4>
-      <div style={{ display: 'flex', gap: '0.8rem', padding: '0 0.7rem', marginBottom: '0.35rem', fontSize: '0.6rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
-        <span style={{ width: '160px', flexShrink: 0 }}>Player / HP / MP</span>
-        <span style={{ flex: 1, textAlign: 'center', minWidth: '140px' }}>K/D/A · CS · GPM/XPM · Heal/DMG/TD</span>
+      <div style={{ display: 'flex', gap: '1rem', padding: '0 0.9rem', marginBottom: '0.35rem', fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+        <span style={{ width: '195px', flexShrink: 0 }}>Player / HP / MP</span>
+        <span style={{ flex: 1, textAlign: 'center', minWidth: '170px' }}>K/D/A · CS · GPM/XPM · Heal/DMG/TD</span>
         <span style={{ flexShrink: 0, textAlign: 'right' }}>Items / Backpack / Gold</span>
       </div>
     </>
@@ -158,6 +229,8 @@ export default function MatchPlaybackPage({ matchData, allPlayers: allPlayersPro
 
   const radTotals = teamTotals(radiant, currentTime);
   const direTotals = teamTotals(dire, currentTime);
+  const radVitals = teamVitals(radiant, currentTime);
+  const direVitals = teamVitals(dire, currentTime);
   const radLeads = radTotals.netWorth >= direTotals.netWorth;
 
   return (
@@ -168,8 +241,8 @@ export default function MatchPlaybackPage({ matchData, allPlayers: allPlayersPro
         {/* Map on the left, both team stacks on the right, side by side —
             roughly equal width so the map is genuinely big, and wraps to
             stacked on narrower screens instead of squeezing either side. */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', alignItems: 'flex-start' }}>
-          <div style={{ flex: '1 1 480px', minWidth: '420px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', alignItems: 'stretch' }}>
+          <div style={{ flex: '1 1 460px', minWidth: '420px' }}>
             <MatchMap
               matchData={matchData}
               selectedPlayer={undefined}
@@ -184,17 +257,17 @@ export default function MatchPlaybackPage({ matchData, allPlayers: allPlayersPro
             />
           </div>
 
-          <div style={{ flex: '1 1 480px', display: 'flex', flexWrap: 'wrap', gap: '1rem', minWidth: 0 }}>
-            <div style={{ flex: '1 1 260px', minWidth: '260px' }}>
+          <div style={{ flex: '1 1 620px', display: 'flex', flexWrap: 'wrap', gap: '1rem', minWidth: 0 }}>
+            <div style={{ flex: '1 1 340px', minWidth: '340px' }}>
               <TeamHeader label="Radiant" color="var(--radiant-green)" Icon={IconRadiant} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {radiant.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {radiant.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} currentTime={currentTime} />)}
               </div>
             </div>
-            <div style={{ flex: '1 1 260px', minWidth: '260px' }}>
+            <div style={{ flex: '1 1 340px', minWidth: '340px' }}>
               <TeamHeader label="Dire" color="var(--dire-red)" Icon={IconDire} />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {dire.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {dire.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} currentTime={currentTime} />)}
               </div>
             </div>
           </div>
@@ -224,39 +297,21 @@ export default function MatchPlaybackPage({ matchData, allPlayers: allPlayersPro
           </div>
         </div>
 
-        {/* Team totals */}
-        <div className="glass-surface" style={{ marginTop: '1rem', padding: '0.75rem 1rem', overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-            <thead>
-              <tr style={{ color: 'var(--text-muted)', textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                <th style={{ textAlign: 'left', padding: '0.3rem' }}>Team</th>
-                <th>K</th><th>D</th><th>A</th><th>CS</th><th>GPM</th><th>XPM</th><th>Heal</th><th>DMG</th><th>Net Worth</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[{ label: 'Radiant', color: 'var(--radiant-green)', t: radTotals }, { label: 'Dire', color: 'var(--dire-red)', t: direTotals }].map((row) => (
-                <tr key={row.label} style={{ borderTop: '1px solid var(--border-color)' }}>
-                  <td style={{ padding: '0.4rem 0.3rem', color: row.color, fontWeight: 700 }}>{row.label}</td>
-                  <td style={{ textAlign: 'center' }}>{row.t.kills}</td>
-                  <td style={{ textAlign: 'center' }}>{row.t.deaths}</td>
-                  <td style={{ textAlign: 'center' }}>{row.t.assists}</td>
-                  <td style={{ textAlign: 'center' }}>{row.t.cs}</td>
-                  <td style={{ textAlign: 'center' }}>{Math.round(row.t.gold / Math.max(1 / 60, currentTime / 60))}</td>
-                  <td style={{ textAlign: 'center' }}>{Math.round(row.t.xp / Math.max(1 / 60, currentTime / 60))}</td>
-                  <td style={{ textAlign: 'center' }}>{row.t.heal.toLocaleString()}</td>
-                  <td style={{ textAlign: 'center' }}>{row.t.dmg.toLocaleString()}</td>
-                  <td style={{ textAlign: 'center', color: row.label === (radLeads ? 'Radiant' : 'Dire') ? 'var(--accent-gold)' : 'inherit' }}>{Math.round(row.t.netWorth).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* Compact team stats panel + the advantage graph, side by side so
+            the panel stays narrow (team emblem, K/D/A/CS/GPM/XPM/Heal/DMG,
+            team HP/Mana totals, net worth) instead of spanning full width */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginTop: '1rem', alignItems: 'stretch' }}>
+          <div className="glass-surface" style={{ flex: '1 1 400px', maxWidth: '460px', padding: '0.6rem 1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <TeamStatRow label="Radiant" color="var(--radiant-green)" Icon={IconRadiant} totals={radTotals} vitals={radVitals} isLeading={radLeads} currentTime={currentTime} />
+            <div style={{ borderTop: '1px solid var(--border-color)' }} />
+            <TeamStatRow label="Dire" color="var(--dire-red)" Icon={IconDire} totals={direTotals} vitals={direVitals} isLeading={!radLeads} currentTime={currentTime} />
+          </div>
 
-        {/* Bottom graph: real gold/XP advantage, a moving position bar synced
-            to the clock above, and kill markers showing the killed hero's
-            portrait */}
-        <div className="glass-surface" style={{ marginTop: '1rem', padding: '1rem' }}>
-          <PlaybackAdvantageGraph matchData={matchData} allPlayers={allPlayers} currentTime={currentTime} height={280} />
+          {/* Real gold/XP advantage, a moving position bar synced to the
+              clock above, and kill markers showing the killed hero's portrait */}
+          <div className="glass-surface" style={{ flex: '2 1 600px', minWidth: '480px', padding: '1rem' }}>
+            <PlaybackAdvantageGraph matchData={matchData} allPlayers={allPlayers} currentTime={currentTime} height={280} />
+          </div>
         </div>
       </div>
     </FullBleed>
