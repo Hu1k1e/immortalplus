@@ -7,9 +7,10 @@ import { getGameModeLabel, getLobbyTypeLabel, getRegionLabel } from '../lib/matc
 import MatchNavBar from '../components/MatchNavBar';
 import MatchOverview from '../components/MatchOverview';
 import { IconRadiant, IconDire } from '../components/Icons';
+import MovementTab from '../components/MovementTab';
 import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab, StoryTab, GraphsTab } from '../components/MatchTabs';
 
-const MAIN_TABS = ['Overview', 'Benchmarks', 'Performances', 'Laning', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'];
+const MAIN_TABS = ['Overview', 'Benchmarks', 'Performances', 'Laning', 'Movement', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'];
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -297,6 +298,7 @@ export default function MatchDetail() {
       {mainTab === 'Benchmarks' && <BenchmarksTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Performances' && <PerformancesTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Laning' && <LaningTab matchData={matchData} allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
+      {mainTab === 'Movement' && <MovementTab allPlayers={allPlayers} />}
       {mainTab === 'Combat' && <CombatTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Farm' && <FarmTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Items' && <ItemsTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}

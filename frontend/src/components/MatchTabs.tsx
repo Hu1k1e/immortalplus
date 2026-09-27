@@ -444,17 +444,24 @@ function LaneGroup({ matchData, allPlayers, lane, selectedSlot, onSelect, maxNet
     ) : null;
   });
 
-  const totalXp = (p: any) => (p.xp_t && p.xp_t.length ? p.xp_t[p.xp_t.length - 1] : 0);
-  const netWorthOf = (p: any) => p.net_worth ?? p.networth ?? 0;
+  // Laning-phase columns read state @10 minutes, not the final game totals —
+  // real per-minute arrays (networth_t/xp_t), not an estimate.
+  const totalXp = (p: any) => (p.xp_t && p.xp_t.length > 10 ? p.xp_t[10] : (p.xp_t?.length ? p.xp_t[p.xp_t.length - 1] : 0));
+  const netWorthOf = (p: any) => (p.networth_t && p.networth_t.length > 10 ? p.networth_t[10] : (p.networth_t?.length ? p.networth_t[p.networth_t.length - 1] : (p.net_worth ?? p.networth ?? 0)));
 
   return (
     <div className="glass-surface" style={{ marginBottom: '1.25rem', overflow: 'hidden' }}>
       {/* Section header: radiant summary | hero matchup + result | dire summary */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: '1rem', padding: '0.9rem 1.1rem', background: 'rgba(255,255,255,0.02)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem' }}>
           <TowerVial alive={radTower.alive} destroyedAt={radTower.destroyedAt} color="var(--radiant-green)" />
           <div>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>T1 Tower</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>T1 Tower Health</div>
+            <div style={{ fontSize: '0.9rem', color: radTower.alive ? 'var(--radiant-green)' : 'var(--text-muted)', fontWeight: 600 }}>{radTower.alive ? 'Standing' : `Fell ${fmtClock(radTower.destroyedAt || 0)}`}</div>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.1rem' }}>|</span>
+          <div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>KDA</div>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{radKda.k} / {radKda.d} / {radKda.a}</div>
           </div>
         </div>
@@ -479,10 +486,15 @@ function LaneGroup({ matchData, allPlayers, lane, selectedSlot, onSelect, maxNet
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.7rem', justifyContent: 'flex-end' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', justifyContent: 'flex-end' }}>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>T1 Tower</div>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>KDA</div>
             <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: 600 }}>{direKda.k} / {direKda.d} / {direKda.a}</div>
+          </div>
+          <span style={{ color: 'rgba(255,255,255,0.15)', fontSize: '1.1rem' }}>|</span>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>T1 Tower Health</div>
+            <div style={{ fontSize: '0.9rem', color: direTower.alive ? 'var(--dire-red)' : 'var(--text-muted)', fontWeight: 600 }}>{direTower.alive ? 'Standing' : `Fell ${fmtClock(direTower.destroyedAt || 0)}`}</div>
           </div>
           <TowerVial alive={direTower.alive} destroyedAt={direTower.destroyedAt} color="var(--dire-red)" />
         </div>
@@ -597,8 +609,11 @@ function LaneGroup({ matchData, allPlayers, lane, selectedSlot, onSelect, maxNet
 
 export function LaningTab({ matchData, allPlayers, radiantWin: _radiantWin }: { matchData: any; allPlayers: any[]; radiantWin: boolean }) {
   const [selectedPlayer, setSelectedPlayer] = useState<any>(null);
-  const maxNetWorth = Math.max(1, ...allPlayers.map((p) => p.net_worth ?? p.networth ?? 0));
-  const maxXp = Math.max(1, ...allPlayers.map((p) => (p.xp_t && p.xp_t.length ? p.xp_t[p.xp_t.length - 1] : 0)));
+  // Matches LaneGroup's own @10min basis so bar-scaling denominators line up
+  // with the values actually being scaled.
+  const at10 = (arr: any) => (arr && arr.length > 10 ? arr[10] : (arr?.length ? arr[arr.length - 1] : 0));
+  const maxNetWorth = Math.max(1, ...allPlayers.map((p) => at10(p.networth_t) || p.net_worth || p.networth || 0));
+  const maxXp = Math.max(1, ...allPlayers.map((p) => at10(p.xp_t)));
 
   // Prepare Heatmap Points for Selected Player
   let heatmapPoints: any[] = [];
