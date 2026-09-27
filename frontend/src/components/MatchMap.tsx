@@ -236,13 +236,15 @@ export default function MatchMap({
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const zoomDelta = e.deltaY > 0 ? -0.2 : 0.2;
-    setZoom(prev => Math.min(Math.max(1, prev + zoomDelta), 4));
-  };
+  const zoomIn = () => setZoom((prev) => Math.min(4, prev + 0.5));
+  const zoomOut = () => setZoom((prev) => {
+    const next = Math.max(1, prev - 0.5);
+    if (next === 1) setPan({ x: 0, y: 0 });
+    return next;
+  });
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (zoom <= 1) return; // panning only makes sense once zoomed in
     setIsDragging(true);
     dragStartRef.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
   };
@@ -260,23 +262,24 @@ export default function MatchMap({
   return (
     <div style={{ width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px', gap: '8px' }}>
+        <button className="btn btn-secondary" style={{ padding: '2px 10px', fontSize: '0.85rem', fontWeight: 700 }} onClick={zoomOut} disabled={zoom <= 1} title="Zoom out">−</button>
+        <button className="btn btn-secondary" style={{ padding: '2px 10px', fontSize: '0.85rem', fontWeight: 700 }} onClick={zoomIn} disabled={zoom >= 4} title="Zoom in">+</button>
         <button className="btn btn-secondary" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={() => { setZoom(1); setPan({x: 0, y: 0}); }}>Reset Map</button>
       </div>
       {/* Map Container */}
-      <div 
-        style={{ 
-          position: 'relative', 
-          width: mapSize, 
-          maxWidth: '600px', 
-          aspectRatio: '1/1', 
-          background: '#0a0a0a', 
-          borderRadius: '8px', 
-          overflow: 'hidden', 
-          border: '1px solid var(--border-color)', 
+      <div
+        style={{
+          position: 'relative',
+          width: mapSize,
+          maxWidth: '600px',
+          aspectRatio: '1/1',
+          background: '#0a0a0a',
+          borderRadius: '8px',
+          overflow: 'hidden',
+          border: '1px solid var(--border-color)',
           margin: compact ? '0' : '0 auto',
-          cursor: isDragging ? 'grabbing' : 'grab'
+          cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
         }}
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

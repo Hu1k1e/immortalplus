@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../lib/api';
-import { HEROES } from '../lib/heroes';
-import { getHeroImage } from '../lib/dota';
+import { getRankBadge, getRankLabel } from '../lib/rank';
+import { getGameModeLabel, getLobbyTypeLabel, getRegionLabel } from '../lib/matchMeta';
 
 import MatchNavBar from '../components/MatchNavBar';
 import MatchOverview from '../components/MatchOverview';
+import { IconRadiant, IconDire } from '../components/Icons';
 import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab, StoryTab, GraphsTab } from '../components/MatchTabs';
+
+const MAIN_TABS = ['Overview', 'Benchmarks', 'Performances', 'Laning', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'];
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -121,87 +124,152 @@ export default function MatchDetail() {
   if (loading) return <div style={{ padding: '2rem' }}>Loading match details...</div>;
   if (!matchData) return <div style={{ padding: '2rem' }}>Match not found.</div>;
 
-  const userHero = HEROES[matchData.hero_id];
-  const isWin = matchData.result === 'win';
-
   const allPlayers = matchData.all_players || [];
+
+  const radiantKills = allPlayers.filter((p: any) => p.player_slot < 128).reduce((s: number, p: any) => s + (p.kills || 0), 0);
+  const direKills = allPlayers.filter((p: any) => p.player_slot >= 128).reduce((s: number, p: any) => s + (p.kills || 0), 0);
+  const radiantWon = matchData.radiant_win === true;
+  const direWon = matchData.radiant_win === false;
+  const durationLabel = `${Math.floor(matchData.duration / 60)}:${(matchData.duration % 60).toString().padStart(2, '0')}`;
+
+  const lobbyLabel = getLobbyTypeLabel(matchData.lobby_type);
+  const modeLabel = getGameModeLabel(matchData.game_mode);
+  const modeMeta = [lobbyLabel, modeLabel].filter(Boolean).join(' / ') || null;
+  const regionLabel = getRegionLabel(allPlayers[0]?.region);
+  const rankLabel = getRankLabel(matchData.avg_rank_tier ?? matchData.rank_tier);
+  const rankBadge = getRankBadge(matchData.avg_rank_tier ?? matchData.rank_tier);
+  const dateLabel = matchData.played_at
+    ? new Date(matchData.played_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : null;
+
+  const goToTab = (tab: string) => { setMainTab(tab); setSelectedPlayer(null); };
 
   return (
     <div style={{ paddingBottom: '4rem' }}>
-      <header className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Link to="/matches" style={{ color: 'var(--text-muted)', textDecoration: 'none', marginBottom: '1rem', display: 'inline-block' }}>
-            &larr; Back to Matches
-          </Link>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {userHero && (
-              <img
-                src={getHeroImage(userHero.img_name)}
-                alt={userHero.name}
-                style={{ width: '80px', height: '45px', objectFit: 'cover', borderRadius: '4px' }}
-              />
-            )}
-            <h1 style={{ color: isWin ? 'var(--radiant-green)' : 'var(--dire-red)', margin: 0 }}>
-              {isWin ? 'Victory' : 'Defeat'}
-            </h1>
+      <Link to="/matches" style={{ color: 'var(--text-muted)', textDecoration: 'none', marginBottom: '1rem', display: 'inline-block' }}>
+        &larr; Back to Matches
+      </Link>
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+        <span style={{ fontSize: '0.75rem', color: matchData.is_parsed ? 'var(--radiant-green)' : 'var(--text-muted)', marginRight: '0.25rem' }}>
+          {matchData.is_parsed ? 'Replay Parsed' : 'Basic Data Only'}
+        </span>
+        {!aiCoaching && (
+          <button
+            className="btn btn-primary"
+            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'var(--radiant-green)' }}
+            onClick={handleAiAnalysis}
+            disabled={analyzingAi}
+          >
+            {analyzingAi ? 'Analyzing...' : 'Analyze with AI Coach'}
+          </button>
+        )}
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+          onClick={handleRequestParse}
+          disabled={parseState === 'requesting' || parseState === 'requested'}
+        >
+          {parseState === 'idle' && 'Parse Replay'}
+          {parseState === 'requesting' && 'Requesting...'}
+          {parseState === 'requested' && '✓ Parse Requested'}
+          {parseState === 'error' && '✗ Parse Failed'}
+        </button>
+        <button
+          className="btn btn-secondary"
+          style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+          onClick={handleRefetch}
+          disabled={refetching}
+          title="Refetch latest match data from OpenDota/Stratz"
+        >
+          {refetching ? 'Syncing...' : 'Sync Data'}
+        </button>
+      </div>
+
+      <div className="glass-surface" style={{ marginBottom: '1.5rem', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1.25rem 2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flex: 1 }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '8px', background: 'rgba(81,164,69,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <IconRadiant style={{ width: '34px', height: '34px' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>Radiant</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: radiantWon ? 'var(--radiant-green)' : 'var(--text-muted)' }}>
+                {radiantWon ? 'Won' : 'Lost'}
+              </div>
+            </div>
           </div>
-          <p className="text-secondary" style={{ marginTop: '0.5rem' }}>
-            {matchData.kills} / {matchData.deaths} / {matchData.assists} • {Math.floor(matchData.duration / 60)}:{(matchData.duration % 60).toString().padStart(2, '0')}
-            <span style={{ marginLeft: '1rem', color: matchData.is_parsed ? 'var(--radiant-green)' : 'var(--text-muted)' }}>
-              {matchData.is_parsed ? '✓ Replay Parsed' : '⚠️ Basic Data Only (Parse to unlock maps & timelines)'}
-            </span>
-          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+            <div style={{ background: 'rgba(0,0,0,0.35)', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '1.6rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {radiantKills}
+            </div>
+            <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              <div style={{ fontSize: '0.9rem' }}>☀️</div>
+              <div>{durationLabel}</div>
+            </div>
+            <div style={{ background: 'rgba(0,0,0,0.35)', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '1.6rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+              {direKills}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.9rem', flex: 1, justifyContent: 'flex-end' }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>Dire</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 600, color: direWon ? 'var(--radiant-green)' : 'var(--text-muted)' }}>
+                {direWon ? 'Won' : 'Lost'}
+              </div>
+            </div>
+            <div style={{ width: '52px', height: '52px', borderRadius: '8px', background: 'rgba(194,53,43,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <IconDire style={{ width: '34px', height: '34px' }} />
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          {!aiCoaching && (
-            <button
-              className="btn btn-primary"
-              style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem', background: 'var(--radiant-green)' }}
-              onClick={handleAiAnalysis}
-              disabled={analyzingAi}
-            >
-              {analyzingAi ? 'Analyzing...' : 'Analyze with AI Coach'}
-            </button>
-          )}
-          <button
-            className="btn btn-secondary"
-            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-            onClick={handleRequestParse}
-            disabled={parseState === 'requesting' || parseState === 'requested'}
-          >
-            {parseState === 'idle' && 'Parse Replay'}
-            {parseState === 'requesting' && 'Requesting...'}
-            {parseState === 'requested' && '✓ Parse Requested'}
-            {parseState === 'error' && '✗ Parse Failed'}
-          </button>
-          <button
-            className="btn btn-secondary"
-            style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-            onClick={handleRefetch}
-            disabled={refetching}
-            title="Refetch latest match data from OpenDota/Stratz"
-          >
-            {refetching ? 'Syncing...' : 'Sync Data'}
-          </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 2rem', borderTop: '1px solid var(--border-color)', fontSize: '0.78rem', color: 'var(--text-muted)', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1.4rem', flexWrap: 'wrap' }}>
+            {modeMeta && <span>{modeMeta}</span>}
+            {regionLabel && <span>🌐 {regionLabel}</span>}
+            <span>📋 {matchData.match_id}</span>
+            {rankLabel && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {rankBadge && <img src={rankBadge} alt={rankLabel} style={{ width: '16px', height: '16px' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+                {rankLabel}
+              </span>
+            )}
+          </div>
+          {dateLabel && <span>{dateLabel}</span>}
         </div>
-      </header>
+      </div>
 
       <MatchNavBar matchData={matchData} />
 
       {/* Main Tabs Navigation */}
-      <div className="glass-surface" style={{ display: 'flex', gap: '0.5rem', padding: '0.5rem 1rem', marginBottom: '2rem', overflowX: 'auto', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border-color)' }}>
-        {['Overview', 'Benchmarks', 'Performances', 'Laning', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'].map((tab) => (
+      <div className="glass-surface" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.75rem 1rem', marginBottom: '2rem', borderBottom: '1px solid var(--border-color)' }}>
+        {MAIN_TABS.map((tab) => (
           <button
             key={tab}
-            className={`btn ${mainTab === tab ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setMainTab(tab)}
+            onClick={() => goToTab(tab)}
             style={{
               padding: '0.5rem 1rem',
-              fontSize: '0.9rem',
-              background: mainTab === tab ? 'var(--bg-secondary)' : 'transparent',
-              color: mainTab === tab ? 'var(--text-primary)' : 'var(--text-secondary)',
-              borderBottom: mainTab === tab ? '2px solid var(--accent-gold)' : '2px solid transparent',
-              borderRadius: '0'
+              fontSize: '0.85rem',
+              fontWeight: mainTab === tab ? 700 : 500,
+              background: mainTab === tab ? 'rgba(226,183,66,0.14)' : 'rgba(226,183,66,0.04)',
+              color: mainTab === tab ? 'var(--accent-gold)' : 'var(--text-secondary)',
+              border: `1px solid ${mainTab === tab ? 'rgba(226,183,66,0.5)' : 'rgba(226,183,66,0.12)'}`,
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              transition: 'box-shadow 0.15s, border-color 0.15s, color 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.boxShadow = '0 0 10px rgba(226,183,66,0.45)';
+              e.currentTarget.style.borderColor = 'rgba(226,183,66,0.6)';
+              if (mainTab !== tab) e.currentTarget.style.color = 'var(--accent-gold)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.boxShadow = 'none';
+              e.currentTarget.style.borderColor = mainTab === tab ? 'rgba(226,183,66,0.5)' : 'rgba(226,183,66,0.12)';
+              if (mainTab !== tab) e.currentTarget.style.color = 'var(--text-secondary)';
             }}
           >
             {tab}

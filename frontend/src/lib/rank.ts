@@ -14,3 +14,11 @@ export function getRankBadge(rankTier?: number | null): string | null {
   const tier = Math.max(0, Math.min(8, Math.floor(rankTier / 10)));
   return `${RANK_CDN_BASE}/rank_icon_${tier}.png`;
 }
+
+const RANK_NAMES = ['Uncalibrated', 'Herald', 'Guardian', 'Crusader', 'Archon', 'Legend', 'Ancient', 'Divine', 'Immortal'];
+
+export function getRankLabel(rankTier?: number | null): string | null {
+  if (rankTier == null || isNaN(rankTier) || rankTier <= 0) return null;
+  const tier = Math.max(0, Math.min(8, Math.floor(rankTier / 10)));
+  return RANK_NAMES[tier];
+}
