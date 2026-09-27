@@ -6,6 +6,15 @@ import { resolveItemIdName } from '../lib/itemId';
 import { purchaseLogOf } from './BuildsPanel';
 import { interpAtTime, liveCount } from './LiveScoreboardPanel';
 
+function GoldIcon({ size = 13 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="10" fill="#e2b742" stroke="#a87f1f" strokeWidth="1.5" />
+      <text x="12" y="16.5" textAnchor="middle" fontSize="12" fontWeight="bold" fill="#7a5a12">$</text>
+    </svg>
+  );
+}
+
 function fmtClock(t: number) {
   const s = Math.max(0, Math.round(t));
   return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
@@ -169,8 +178,9 @@ export default function PlaybackPlayerRow({ player, allPlayers, currentTime }: {
             );
           })}
         </div>
-        <div style={{ fontSize: '0.7rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
-          {Math.round(interpAtTime(player.gold_t, currentTime)).toLocaleString()}g
+        <div style={{ display: 'flex', alignItems: 'center', gap: '3px', fontSize: '0.7rem', color: 'var(--accent-gold)', fontWeight: 700 }}>
+          <GoldIcon size={11} />
+          {Math.round(interpAtTime(player.gold_t, currentTime)).toLocaleString()}
         </div>
       </div>
     </div>

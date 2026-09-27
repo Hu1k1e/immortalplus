@@ -466,7 +466,7 @@ export default function MatchMap({
       {/* Gold + XP advantage mini sparkline, labels reflecting whichever
           side currently leads each stat (not a fixed "Radiant Advantage"
           title — it flips as the graph does). */}
-      {goldAdv.length > 0 && !compact && (() => {
+      {goldAdv.length > 0 && !compact && !hideControls && (() => {
         const goldIdx = Math.min(goldAdv.length - 1, currentMinute);
         const xpIdx = Math.min(xpAdv.length - 1, currentMinute);
         const goldNow = goldAdv[goldIdx] ?? 0;

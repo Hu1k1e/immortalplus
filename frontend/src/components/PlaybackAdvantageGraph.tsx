@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage } from '../lib/dota';
 import { IconRadiant, IconDire } from './Icons';
@@ -15,6 +15,24 @@ function formatClock(min: number) {
 }
 
 interface KillEvent { time: number; victimHeroId?: number; killerName: string; isRadiant: boolean }
+
+/** Default hover-anywhere-on-the-chart tooltip — "Radiant/Dire Advantage:
+ * Xk", same as the shared AdvantageGraph, independent of the kill-marker
+ * hover interaction (which drives the header text above instead). */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload || !payload.length) return null;
+  const gold = payload.find((p: any) => p.dataKey === 'gold')?.value ?? 0;
+  const leadIsRadiant = gold >= 0;
+  return (
+    <div style={{ background: 'rgba(10,12,15,0.97)', border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.5rem 0.7rem', fontSize: '0.78rem' }}>
+      <div style={{ color: 'var(--text-muted)', marginBottom: '0.3rem' }}>{formatClock(label)}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: leadIsRadiant ? 'var(--radiant-green)' : 'var(--dire-red)', fontWeight: 700 }}>
+        {leadIsRadiant ? <IconRadiant style={{ width: 13, height: 13 }} /> : <IconDire style={{ width: 13, height: 13 }} />}
+        {leadIsRadiant ? 'Radiant' : 'Dire'} Advantage: {fmtK(gold)}
+      </div>
+    </div>
+  );
+}
 
 /** A hero-portrait kill marker (the KILLED hero, not the killer — per
  * explicit request). Hovering snaps the chart to that exact data point:
@@ -147,13 +165,19 @@ export default function PlaybackAdvantageGraph({ matchData, allPlayers, currentT
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
             <XAxis dataKey="time" stroke="rgba(255,255,255,0.5)" tickFormatter={(t) => t + ':00'} />
             <YAxis stroke="rgba(255,255,255,0.5)" tickFormatter={(val) => (Math.abs(val) > 1000 ? (Math.abs(val) / 1000).toFixed(1) + 'k' : Math.abs(val).toString())} domain={[-maxAdvVal, maxAdvVal]} />
+            <Tooltip content={<ChartTooltip />} isAnimationActive={false} />
             <ReferenceLine y={0} stroke="rgba(255,255,255,0.2)" strokeWidth={2} />
-            {/* The moving playback-position bar — follows the shared clock */}
-            <ReferenceLine x={currentMinute} stroke="var(--accent-gold)" strokeWidth={3} />
-            {/* Snaps to whichever kill marker is currently hovered */}
+            {/* Snaps to whichever kill marker is currently hovered — drawn
+                before the position bar so the position bar stays on top
+                when both land near the same minute */}
             {killMinute != null && (
-              <ReferenceLine x={killMinute} stroke="#fff" strokeWidth={1.5} strokeDasharray="4 3" />
+              <ReferenceLine x={killMinute} stroke="#4da6ff" strokeWidth={2} strokeDasharray="4 3" />
             )}
+            {/* The moving playback-position bar — follows the shared clock.
+                Solid bright white so it reads clearly even sitting at 0:00
+                right against the left axis, distinct from the gold fill/
+                line and from the dashed kill-snap indicator above. */}
+            <ReferenceLine x={currentMinute} stroke="#ffffff" strokeWidth={3} label={{ value: '▼', position: 'insideTopLeft', fill: '#ffffff', fontSize: 12, dy: -6 }} />
             <defs>
               <linearGradient id="playbackGoldFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--accent-gold)" stopOpacity={0.55} />
@@ -178,7 +202,7 @@ export default function PlaybackAdvantageGraph({ matchData, allPlayers, currentT
           Gold
         </span>
         <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '10px', height: '3px', background: 'var(--accent-gold)', display: 'inline-block' }} />
+          <span style={{ width: '10px', height: '3px', background: '#ffffff', display: 'inline-block' }} />
           Playback position
         </span>
       </div>

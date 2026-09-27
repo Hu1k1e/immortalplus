@@ -266,29 +266,31 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                   </div>
                 </div>
 
-                {/* Lane crop: only the real lane-shaped region of the map
-                    itself (masked by Stratz's own minimap_top/mid/bot.svg)
-                    is visible — not the whole map with a highlight on top —
-                    with this lane's heroes shown on top of it. */}
+                {/* Lane highlight: a dim full map for context, with the real
+                    lane-shaped region (masked by Stratz's own
+                    minimap_top/mid/bot.svg) lit up bright near-white on top.
+                    Two earlier attempts at this were still barely visible —
+                    root cause: masking a PHOTO through this SVG meant the
+                    visible brightness was whatever that photo's colors
+                    happened to be in that exact spot, compounded by the
+                    downloaded SVG's own fill being a mid-grey (#474747) at
+                    partial opacity, which (if the browser's mask-mode reads
+                    luminance rather than pure alpha) multiplies the visible
+                    opacity down even further — alpha(0.7) x luminance(~28%)
+                    is only ~20% effective visibility, matching exactly what
+                    was reported. Fixed at the source: edited the local SVGs
+                    to a white fill at real opacity, and mask a solid white
+                    background instead of a photo, so the highlighted shape
+                    is bright regardless of the mask-mode a given browser
+                    actually uses. */}
                 {selectedPlayer.lane && LANE_OVERLAY[selectedPlayer.lane] && (
-                  <div style={{ width: '130px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'transparent', alignSelf: 'flex-start' }}>
+                  <div style={{ width: '130px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: '#14161a', alignSelf: 'flex-start' }}>
+                    <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.3, filter: 'brightness(1.1)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                     <div style={{
-                      position: 'absolute', inset: 0,
+                      position: 'absolute', inset: 0, background: '#f5f5f5',
                       WebkitMaskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, WebkitMaskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat',
-                      maskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, maskSize: '100% 100%', maskRepeat: 'no-repeat',
-                    }}>
-                      {/* Deliberately NOT using the invert/hue-rotate/darken
-                          filter the main Towers panel applies for dark-theme
-                          consistency — that filter takes this asset's real
-                          natural light/near-white coloring and inverts it
-                          dark, which is exactly why this crop kept looking
-                          washed out no matter how much brightness was piled
-                          on. Showing it in its native light coloring (small
-                          contrast/brightness polish only) reads correctly
-                          against the dark card without fighting the source
-                          asset. */}
-                      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'brightness(1.2) contrast(1.05)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                    </div>
+                      maskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, maskSize: '100% 100%', maskRepeat: 'no-repeat', maskMode: 'alpha' as any,
+                    }} />
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '8px', ...LANE_ICON_ALIGN[selectedPlayer.lane] }}>
                       {laneMatchup?.map((p: any) => (
                         <img key={p.player_slot} src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%', border: `1.5px solid ${p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}`, boxShadow: '0 0 4px rgba(0,0,0,0.9)' }} />

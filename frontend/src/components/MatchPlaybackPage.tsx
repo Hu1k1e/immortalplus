@@ -113,9 +113,11 @@ export default function MatchPlaybackPage({ matchData, allPlayers }: { matchData
       <div className="animate-fade-in">
         <KillTicker allPlayers={allPlayers} currentTime={currentTime} />
 
-        {/* Map on the left, both team stacks on the right, side by side */}
-        <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start' }}>
-          <div style={{ flex: '0 0 auto', width: '38%', minWidth: '380px', maxWidth: '640px' }}>
+        {/* Map on the left, both team stacks on the right, side by side —
+            roughly equal width so the map is genuinely big, and wraps to
+            stacked on narrower screens instead of squeezing either side. */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.25rem', alignItems: 'flex-start' }}>
+          <div style={{ flex: '1 1 480px', minWidth: '420px' }}>
             <MatchMap
               matchData={matchData}
               selectedPlayer={undefined}
@@ -130,14 +132,14 @@ export default function MatchPlaybackPage({ matchData, allPlayers }: { matchData
             />
           </div>
 
-          <div style={{ flex: 1, display: 'flex', gap: '1rem', minWidth: 0 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: '1 1 480px', display: 'flex', flexWrap: 'wrap', gap: '1rem', minWidth: 0 }}>
+            <div style={{ flex: '1 1 260px', minWidth: '260px' }}>
               <TeamHeader label="Radiant" color="var(--radiant-green)" Icon={IconRadiant} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {radiant.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
               </div>
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: '1 1 260px', minWidth: '260px' }}>
               <TeamHeader label="Dire" color="var(--dire-red)" Icon={IconDire} />
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {dire.map((p: any) => <PlaybackPlayerRow key={p.player_slot} player={p} allPlayers={allPlayers} currentTime={currentTime} />)}
