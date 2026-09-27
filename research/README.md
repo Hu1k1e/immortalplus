@@ -21,6 +21,13 @@ Together these get you real "hyper-personalized recommendations": for a
 given role/hero/matchup/game-state, compare what the book says and what the
 eval function says about deviating from it. This is the actual target.
 
+**The full, editable list of exactly what "doing something wrong" means —
+every category, in plain language, with what data each one needs and
+whether we have that data yet — lives in
+[coaching_categories.md](coaching_categories.md).** That file is meant to
+be edited directly as the category list gets refined, then handed to a
+building agent when ready.
+
 ## How much do we actually need to store? (resolved)
 
 Storing every individual match (raw or parsed) doesn't scale — millions of
