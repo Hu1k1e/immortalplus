@@ -273,7 +273,14 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
                 continue
             level_by_slot[pslot] = entry.get("level") or level_by_slot.get(pslot, 1)
 
-            if real_mode is None:
+            # Pre-game/strategy-phase interval entries (stage 2, before hero
+            # entities exist) never carry hp/mana/hero_id/unit at all — real
+            # or not. Deciding real_mode from one of those would wrongly
+            # lock in "fallback" before real data even starts a few seconds
+            # later, so wait for an entry where a hero is actually assigned
+            # (hero_id set — exactly the same condition under which the
+            # patched parser populates hp/mana) before deciding.
+            if real_mode is None and entry.get("hero_id"):
                 real_mode = entry.get("hp") is not None and entry.get("mana") is not None
 
             if real_mode:
@@ -281,10 +288,12 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
                 mana_v, max_mana_v = entry.get("mana"), entry.get("max_mana")
                 if hp_v is not None and max_hp_v is not None and mana_v is not None and max_mana_v is not None:
                     maybe_sample_real(pslot, t, float(hp_v), float(max_hp_v), float(mana_v), float(max_mana_v))
-            else:
+            elif real_mode is False:
                 ensure_init(pslot, t)
                 advance_regen(pslot, t)
                 maybe_sample(pslot, t)
+            # else real_mode is still undetermined (no hero assigned yet in
+            # this pre-game entry) — nothing to sample either way yet.
             continue
 
         # Fallback only: combat log damage/heal, used to reconstruct HP/Mana
