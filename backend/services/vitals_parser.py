@@ -339,5 +339,6 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
         return None
 
     total_points = sum(len(v["time"]) for v in series.values())
-    logger.info(f"[{match_id}] Vitals parse: {len(series)} players, {total_points} total samples")
+    mode = "REAL (m_iHealth/m_flMana read directly from the patched parser)" if real_mode else "FALLBACK (reconstructed from combat-log damage/heal — old parser image, or no interval hp/mana seen)"
+    logger.info(f"[{match_id}] Vitals parse: {len(series)} players, {total_points} total samples, mode={mode}")
     return series
