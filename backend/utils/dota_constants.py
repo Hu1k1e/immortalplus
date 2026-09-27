@@ -238,6 +238,18 @@ def get_hero_name(hero_id: int) -> str:
     hero = HEROES.get(hero_id)
     return hero["localized_name"] if hero else f"Unknown Hero ({hero_id})"
 
+# Reverse lookup: real game npc class name (e.g. "npc_dota_hero_antimage",
+# what GSI's draft data actually identifies heroes by — see
+# routers/draft.py) -> hero_id. Built once from HEROES rather than
+# hand-duplicated.
+_NAME_TO_HERO_ID = {hero["name"]: hero_id for hero_id, hero in HEROES.items()}
+
+def get_hero_id_by_name(npc_name: str) -> int | None:
+    """Resolve a real game npc class name to a hero_id, or None if unknown."""
+    if not npc_name:
+        return None
+    return _NAME_TO_HERO_ID.get(npc_name)
+
 def get_hero_image_url(hero_id: int) -> str:
     """Get CDN URL for hero portrait."""
     hero = HEROES.get(hero_id)

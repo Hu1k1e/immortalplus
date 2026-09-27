@@ -13,7 +13,7 @@ from database import get_session
 from models import Player, UserSettings, HeroMatchup, HeroMeta
 from services.draft_engine import calculate_draft_suggestions
 from services.opendota import get_opendota_client
-from utils.dota_constants import rank_tier_to_bracket
+from utils.dota_constants import rank_tier_to_bracket, get_hero_id_by_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/draft", tags=["draft"])
@@ -163,10 +163,64 @@ async def broadcast_draft_update(state: dict):
         _ws_clients.remove(ws)
 
 
+def _resolve_hero_id(value) -> int | None:
+    """A single GSI pick/ban slot can show up as a numeric hero_id directly,
+    or as a real npc class name string (e.g. "npc_dota_hero_antimage") — the
+    exact real shape wasn't confirmed against a live game when this was
+    first written, so this accepts either rather than assuming one."""
+    if value is None:
+        return None
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str):
+        if value.isdigit():
+            iv = int(value)
+            return iv if iv > 0 else None
+        return get_hero_id_by_name(value)
+    return None
+
+
+def _extract_slots(team_data: dict, prefix: str) -> list[int]:
+    """Reads GSI's real flat-field draft shape for one team — numbered
+    slots like pick0_id/pick0_class, pick1_id/pick1_class, ... (confirmed
+    against the community reference implementation of Dota 2's GSI schema,
+    since Valve's own docs don't cover this) — NOT the nested
+    {"picks": [{"id": ...}]} array this code originally, incorrectly,
+    assumed. Tries "<prefix>N_id" first (if GSI ever sends a numeric id
+    directly), falls back to resolving "<prefix>N_class" (the real npc
+    name) through the hero name table. Stops at the first completely
+    absent slot rather than assuming a fixed count, since pick/ban counts
+    differ between game modes.
+    """
+    out = []
+    i = 0
+    while True:
+        id_key = f"{prefix}{i}_id"
+        class_key = f"{prefix}{i}_class"
+        if id_key not in team_data and class_key not in team_data:
+            break
+        hero_id = _resolve_hero_id(team_data.get(id_key)) or _resolve_hero_id(team_data.get(class_key))
+        if hero_id:
+            out.append(hero_id)
+        i += 1
+    return out
+
+
 def update_gsi_draft_state(gsi_data: dict):
     """
     Parse GSI payload and update draft state.
     Called from the GSI router when draft data arrives.
+
+    IMPORTANT — this was never verified against a real live match before
+    this pass (the user flagged it as an untested first draft, and that
+    was correct: the original version used team2/team3 keys and a nested
+    picks[]/bans[] array shape, both wrong against the real GSI schema).
+    This version uses team0/team1 and the flat pickN_id/pickN_class,
+    banN_id/banN_class shape, matching the real, community-verified GSI
+    schema (Valve's own documentation doesn't cover this well). It also
+    logs the raw draft block below so the very first real match played
+    with this confirms or corrects the remaining assumptions from actual
+    evidence — see the logger.info call at the end of this function.
     """
     map_data = gsi_data.get("map", {})
     game_state = map_data.get("game_state", "")
@@ -175,25 +229,47 @@ def update_gsi_draft_state(gsi_data: dict):
         _gsi_state["active"] = True
         _gsi_state["phase"] = "pick" if "HERO_SELECTION" in game_state else "strategy"
 
-        # Extract draft picks from GSI
         draft = gsi_data.get("draft", {})
         if draft:
-            ally_team = "team2" if gsi_data.get("player", {}).get("team_name") == "dire" else "team3"
-            enemy_team = "team3" if ally_team == "team2" else "team2"
+            # Real GSI team keys are team0/team1, not team2/team3 — fixed.
+            # Each side's "home_team" flag (or, defensively, team_name on
+            # the player block) is what actually says which one is ours,
+            # rather than assuming a fixed team2="dire" mapping.
+            player_team_name = gsi_data.get("player", {}).get("team_name")
+            team0 = draft.get("team0", {})
+            team1 = draft.get("team1", {})
+            team0_is_home = team0.get("home_team")
 
-            _gsi_state["ally_picks"] = [
-                p.get("id") for p in draft.get(ally_team, {}).get("picks", [])
-                if p.get("id", 0) > 0
-            ]
-            _gsi_state["enemy_picks"] = [
-                p.get("id") for p in draft.get(enemy_team, {}).get("picks", [])
-                if p.get("id", 0) > 0
-            ]
-            _gsi_state["bans"] = [
-                b.get("id") for team_key in [ally_team, enemy_team]
-                for b in draft.get(team_key, {}).get("bans", [])
-                if b.get("id", 0) > 0
-            ]
+            # "home_team" in GSI corresponds to Radiant. Fall back to the
+            # player's own team_name if home_team isn't present for some
+            # reason, rather than silently guessing team0.
+            if team0_is_home is not None:
+                radiant_team, dire_team = (team0, team1) if team0_is_home else (team1, team0)
+            elif player_team_name in ("radiant", "dire"):
+                radiant_team, dire_team = (team0, team1)
+            else:
+                radiant_team, dire_team = (team0, team1)
+
+            ally_is_radiant = player_team_name != "dire"
+            ally_team_data = radiant_team if ally_is_radiant else dire_team
+            enemy_team_data = dire_team if ally_is_radiant else radiant_team
+
+            _gsi_state["ally_picks"] = _extract_slots(ally_team_data, "pick")
+            _gsi_state["enemy_picks"] = _extract_slots(enemy_team_data, "pick")
+            # Ranked All Pick auto-bans a small number of heroes before
+            # picking starts (confirmed real — not a Captains Mode-only
+            # thing as first assumed); Captains Mode has player-driven
+            # bans on top of that. Both use the same banN_id/banN_class
+            # slot shape as picks, read from both sides.
+            _gsi_state["bans"] = (
+                _extract_slots(ally_team_data, "ban") + _extract_slots(enemy_team_data, "ban")
+            )
+
+            logger.info(
+                f"[GSI draft] raw team0={team0} team1={team1} player_team={player_team_name} "
+                f"-> parsed ally_picks={_gsi_state['ally_picks']} "
+                f"enemy_picks={_gsi_state['enemy_picks']} bans={_gsi_state['bans']}"
+            )
 
     elif game_state == "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS":
         _gsi_state["active"] = False

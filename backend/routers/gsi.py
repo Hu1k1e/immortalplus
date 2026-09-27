@@ -21,10 +21,12 @@ async def receive_gsi(request: Request):
     Steam/steamapps/common/dota 2 beta/game/dota/cfg/gamestate_integration/
     
     File: gamestate_integration_immortalplus.cfg
-    Content:
+    Content — use GET /api/gsi/config for the real, current version of
+    this (this docstring copy previously had a stale port; don't trust it
+    over that endpoint's actual output):
     "Immortal+ Coach"
     {
-        "uri"           "http://localhost:8000/api/gsi"
+        "uri"           "http://localhost:9487/api/gsi"
         "timeout"       "5.0"
         "buffer"        "0.1"
         "throttle"      "0.5"
