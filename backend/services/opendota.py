@@ -192,6 +192,19 @@ class OpenDotaClient:
         """Run a custom SQL query against the OpenDota database."""
         return await self._request("GET", "/explorer", params={"sql": sql})
 
+    async def get_public_matches(self, less_than_match_id: Optional[int] = None) -> list:
+        """
+        Live tail of recent public matches (draft + outcome + avg_rank_tier,
+        no replay needed) — up to ~100 per call, paginate backwards via
+        less_than_match_id. Complements explorer_query (which is better for
+        bulk historical backfill); this is for keeping a dataset fresh
+        going forward once a backfill is caught up.
+        """
+        params = {}
+        if less_than_match_id:
+            params["less_than_match_id"] = less_than_match_id
+        return await self._request("GET", "/publicMatches", params=params)
+
     # ── Distributions ─────────────────────────────────────────────
 
     async def get_distributions(self) -> dict:
