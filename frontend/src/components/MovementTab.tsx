@@ -184,11 +184,11 @@ export default function MovementTab({ allPlayers }: { allPlayers: any[] }) {
         <defs>
           <filter id="heatmap-filter">
             <feColorMatrix type="matrix" values="
-              0 0 0 0 0
-              0 0 0 0 0
-              0 0 0 0 0
-              0 0 0 1 0" result="alphaOnly" />
-            <feComponentTransfer in="alphaOnly">
+              0 0 0 1 0
+              0 0 0 1 0
+              0 0 0 1 0
+              0 0 0 1 0" result="alphaToRGB" />
+            <feComponentTransfer in="alphaToRGB">
               <feFuncR type="table" tableValues="0 0 0 0 1 1" />
               <feFuncG type="table" tableValues="0 0 1 1 1 0" />
               <feFuncB type="table" tableValues="0 1 1 0 0 0" />
