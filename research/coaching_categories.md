@@ -130,6 +130,7 @@ code to pull it out yet.)
 | D3 | Fighting at good moments, avoiding bad ones | Picking fights when clearly weaker (behind on levels/items), or skipping fights when clearly stronger | Net worth list + fight list | Fight list needs new work | Medium | |
 | D4 | Damage dealt vs. damage taken in a fight | Consistently trading badly — taking much more than dealing | Damage list + fight list | Fight list needs new work | Medium | |
 | D5 | Getting out alive vs. dying for nothing | Dying in a fight without dealing meaningful damage first, or getting caught alone and killed for free | Death list + damage list + fight list | Fight list needs new work | Medium | |
+| D6 | Kill assist quality — helping teammates get kills, not just your own stats | A support or offlane player who's technically "present" in fights but isn't actually contributing to kills (no stuns/setup landed, no damage that mattered) vs. one whose actions directly enabled a teammate's kill | Kill list (who assisted) + ability cast list + damage list + fight list | Ability cast list and fight list both need new work | Medium | Added after a review pointing out most categories here are self-centered (your farm, your deaths) when a lot of real skill, especially for supports, is about enabling teammates rather than your own numbers |
 
 ## E. Deaths, specifically
 

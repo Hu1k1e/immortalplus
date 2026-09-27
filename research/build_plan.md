@@ -281,6 +281,174 @@ as everywhere else in this project.
 
 ---
 
+## Known limitations, and what we're doing about each one
+
+Found by deliberately pressure-testing this plan rather than waiting to
+discover them after building. Some have real fixes, some have partial
+fixes, and one or two are honest, accepted tradeoffs — all listed
+plainly rather than glossed over, matching how the rest of this project
+handles things it can't fully solve.
+
+### 1. Winning is a team result, not proof that one player played well
+
+**The problem**: a player can play flawlessly and still lose because
+their team fed, or play badly and still win because their team carried
+them. So "compare winners vs losers" measures "correlates with winning,"
+which is weaker and noisier than "this decision actually caused a
+better outcome," because it's diluted by four other people's play.
+
+**The fix**: once the win-chance model (Phase 3b) exists, use it for
+something more precise than just labeling whole matches "won" or "lost."
+Look at how much the model's win-chance estimate moves right around a
+specific decision — did placing this ward, taking this fight, or buying
+this item shift the number up or down shortly after. This is a
+well-established idea in sports analytics (usually called "win
+probability added") — the plain version: measure the *local* effect of
+one decision, not just how the whole 40-minute game eventually ended.
+This is a real upgrade to build once Phase 3b exists, not something
+needed on day one, but the plan should account for it now so the design
+doesn't need reworking later.
+
+### 2. Smurfs and boosted accounts quietly skew the "winners" side specifically
+
+**The problem**: some matches at any rank include a player who doesn't
+actually belong there — a stronger player on a low-rank account, or a
+boosted account. These players win far more than their fair share. That
+means they don't just add random noise — they specifically inflate the
+*winners* sample more than the *losers* sample, which can make a
+rank's "book" quietly reflect smurf-level play rather than genuine
+same-rank play, and make the winners-vs-losers gap look bigger than it
+really is.
+
+**The fix**: no full fix exists (this is a known, disclosed problem
+across this entire space, not unique to us). A real partial defense:
+before using a bucket's sample, drop the most extreme values (e.g., the
+top and bottom 1-2%) — smurf-level performances tend to be statistical
+outliers relative to genuine same-rank play, so trimming reduces, even
+if it can't eliminate, their pull on the average.
+
+### 3. The hero × role × rank grid is much bigger than it looks
+
+**The problem**: roughly 120 heroes × 5 roles × 8 ranks × 2 (win/loss) is
+already around 9,600 bucket-halves for a *single* stat, before counting
+every category. Some hero/role combinations are rare, so many cells will
+take a long time to reach the 100-300 match threshold in Phase 2, or may
+rarely fill at all.
+
+**The fix**: not really a fix — a realistic expectation to set now. The
+first usable book will cover common hero/role combos at popular ranks
+well, and will have real, honest "not enough data" gaps everywhere else
+for a while. That's the correct, honest behavior (Phase 2's rule), not a
+bug — but worth knowing upfront rather than being surprised later.
+
+### 4. The book can't see draft context (who else is in the game)
+
+**The problem**: "should you be aggressive in lane" depends heavily on
+who's laning against you; "should your team group for fights" depends on
+which team is actually better at fighting. A hero/role/rank bucket
+can't capture this without splitting into so many buckets that each one
+becomes too small to trust (the same sparsity problem as #3, made much
+worse).
+
+**The fix**: don't force the bucketed book to solve this — it's a
+genuine ceiling of that approach. This is part of why the win-chance
+model (Phase 3b) is worth having as a second tool alongside the book,
+not just a nice-to-have: it can take the actual draft as an input and
+learn smooth patterns across hero combinations in a way a fixed lookup
+table can't. Real human coaches also mostly give generically-good advice
+most of the time, not perfectly situation-specific advice — this is an
+honest, reasonable scope, not a shortfall unique to this project.
+
+### 5. A missing category: helping teammates, not just yourself
+
+**The problem**: most categories in `coaching_categories.md` are
+self-centered (your farm, your deaths, your wards). A lot of real
+support skill — and real skill generally — is about *enabling*
+teammates: did your setup lead to a kill, did your vision let your carry
+farm safely, did your positioning let a teammate engage confidently.
+
+**The fix**: added as a new category — see `coaching_categories.md`,
+"kill assist quality," in the teamfight section.
+
+### 6. Role labels are a foundation everything else sits on
+
+**The problem**: almost every category is compared "for this role" (is
+this a support, a carry, etc.), using a best-guess label the app already
+computes. If that guess is wrong even some of the time, every
+role-conditional category built on top of it inherits that error
+silently, without anything looking obviously broken.
+
+**The fix**: before leaning on role-conditional categories heavily,
+specifically check how often the existing role-guessing logic is
+actually right (spot-check a sample of real matches against what a
+person would obviously call the role). This is a foundational dependency
+worth validating on purpose, not assuming is fine because it's already
+used elsewhere in the app for a different, lower-stakes purpose.
+
+### 7. Cheaters and VAC-banned accounts can't be retroactively removed
+
+**The problem**: because raw replays and per-match data get thrown away
+right after processing (the storage-limited design from Phase 1d), if a
+match later turns out to have involved a cheater (detected after the
+fact), there's no way to reach back and remove its specific contribution
+from the aggregate samples it already fed into.
+
+**The fix**: accept this as a real, disclosed tradeoff of the
+storage-minimal design rather than pretending it's solved. It's worth
+naming the design's own natural partial defense, though: because each
+bucket only ever keeps a bounded sample (300 slots, see Phase 1e), any
+one bad match can only ever have a small, capped influence on a bucket —
+unlike, say, a simple running average, where one extreme match could
+distort the number indefinitely. Bounded influence by design is a real
+mitigation, even without a way to fully undo a specific contaminated
+match.
+
+### 8. The meta drifts within a single patch, not just between patches
+
+**The problem**: the patch-to-patch handling already planned (see
+`README.md`'s "Handling patch changes") accounts for the meta changing
+when a new patch releases. But the meta also drifts *within* one patch's
+lifetime as players collectively discover new strategies over the weeks
+it's live — early-patch play and late-patch play for the same patch
+version can genuinely differ.
+
+**The fix**: a smaller version of the same idea already planned for
+patch changes — weight more recent matches within a patch somewhat more
+than the earliest matches from that patch, instead of treating the
+whole patch's data as one uniform pile. Lower priority than the
+patch-to-patch handling, worth doing as a refinement once the basics
+work.
+
+### 9. Which side (Radiant or Dire) a player was on
+
+**The problem**: Dota has, at various points, had a real difference in
+win rate between the two sides due to map geometry, and this shifts with
+patches. If side isn't accounted for, a stat could look like it
+correlates with winning when it's really just correlated with being on
+whichever side is favored that patch.
+
+**The fix**: usually a small effect, but cheap to guard against — track
+each patch's actual side win-rate split (easy, we already have this per
+match) and note it as context rather than ignoring it. Low priority, but
+free to add.
+
+### 10. Game length as a hidden confound
+
+**The problem**: a 25-minute stomp and a 55-minute close grind aren't
+just "more or less of the same game" — they're different modes of play
+with different normal farming/fighting patterns. Blending both into one
+"typical" number for a stat can produce a misleading middle-ground value
+that doesn't really describe either kind of game well.
+
+**The fix**: a real tradeoff, not a free addition — splitting buckets by
+game-length range would make the sparsity problem (#3) meaningfully
+worse. Reasonable starting approach: don't split by duration initially,
+but keep this in mind as a candidate refinement for specific categories
+where duration clearly matters most (farm-related ones, most likely),
+rather than applying it everywhere by default.
+
+---
+
 ## Where this actually lives in the codebase (for whoever builds it)
 
 - **Collector** — a new background service/script (natural home:
