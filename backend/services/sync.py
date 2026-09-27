@@ -9,6 +9,7 @@ import json
 import logging
 from datetime import datetime, date
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlmodel import select
 
@@ -556,10 +557,30 @@ async def sync_hero_meta(session: Session, settings: UserSettings):
 
 
 async def sync_hero_matchups(session: Session, settings: UserSettings):
-    """Fetch hero matchup data from OpenDota for all heroes."""
+    """
+    Fetch hero matchup data from OpenDota, 30 heroes per call (rate-limit
+    friendly). Previously always processed the same first 30 heroes in
+    HEROES — meaning the other ~95 heroes were never synced no matter how
+    often this ran. Now picks whichever heroes have gone longest without
+    an update (or were never synced at all), so repeated calls naturally
+    rotate through the full hero list over time, self-healing if any
+    individual hero's fetch fails (it just stays "oldest" and gets
+    retried next cycle) — no separate cursor/offset field needed.
+    """
     client = get_opendota_client(settings.opendota_api_key if settings else None)
 
-    for hero_id in list(HEROES.keys())[:30]:  # Rate-limit: do 30 heroes per sync
+    last_synced = dict(
+        session.exec(
+            select(HeroMatchup.hero_id, func.max(HeroMatchup.updated_at))
+            .group_by(HeroMatchup.hero_id)
+        ).all()
+    )
+    all_hero_ids = list(HEROES.keys())
+    # Heroes never synced at all sort first (None treated as oldest),
+    # then whichever real timestamp is furthest in the past.
+    stale_first = sorted(all_hero_ids, key=lambda hid: last_synced.get(hid) or datetime.min)
+
+    for hero_id in stale_first[:30]:
         try:
             matchups = await client.get_hero_matchups(hero_id)
         except Exception:

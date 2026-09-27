@@ -31,14 +31,12 @@ async def background_sync_loop():
     from models import Player, UserSettings
     from services.sync import (
         sync_player_matches, create_progress_snapshot,
-        sync_hero_meta,
+        sync_hero_meta, sync_hero_matchups,
     )
 
     # Wait for app to fully start
     await asyncio.sleep(10)
     logger.info("Background sync loop started")
-
-    meta_synced = False
 
     while True:
         settings = None
@@ -56,10 +54,18 @@ async def background_sync_loop():
                 # Create daily snapshot
                 await create_progress_snapshot(session, player)
 
-            # Sync meta data once per app restart
-            if not meta_synced and settings:
+            # Hero win/pick rates + matchup (counter-pick) data for the
+            # Draft Helper — previously meta only synced once per restart
+            # and matchups never synced at all, so this data could go
+            # stale for weeks and matchups were always empty. Both now run
+            # every cycle (same interval as everything else below); meta
+            # is one cheap API call, matchups covers 30 heroes per cycle
+            # (rotating through whichever are most stale — see
+            # sync_hero_matchups), so this stays well within normal API
+            # rate limits even at the default 30-minute interval.
+            if settings:
                 await sync_hero_meta(session, settings)
-                meta_synced = True
+                await sync_hero_matchups(session, settings)
 
             session.close()
 
