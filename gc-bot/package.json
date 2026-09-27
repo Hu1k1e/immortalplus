@@ -1,0 +1,14 @@
+{
+  "name": "immortalplus-gc-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Resolves cluster/replaySalt for arbitrary Dota 2 match IDs via a live Game Coordinator session, for matches OpenDota/Stratz haven't indexed.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dota2-gc": "^0.1.1",
+    "express": "^4.19.2"
+  }
+}

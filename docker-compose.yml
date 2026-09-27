@@ -35,8 +35,31 @@ services:
       - "5600:5600"
     restart: unless-stopped
 
+  # GC bot (see gc-bot/README.md) — resolves cluster/replaySalt for
+  # arbitrary match IDs via a live Steam/Dota 2 Game Coordinator session,
+  # for matches OpenDota/Stratz haven't indexed. Needs STEAM_BOT_USERNAME/
+  # STEAM_BOT_PASSWORD set for a dedicated (not your main) Steam account
+  # with Dota 2 in its library — set these in Portainer's stack environment
+  # variables, never commit them. First start requires watching this
+  # container's logs for a Steam Guard prompt and submitting the code via
+  # `curl -X POST http://<host>:3500/steamguard -d '{"code":"XXXXX"}'`;
+  # subsequent restarts skip that as long as the gc_bot_data volume persists.
+  gc_bot:
+    image: ghcr.io/hu1k1e/immortalplus-gc-bot:main
+    container_name: immortalplus_gc_bot
+    ports:
+      - "3500:3500"
+    volumes:
+      - immortalplus_gcbot_data:/app/data
+    environment:
+      - STEAM_BOT_USERNAME=${STEAM_BOT_USERNAME}
+      - STEAM_BOT_PASSWORD=${STEAM_BOT_PASSWORD}
+    restart: unless-stopped
+
 volumes:
   immortalplus_data:
     name: immortalplus_data
   immortalplus_replays:
     name: immortalplus_replays
+  immortalplus_gcbot_data:
+    name: immortalplus_gcbot_data

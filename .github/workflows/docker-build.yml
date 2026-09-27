@@ -104,3 +104,34 @@ jobs:
           push: true
           tags: ${{ steps.meta-parser.outputs.tags }}
           labels: ${{ steps.meta-parser.outputs.labels }}
+
+  build-and-push-gc-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for GC Bot
+        id: meta-gc-bot
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_PREFIX }}-gc-bot
+
+      - name: Build and push GC Bot Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gc-bot
+          push: true
+          tags: ${{ steps.meta-gc-bot.outputs.tags }}
+          labels: ${{ steps.meta-gc-bot.outputs.labels }}
