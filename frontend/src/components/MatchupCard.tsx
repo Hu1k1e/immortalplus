@@ -138,13 +138,14 @@ export default function MatchupCard({ player, allPlayers, onClick, currentTime }
         {netWorth >= 1000 ? `${(netWorth / 1000).toFixed(1)}k` : netWorth}
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem 0.7rem' }}>
-        {rankBadge ? (
-          <img src={rankBadge} alt="rank" style={{ width: '24px', height: '24px', flexShrink: 0 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-        ) : (
-          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: perf.color, flexShrink: 0 }} />
-        )}
-        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', padding: '0.4rem 0.5rem 0.7rem', width: '100%', minWidth: 0 }}>
+        {/* Same 24px slot whether or not a rank is available, so every
+            card stays the same height — just nothing drawn when there's
+            no rank, instead of falling back to a placeholder dot. */}
+        <div style={{ width: '24px', height: '24px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {rankBadge && <img src={rankBadge} alt="rank" style={{ width: '24px', height: '24px' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
+        </div>
+        <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%', width: '100%', textAlign: 'center' }}>
           {player.persona || player.personaname || 'Anonymous'}
         </span>
       </div>

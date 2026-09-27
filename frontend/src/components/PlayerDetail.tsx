@@ -18,6 +18,16 @@ const LANE_ICON_ALIGN: Record<number, { justifyContent: string; alignContent: st
   1: { justifyContent: 'flex-end', alignContent: 'flex-end' },
 };
 
+const WARD_ICON = {
+  obs: { good: '/assets/images/dota2/map/goodguys_observer.png', bad: '/assets/images/dota2/map/badguys_observer.png' },
+  sen: { good: '/assets/images/dota2/map/goodguys_sentry.png', bad: '/assets/images/dota2/map/badguys_sentry.png' },
+};
+// Real Dota constants (matching OpenDota's own frontend, odota_ui's
+// utility.tsx getWardSize: observer vision radius 1600, sentry true-sight
+// radius 1000, calibrated against a 12000-unit reference map width) —
+// expressed here as a % radius of this map's own container.
+const WARD_RADIUS_PCT = { obs: (1600 / 12000) * 100, sen: (1000 / 12000) * 100 };
+
 /** Wards planted within the first minute, plotted on the same real Stratz
  * map asset (and the same x/y -> percent transform) MatchMap already uses
  * for hero markers — no towers, since this panel is about vision, not
@@ -36,13 +46,15 @@ function VisionMiniMap({ allPlayers }: { allPlayers: any[] }) {
   return (
     <div style={{ position: 'relative', width: '100%', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b' }}>
       <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.6) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-      {dots.map((d, i) => (
-        <div key={i} style={{
-          position: 'absolute', left: `${d.left}%`, top: `${d.top}%`, transform: 'translate(-50%,-50%)',
-          width: '8px', height: '8px', borderRadius: d.type === 'obs' ? '50%' : '2px',
-          background: d.radiant ? 'var(--radiant-green)' : 'var(--dire-red)', border: '1px solid rgba(0,0,0,0.6)',
-        }} />
-      ))}
+      {dots.map((d, i) => {
+        const r = WARD_RADIUS_PCT[d.type];
+        return (
+          <div key={i} style={{ position: 'absolute', left: `${d.left}%`, top: `${d.top}%`, transform: 'translate(-50%,-50%)', width: `${r * 2}%`, aspectRatio: '1/1' }}>
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: d.radiant ? 'rgba(81,164,69,0.16)' : 'rgba(194,53,43,0.16)', border: `1px solid ${d.radiant ? 'rgba(81,164,69,0.5)' : 'rgba(194,53,43,0.5)'}` }} />
+            <img src={WARD_ICON[d.type][d.radiant ? 'good' : 'bad']} alt="" style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: '55%', maxWidth: '18px' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -254,26 +266,22 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
                   </div>
                 </div>
 
-                {/* Lane overlay: real per-lane map crop (Stratz's own asset) with this lane's heroes shown on it */}
+                {/* Lane crop: only the real lane-shaped region of the map
+                    itself (masked by Stratz's own minimap_top/mid/bot.svg)
+                    is visible — not the whole map with a highlight on top —
+                    with this lane's heroes shown on top of it. */}
                 {selectedPlayer.lane && LANE_OVERLAY[selectedPlayer.lane] && (
-                  <div style={{ width: '130px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b', alignSelf: 'flex-start' }}>
-                    <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.6) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                    {/* The overlay SVG itself is a soft, barely-visible grey
-                        corner wash — rendering it as an <img> on top of the
-                        already-dark filtered map made it disappear entirely.
-                        Using the real file's shape as a CSS mask on a solid
-                        gold tint instead guarantees the actual highlighted
-                        region reads clearly, while still using that real
-                        asset (not a hand-drawn substitute). */}
+                  <div style={{ width: '130px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', background: 'transparent', alignSelf: 'flex-start' }}>
                     <div style={{
                       position: 'absolute', inset: 0,
                       WebkitMaskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, WebkitMaskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat',
                       maskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, maskSize: '100% 100%', maskRepeat: 'no-repeat',
-                      background: 'rgba(226,183,66,0.6)',
-                    }} />
+                    }}>
+                      <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.75) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                    </div>
                     <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '8px', ...LANE_ICON_ALIGN[selectedPlayer.lane] }}>
                       {laneMatchup?.map((p: any) => (
-                        <img key={p.player_slot} src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%', border: `1.5px solid ${p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}`, boxShadow: '0 0 4px rgba(0,0,0,0.8)' }} />
+                        <img key={p.player_slot} src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%', border: `1.5px solid ${p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}`, boxShadow: '0 0 4px rgba(0,0,0,0.9)' }} />
                       ))}
                     </div>
                   </div>

@@ -1451,6 +1451,16 @@ export function ObjectivesTab({ allPlayers }: { allPlayers: any[] }) {
 }
 
 // ================ VISION TAB ================
+const WARD_ICON = {
+  obs: { good: '/assets/images/dota2/map/goodguys_observer.png', bad: '/assets/images/dota2/map/badguys_observer.png' },
+  sen: { good: '/assets/images/dota2/map/goodguys_sentry.png', bad: '/assets/images/dota2/map/badguys_sentry.png' },
+};
+// Real Dota constants (matching OpenDota's own frontend, odota_ui's
+// utility.tsx getWardSize: observer vision radius 1600, sentry true-sight
+// radius 1000, calibrated against a 12000-unit reference map width) —
+// expressed as a % radius of whatever map container it's drawn on.
+const WARD_RADIUS_PCT = { obs: (1600 / 12000) * 100, sen: (1000 / 12000) * 100 };
+
 export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchData: any }) {
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
@@ -1602,7 +1612,7 @@ export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchD
           <img src="/assets/images/dota2/Game_map_7.41.jpg" style={{ width: '24px', height: '24px', borderRadius: '4px', cursor: 'pointer', opacity: 0.8 }} />
           <div className="ward-hover-map" style={{ position: 'absolute', zIndex: 100, bottom: '30px', right: 0, width: '200px', height: '200px', border: '2px solid #333', display: 'none', background: '#000' }}>
              <img src="/assets/images/dota2/Game_map_7.41.jpg" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-             <img src={w.type === 'obs' ? 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ward_observer.png' : 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ward_sentry.png'} style={{ position: 'absolute', left: `${left}%`, top: `${top}%`, width: '16px', height: '16px', transform: 'translate(-50%, -50%)', filter: `drop-shadow(0 0 2px ${w.isRad ? '#22c55e' : '#ef4444'})` }} />
+             <img src={WARD_ICON[w.type as 'obs' | 'sen'][w.player.player_slot < 128 ? 'good' : 'bad']} alt="" style={{ position: 'absolute', left: `${left}%`, top: `${top}%`, width: '16px', height: '16px', transform: 'translate(-50%, -50%)' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           </div>
         </div>
       );
@@ -1657,10 +1667,11 @@ export function VisionTab({ allPlayers, matchData }: { allPlayers: any[]; matchD
           {activeWards.map((w: any, i: number) => (
              <div key={i} className="ward-marker" style={{
                 left: `${w.left}%`, top: `${w.top}%`,
-                width: '16px', height: '16px',
+                width: `${WARD_RADIUS_PCT[w.type as 'obs' | 'sen'] * 2}%`, aspectRatio: '1/1',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10
              }}>
-               <img src={w.type === 'obs' ? 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ward_observer.png' : 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/ward_sentry.png'} style={{ width: '100%', height: '100%', filter: `drop-shadow(0 0 2px ${w.isRad ? '#22c55e' : '#ef4444'})` }} />
+               <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: w.isRad ? 'rgba(81,164,69,0.16)' : 'rgba(194,53,43,0.16)', border: `1px solid ${w.isRad ? 'rgba(81,164,69,0.5)' : 'rgba(194,53,43,0.5)'}` }} />
+               <img src={WARD_ICON[w.type as 'obs' | 'sen'][w.isRad ? 'good' : 'bad']} alt="" style={{ position: 'relative', width: '55%', maxWidth: '18px' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                <div className="ward-marker-tooltip">
                  <div style={{ background: w.isRad ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)', padding: '0.8rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <PlayerCell p={w.owner} />
