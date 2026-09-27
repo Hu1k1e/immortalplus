@@ -410,7 +410,7 @@ async def _do_local_parse_and_update(match_id: int, cluster: int, salt: int):
 
 
 @router.post("/{match_id}/parse-vitals")
-async def request_vitals_parse(match_id: int, background_tasks: BackgroundTasks, session: Session = Depends(get_session)):
+async def request_vitals_parse(match_id: int, background_tasks: BackgroundTasks, force: bool = False, session: Session = Depends(get_session)):
     """
     On-demand HP/Mana reconstruction (see services/vitals_parser.py) —
     deliberately NOT part of the automatic parse pipeline every match goes
@@ -419,6 +419,11 @@ async def request_vitals_parse(match_id: int, background_tasks: BackgroundTasks,
     a user actually opens the Playback page for a match that doesn't have
     it yet, matching the original plan's "on-demand only" requirement to
     keep background parser load bounded.
+
+    `force=true` bypasses the "already computed" skip and re-parses even
+    when vitals_t already exists — useful when vitals_parser.py itself
+    changes (e.g. the real-vs-fallback detection fix) and existing stored
+    data needs refreshing, without manual DB surgery.
     """
     match = session.exec(select(Match).where(Match.match_id == match_id)).first()
     if not match:
@@ -431,7 +436,7 @@ async def request_vitals_parse(match_id: int, background_tasks: BackgroundTasks,
     except Exception:
         raise HTTPException(status_code=400, detail="all_players data is malformed")
 
-    if any(p.get("vitals_t") for p in players):
+    if not force and any(p.get("vitals_t") for p in players):
         return {"status": "already_computed"}
 
     settings = session.exec(select(UserSettings)).first()
