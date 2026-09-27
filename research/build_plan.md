@@ -22,7 +22,29 @@ why — pointing at real moments in their game, not vague advice.
 
 ## Phase 1: Collect the data
 
-### 1a. Find matches to look at
+### 1a. Find matches to look at — and make sure every rank actually gets covered
+
+**Don't just collect whatever's easiest to grab.** The book is separate
+per rank on purpose (see the big picture above) — a Herald Lich and an
+Immortal Lich get compared against different, rank-appropriate norms.
+That only works if we actually have enough real matches *at every rank*,
+not mostly the ranks that happen to be easiest to pull. This matters for
+a concrete reason: things like trilaning (three heroes sharing one lane)
+are common and often correct at some skill levels and rare at others — if
+we only collected from the top ranks, we'd never see it, and the book
+would have no idea it's a legitimate pattern rather than a mistake, for
+the ranks where it actually is one.
+
+The good news: rank populations in Dota form a pyramid — far more players
+sit in Herald through Legend than in Immortal. So the lower ranks will
+naturally fill up with reliable data *faster*, not slower. Immortal is the
+scarce, slow-to-fill bracket. The practical rule: when running the
+collector, deliberately run it across every bracket (Herald, Guardian,
+Crusader, Archon, Legend, Ancient, Divine, Immortal) — `harvest_public_matches.py`
+already supports this via `--rank-min`/`--rank-max`, it just needs to
+actually be pointed at each bracket in turn rather than left on defaults
+that would naturally over-collect from whichever bracket has the most
+live traffic at any given moment.
 
 Two separate sources, already built and tested this session:
 

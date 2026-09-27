@@ -67,6 +67,7 @@ code to pull it out yet.)
 | A2 | Experience gained early vs. normal | Falling behind in levels during laning | Experience list | Yes | High | |
 | A3 | How much damage was traded in lane | Taking way more harassment than dealing, without a plan to punish it | Position list + damage list | Partial (damage-to-heroes exists; separating "lane phase only" is just filtering by time) | Medium | |
 | A4 | Getting hit by a gank in lane | Dying early to an enemy rotation, especially without a ward nearby | Death list + ward list + position list | Yes | Medium | |
+| A7 | What lane setup was used (e.g. three heroes sharing a lane — a "trilane" — vs. the standard one-per-lane split) | Not itself a mistake — this is a *labeling* category, not a right/wrong one. Without it, a real, sometimes-correct strategy that's more common at some ranks than others (see the discussion in `build_plan.md` about not building the book from only top-rank games) gets silently averaged into other stats instead of being recognized as its own real pattern | Position list in the first few minutes (cluster of heroes staying in one lane) | Would need new work (a real, if straightforward, pattern-detection step) | High | Added after a real discussion about why the book can't just be built from Immortal games — see `build_plan.md` |
 | A5 | Rune usage (power runes, bounty runes) | Ignoring free value sitting on the map when nearby | Would need to detect "was a rune up and did anyone grab it" | Would need new work | Low (nice to have, more complex) | |
 | A6 | Pulling/stacking jungle camps (common support/offlane job) | Never doing it when the hero/role calls for it | Would need to detect specific pull/stack actions | Would need new work | Low | |
 
@@ -157,12 +158,18 @@ code to pull it out yet.)
 
 If I were picking where to start, I'd build the "Priority: High" rows first,
 since they mostly use data we already have, no new replay-reading work
-required: A1, A2, B1, B3, C2, D1 (once the fight list exists), E1, E4, H1,
-I2. That's a genuinely broad first pass across laning, farming, itemization,
-fighting, deaths, and role-specific behavior — not narrow at all — while
-deliberately leaving the harder, newer-data-required items (ability casts,
-Roshan timing, ward-death tracking, team-fight clustering) for a second
-pass once the first batch is proven out.
+required: A1, A2, A7, B1, B3, C2, D1 (once the fight list exists), E1, E4,
+H1, I2. That's a genuinely broad first pass across laning, farming,
+itemization, fighting, deaths, and role-specific behavior — not narrow at
+all — while deliberately leaving the harder, newer-data-required items
+(ability casts, Roshan timing, ward-death tracking, team-fight clustering)
+for a second pass once the first batch is proven out. A7 (lane setup) is
+included in this first batch even though it needs new work, specifically
+because A1-A4 can't be interpreted correctly without it — a trilane
+support's last-hits at 10 minutes mean something different from a
+standard-lane support's, so building the farm/laning categories without
+also labeling the lane setup would risk exactly the "book built with a
+narrow view of the game" problem this was added to prevent.
 
 ## When you're ready to build
 
