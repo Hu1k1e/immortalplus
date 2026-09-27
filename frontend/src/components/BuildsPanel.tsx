@@ -15,7 +15,7 @@ import PositionIcon from './PositionIcon';
  * upgrade chain, or was never a component of anything the player bought
  * afterward.
  */
-function purchaseLogOf(p: any) {
+export function purchaseLogOf(p: any) {
   let log = p.purchase_log;
   if (typeof log === 'string') {
     try { log = JSON.parse(log); } catch { log = []; }

@@ -628,6 +628,44 @@ export function LaningTab({ matchData, allPlayers, radiantWin: _radiantWin }: { 
 
   return (
     <div className="animation-fade-in">
+      <div className="glass-surface" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+        <span style={{ flexShrink: 0, width: '18px', height: '18px', borderRadius: '50%', border: '1px solid var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--text-muted)' }}>?</span>
+        <div>
+          <div>View performance over the first 10 minutes of the game.</div>
+          <div>Click the + button to the right of each row to see more information about each hero.</div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'center', gap: '2.5rem', marginBottom: '1.5rem' }}>
+        {[3, 2, 1].map((lane) => {
+          const radiant = allPlayers.filter((p) => p.lane === lane && p.player_slot < 128);
+          const dire = allPlayers.filter((p) => p.lane === lane && p.player_slot >= 128);
+          let winner: 'radiant' | 'dire' | null = null;
+          if (radiant.length && dire.length) {
+            const radiantEff = radiant.reduce((s, p) => s + (p.lane_efficiency_pct || 0), 0);
+            const direEff = dire.reduce((s, p) => s + (p.lane_efficiency_pct || 0), 0);
+            if (radiantEff || direEff) winner = radiantEff >= direEff ? 'radiant' : 'dire';
+          }
+          return (
+            <div key={lane} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+              <div style={{
+                width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: `2px solid ${winner === 'radiant' ? 'var(--radiant-green)' : winner === 'dire' ? 'var(--dire-red)' : 'var(--border-color)'}`,
+                color: winner === 'radiant' ? 'var(--radiant-green)' : winner === 'dire' ? 'var(--dire-red)' : 'var(--text-muted)',
+              }}>
+                <LaneArrowIcon dir={LANE_ARROW[lane]} size={20} />
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>{LANE_LABEL[lane]}</div>
+                <div style={{ fontSize: '0.7rem', color: winner === 'radiant' ? 'var(--radiant-green)' : winner === 'dire' ? 'var(--dire-red)' : 'var(--text-muted)' }}>
+                  {winner ? (winner === 'radiant' ? 'Radiant Won' : 'Dire Won') : 'No data'}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {[3, 2, 1].map((lane) => (
         <LaneGroup
           key={lane}
