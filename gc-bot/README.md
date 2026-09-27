@@ -68,9 +68,22 @@ becomes available, bump it.
 
 ## Status
 
-Built and smoke-tested against Steam's real login endpoint (confirmed the
-full connection/auth pipeline works end-to-end — a bad-password attempt
-correctly round-tripped a real `InvalidPassword` response from Steam).
-**Not yet tested with real credentials or a real `/resolve` call** — that
-needs the actual spare account's Steam Guard code submitted once, which
-only the account owner can do.
+**Fully validated live, end to end, with the real spare account.** Logged
+in successfully (one Steam Guard code, refresh token now persists so
+restarts don't need it again), GC connection reached `ready`, and
+`/resolve` was tested against 25 fresh matches plus the exact 5 matches
+that both OpenDota and Stratz had completely failed to resolve earlier in
+this investigation: **25/25 (100%) resolved**, including all 5 previously-
+stuck ones. This is the definitive proof the GC approach closes the gap
+neither OpenDota's free tier nor Stratz could.
+
+Separately tested actual replay download reachability (not just metadata
+resolution) for those 25 matches: 9/25 downloadable on the first attempt,
+rising to 18/25 (72%) after retrying the failures once. The failures are
+`502`s (a CDN front-end unable to reach a backend replica) rather than
+`404`s, and the same cluster ID gives mixed results across different
+matches — the signature of intermittent backend availability on Valve's
+CDN, not missing data. **Conclusion: the production downloader needs
+ordinary retry-with-backoff (2-3 attempts), same as any CDN-based
+fetcher** — not a fundamental blocker, just a normal reliability
+consideration to build in from the start.
