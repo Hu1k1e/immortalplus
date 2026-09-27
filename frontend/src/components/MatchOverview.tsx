@@ -45,19 +45,21 @@ export default function MatchOverview({
  * Split out so the shared playback clock (useMatchPlayback) is only ever
  * instantiated while actually viewing the grid — PlayerDetailView returns
  * early above this point and has its own map instance untouched by it.
- * This clock defaults to the match's final state (currentTime = duration),
- * so the page shows the real end-of-game result on load, not an all-zero
- * start — scrubbing or pressing play on the GlobalPlaybackBar is what
- * moves it. Every scrub-reactive section below (Towers, Advantage graph,
- * Builds, Matchup K/D) reads this same currentTime, so scrubbing anywhere
- * updates the whole page at once, and the bar stays reachable while
- * scrolling since it's fixed to the viewport, not a container. This is a
- * SEPARATE clock from PlaybackSection's own — that one always starts at 0
- * and autoplays once scrolled into view, independent of wherever this one
- * is scrubbed to.
+ * This clock's bar always sits at rest showing 0 on load, but every
+ * scrub-reactive section below (Towers, Advantage graph, Builds, Matchup
+ * K/D) reads `displayTime`, which stays pinned to the match's real
+ * end-of-game result until the user's first actual scrub or play — at
+ * that point `displayTime` just mirrors the real scrubbed position, same
+ * as the bar itself. Every scrub-reactive section reads this same
+ * currentTime, so scrubbing anywhere updates the whole page at once, and
+ * the bar stays reachable while scrolling since it's fixed to the
+ * viewport, not a container. This is a SEPARATE clock from
+ * PlaybackSection's own — that one always starts at 0 and autoplays once
+ * scrolled into view, independent of wherever this one is scrubbed to.
  */
 function OverviewBody({ matchData, allPlayers, setSelectedPlayer, playback }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void, playback: any }) {
   const isParsed = !!matchData?.is_parsed;
+  const displayTime = isParsed ? playback.displayTime : undefined;
 
   return (
     <>
@@ -69,10 +71,10 @@ function OverviewBody({ matchData, allPlayers, setSelectedPlayer, playback }: { 
           child, to actually stay fixed to the viewport bottom while
           scrolling. */}
       <div className="animate-fade-in" style={{ paddingBottom: isParsed ? '76px' : 0 }}>
-        <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} currentTime={isParsed ? playback.currentTime : undefined} />
-        <TowersLaneRow matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
+        <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} currentTime={displayTime} />
+        <TowersLaneRow matchData={matchData} allPlayers={allPlayers} currentTime={displayTime} />
         <DraftBuildsKillsRow matchData={matchData} />
-        <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} onSelectPlayer={setSelectedPlayer} />
+        <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={displayTime} onSelectPlayer={setSelectedPlayer} />
         <div style={{ marginTop: '1.5rem' }}>
           <KillBreakdownTable allPlayers={allPlayers} />
         </div>

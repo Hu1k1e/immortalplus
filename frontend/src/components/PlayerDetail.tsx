@@ -8,6 +8,15 @@ import { MiniMap as TowersMiniMap } from './TowersLaneRow';
 import { purchaseLogOf } from './BuildsPanel';
 
 const LANE_OVERLAY: Record<number, string> = { 3: '/assets/images/dota2/minimap_top.svg', 2: '/assets/images/dota2/minimap_mid.svg', 1: '/assets/images/dota2/minimap_bot.svg' };
+// Matches each real overlay's actual highlighted corner (inspected directly:
+// top.svg lights up the top-left, bot.svg the bottom-right, mid.svg a
+// diagonal band through the center) so the hero icons sit inside the
+// highlighted region instead of always dead-center regardless of lane.
+const LANE_ICON_ALIGN: Record<number, { justifyContent: string; alignContent: string }> = {
+  3: { justifyContent: 'flex-start', alignContent: 'flex-start' },
+  2: { justifyContent: 'center', alignContent: 'center' },
+  1: { justifyContent: 'flex-end', alignContent: 'flex-end' },
+};
 
 /** Wards planted within the first minute, plotted on the same real Stratz
  * map asset (and the same x/y -> percent transform) MatchMap already uses
@@ -188,7 +197,7 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
       <div style={{ marginBottom: '2rem' }}>
         <h3 className="gold-text-gradient" style={{ marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.5rem' }}>{formatTime(min * 60)} {title}</h3>
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'stretch', minHeight: '200px' }}>
-          <div className="glass-surface" style={{ width: '280px', flexShrink: 0, padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="glass-surface" style={{ width: '280px', flexShrink: 0, padding: '1rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '1rem' }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                <div style={{ position: 'relative' }}>
                  <img src={getHeroIcon(HEROES[selectedPlayer.hero_id]?.img_name)} alt="Hero" style={{ width: '48px', height: '48px', borderRadius: '50%' }} />
@@ -247,12 +256,24 @@ export default function PlayerDetail({ matchData, selectedPlayer, allPlayers, se
 
                 {/* Lane overlay: real per-lane map crop (Stratz's own asset) with this lane's heroes shown on it */}
                 {selectedPlayer.lane && LANE_OVERLAY[selectedPlayer.lane] && (
-                  <div style={{ width: '110px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b', alignSelf: 'flex-start' }}>
+                  <div style={{ width: '130px', flexShrink: 0, position: 'relative', aspectRatio: '1/1', borderRadius: 'var(--radius-sm)', overflow: 'hidden', border: '1px solid var(--border-color)', background: '#17181b', alignSelf: 'flex-start' }}>
                     <img src="/assets/images/dota2/minimap_geometry_current.png" alt="Map" style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'invert(0.85) hue-rotate(180deg) brightness(0.6) saturate(0.9)' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
-                    <img src={LANE_OVERLAY[selectedPlayer.lane]} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', gap: '3px', padding: '6px' }}>
+                    {/* The overlay SVG itself is a soft, barely-visible grey
+                        corner wash — rendering it as an <img> on top of the
+                        already-dark filtered map made it disappear entirely.
+                        Using the real file's shape as a CSS mask on a solid
+                        gold tint instead guarantees the actual highlighted
+                        region reads clearly, while still using that real
+                        asset (not a hand-drawn substitute). */}
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      WebkitMaskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, WebkitMaskSize: '100% 100%', WebkitMaskRepeat: 'no-repeat',
+                      maskImage: `url(${LANE_OVERLAY[selectedPlayer.lane]})`, maskSize: '100% 100%', maskRepeat: 'no-repeat',
+                      background: 'rgba(226,183,66,0.6)',
+                    }} />
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '8px', ...LANE_ICON_ALIGN[selectedPlayer.lane] }}>
                       {laneMatchup?.map((p: any) => (
-                        <img key={p.player_slot} src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="" style={{ width: '20px', height: '20px', borderRadius: '50%', border: `1.5px solid ${p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}` }} />
+                        <img key={p.player_slot} src={getHeroIcon(HEROES[p.hero_id]?.img_name)} alt="" style={{ width: '24px', height: '24px', borderRadius: '50%', border: `1.5px solid ${p.player_slot < 128 ? 'var(--radiant-green)' : 'var(--dire-red)'}`, boxShadow: '0 0 4px rgba(0,0,0,0.8)' }} />
                       ))}
                     </div>
                   </div>

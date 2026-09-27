@@ -92,7 +92,7 @@ function creepTypeCounts(player: any) {
   return { melee, ranged, jungle };
 }
 
-function Ring({ value, max, color, label, icon }: { value: number; max: number; color: string; label: string; icon?: string }) {
+function Ring({ value, max, color, label, iconSrc }: { value: number; max: number; color: string; label: string; iconSrc: string }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem' }} title={label}>
@@ -101,12 +101,20 @@ function Ring({ value, max, color, label, icon }: { value: number; max: number; 
           <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="3.5" />
           <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={color} strokeWidth="3.5" strokeDasharray={`${pct}, 100`} strokeLinecap="round" />
         </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-primary)' }}>{value}</div>
+        <div style={{ position: 'absolute', inset: '6px', borderRadius: '50%', overflow: 'hidden', background: '#0a0a0a' }}>
+          <img src={iconSrc} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        </div>
       </div>
-      <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{icon}</span>
+      <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-primary)' }}>{value}</span>
     </div>
   );
 }
+
+const CREEP_ICON = {
+  melee: '/assets/images/dota2/creeps/creep_goodguys_melee_model.png',
+  ranged: '/assets/images/dota2/creeps/creep_goodguys_ranged_model.png',
+  jungle: '/assets/images/dota2/creeps/neutral_satyr_hellcaller_model.png',
+};
 
 function FarmTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
@@ -293,9 +301,9 @@ export default function PerformancesExpandedUI({ player, allPlayers, matchData }
           </div>
 
           <div style={{ flex: '1 1 160px', height: '140px', background: 'rgba(255,255,255,0.02)', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-around' }}>
-            <Ring value={creep.melee} max={maxCreep} color="#66bb6a" label="Melee creeps killed (full game)" icon="Melee" />
-            <Ring value={creep.ranged} max={maxCreep} color="var(--accent-gold)" label="Ranged creeps killed (full game)" icon="Ranged" />
-            <Ring value={creep.jungle} max={maxCreep} color="#4da6ff" label="Neutral/jungle creeps killed (full game)" icon="Jungle" />
+            <Ring value={creep.melee} max={maxCreep} color="#66bb6a" label="Melee creeps killed (full game)" iconSrc={CREEP_ICON.melee} />
+            <Ring value={creep.ranged} max={maxCreep} color="var(--accent-gold)" label="Ranged creeps killed (full game)" iconSrc={CREEP_ICON.ranged} />
+            <Ring value={creep.jungle} max={maxCreep} color="#4da6ff" label="Neutral/jungle creeps killed (full game)" iconSrc={CREEP_ICON.jungle} />
           </div>
 
           <div style={{ width: '120px', height: '140px', background: '#0a0a0a', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(255,255,255,0.05)', position: 'relative', overflow: 'hidden', flexShrink: 0 }}>

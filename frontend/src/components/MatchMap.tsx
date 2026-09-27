@@ -326,8 +326,8 @@ export default function MatchMap({
           transformOrigin: 'center',
           transition: isDragging ? 'none' : 'transform 0.1s ease-out'
         }}>
-          <img 
-            src="https://dota.hulksmash.ca/assets/images/dota2/minimap_geometry_current.png" 
+          <img
+            src="/minimap.png"
             alt="Dota 2 Map"
             style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
             onError={(e) => {

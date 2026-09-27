@@ -31,7 +31,10 @@ export default function MatchDetail() {
   const [refetching, setRefetching] = useState(false);
 
   const playback = useMatchPlayback(4, matchData?.duration || 0);
-  const currentTime = playback.currentTime;
+  // The header score box should track the same "final until you actually
+  // scrub" behavior as the rest of Overview (displayTime), not the raw
+  // clock (currentTime), which now always starts at 0 for the bar itself.
+  const currentTime = playback.displayTime;
 
   const fetchMatchData = async (isPolling = false) => {
     if (!matchId || matchId === 'undefined') return null;
