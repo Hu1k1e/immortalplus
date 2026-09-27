@@ -9,6 +9,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import { ArrowUp, ArrowDown, ArrowLeftRight } from 'lucide-react';
 import { IconRadiant, IconDire } from './Icons';
 import AdvantageGraph from './AdvantageGraph';
+import PerformancesExpandedUI from './PerformancesExpandedUI';
 
 
 
@@ -272,7 +273,9 @@ export function BenchmarksTab({ allPlayers, radiantWin }: { allPlayers: any[]; r
 }
 
 // ================ PERFORMANCES TAB ================
-export function PerformancesTab({ allPlayers, radiantWin }: { allPlayers: any[]; radiantWin: boolean }) {
+export function PerformancesTab({ allPlayers, radiantWin, matchData }: { allPlayers: any[]; radiantWin: boolean; matchData?: any }) {
+  // @ts-ignore
+  const _m = matchData;
   const radiant = allPlayers.filter((p: any) => p.player_slot < 128);
   const dire = allPlayers.filter((p: any) => p.player_slot >= 128);
 
@@ -588,13 +591,8 @@ function LaneGroup({ matchData, allPlayers, lane, selectedSlot, onSelect, maxNet
                 </tr>
                 {isExpanded && (
                   <tr>
-                    <td colSpan={9} style={{ ...td, background: 'rgba(0,0,0,0.2)' }}>
-                      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                        <span>GPM: <strong style={{ color: 'var(--text-primary)' }}>{p.gpm ?? '-'}</strong></span>
-                        <span>XPM: <strong style={{ color: 'var(--text-primary)' }}>{p.xpm ?? '-'}</strong></span>
-                        <span>Hero Damage: <strong style={{ color: 'var(--text-primary)' }}>{(p.hero_damage ?? 0).toLocaleString()}</strong></span>
-                        <span>Camps Stacked: <strong style={{ color: 'var(--text-primary)' }}>{p.camps_stacked ?? 0}</strong></span>
-                      </div>
+                    <td colSpan={9} style={{ ...td, background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                      <PerformancesExpandedUI player={p} allPlayers={allPlayers} matchData={matchData} />
                     </td>
                   </tr>
                 )}

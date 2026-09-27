@@ -9,6 +9,7 @@ import MatchOverview from '../components/MatchOverview';
 import { IconRadiant, IconDire } from '../components/Icons';
 import MovementTab from '../components/MovementTab';
 import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab, StoryTab, GraphsTab } from '../components/MatchTabs';
+import { useMatchPlayback } from '../hooks/useMatchPlayback';
 
 const MAIN_TABS = ['Overview', 'Benchmarks', 'Performances', 'Laning', 'Movement', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'];
 
@@ -126,12 +127,31 @@ export default function MatchDetail() {
   if (!matchData) return <div style={{ padding: '2rem' }}>Match not found.</div>;
 
   const allPlayers = matchData.all_players || [];
+  
+  const playback = useMatchPlayback(4, matchData?.duration || 0);
+  const currentTime = playback.currentTime;
 
-  const radiantKills = allPlayers.filter((p: any) => p.player_slot < 128).reduce((s: number, p: any) => s + (p.kills || 0), 0);
-  const direKills = allPlayers.filter((p: any) => p.player_slot >= 128).reduce((s: number, p: any) => s + (p.kills || 0), 0);
+  const getLiveKills = (players: any[], time: number) => {
+    if (!matchData?.is_parsed) {
+      return players.reduce((s: number, p: any) => s + (p.kills || 0), 0);
+    }
+    return players.reduce((s, p) => {
+      if (time >= (matchData.duration || 0)) return s + (p.kills || 0);
+      let log = p.kills_log;
+      if (typeof log === 'string') { try { log = JSON.parse(log); } catch { log = []; } }
+      if (!Array.isArray(log)) return s;
+      return s + log.filter((e: any) => (e.time ?? 0) <= time).length;
+    }, 0);
+  };
+
+  const radiantPlayers = allPlayers.filter((p: any) => p.player_slot < 128);
+  const direPlayers = allPlayers.filter((p: any) => p.player_slot >= 128);
+  const radiantKills = getLiveKills(radiantPlayers, currentTime);
+  const direKills = getLiveKills(direPlayers, currentTime);
+  
   const radiantWon = matchData.radiant_win === true;
   const direWon = matchData.radiant_win === false;
-  const durationLabel = `${Math.floor(matchData.duration / 60)}:${(matchData.duration % 60).toString().padStart(2, '0')}`;
+  const durationLabel = `${Math.floor(currentTime / 60)}:${Math.floor(currentTime % 60).toString().padStart(2, '0')}`;
 
   const lobbyLabel = getLobbyTypeLabel(matchData.lobby_type);
   const modeLabel = getGameModeLabel(matchData.game_mode);
@@ -292,6 +312,7 @@ export default function MatchDetail() {
           setActiveMistakeTab={setActiveMistakeTab}
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
+          playback={playback}
         />
       )}
 

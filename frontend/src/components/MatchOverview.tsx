@@ -5,8 +5,6 @@ import BuildsPanel from './BuildsPanel';
 import PlaybackSection from './PlaybackSection';
 import GlobalPlaybackBar from './GlobalPlaybackBar';
 import PlayerDetail from './PlayerDetail';
-import { useMatchPlayback } from '../hooks/useMatchPlayback';
-
 interface MatchOverviewProps {
   matchData: any;
   allPlayers: any[];
@@ -17,11 +15,12 @@ interface MatchOverviewProps {
   setActiveMistakeTab: (tab: string) => void;
   selectedPlayer: any;
   setSelectedPlayer: (p: any) => void;
+  playback: any;
 }
 
 export default function MatchOverview({
   matchData, allPlayers, analysis, aiCoaching, aiError,
-  activeMistakeTab, setActiveMistakeTab, selectedPlayer, setSelectedPlayer,
+  activeMistakeTab, setActiveMistakeTab, selectedPlayer, setSelectedPlayer, playback,
 }: MatchOverviewProps) {
   if (selectedPlayer) {
     return (
@@ -39,7 +38,7 @@ export default function MatchOverview({
     );
   }
 
-  return <OverviewBody matchData={matchData} allPlayers={allPlayers} setSelectedPlayer={setSelectedPlayer} />;
+  return <OverviewBody matchData={matchData} allPlayers={allPlayers} setSelectedPlayer={setSelectedPlayer} playback={playback} />;
 }
 
 /**
@@ -57,8 +56,7 @@ export default function MatchOverview({
  * and autoplays once scrolled into view, independent of wherever this one
  * is scrubbed to.
  */
-function OverviewBody({ matchData, allPlayers, setSelectedPlayer }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void }) {
-  const playback = useMatchPlayback(4, matchData?.duration || 0);
+function OverviewBody({ matchData, allPlayers, setSelectedPlayer, playback }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void, playback: any }) {
   const isParsed = !!matchData?.is_parsed;
 
   return (
@@ -74,7 +72,7 @@ function OverviewBody({ matchData, allPlayers, setSelectedPlayer }: { matchData:
         <MatchupGrid allPlayers={allPlayers} onSelectPlayer={setSelectedPlayer} currentTime={isParsed ? playback.currentTime : undefined} />
         <TowersLaneRow matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
         <DraftBuildsKillsRow matchData={matchData} />
-        <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} />
+        <BuildsPanel matchData={matchData} allPlayers={allPlayers} currentTime={isParsed ? playback.currentTime : undefined} onSelectPlayer={setSelectedPlayer} />
         <div style={{ marginTop: '1.5rem' }}>
           <KillBreakdownTable allPlayers={allPlayers} />
         </div>

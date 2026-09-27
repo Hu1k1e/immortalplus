@@ -120,7 +120,7 @@ function TalentBadge({ heroNpcName, abilityUpgradesArr, anchor }: { heroNpcName?
   );
 }
 
-function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number }) {
+function HeroBuildBox({ player, scrubTime, onClick }: { player: any; scrubTime: number; onClick?: () => void }) {
   const hero = HEROES[player.hero_id];
   const isRadiant = player.player_slot < 128;
   const log = purchaseLogOf(player);
@@ -134,7 +134,7 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
   const senCount = player.purchase_ward_sentry || 0;
 
   return (
-    <div className="glass-surface card-interactive" style={{ padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)' }}>
+    <div className="glass-surface card-interactive" style={{ padding: '0.65rem 0.85rem', borderRadius: 'var(--radius-md)', cursor: onClick ? 'pointer' : 'default' }} onClick={onClick}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
         {hero && <img src={getHeroImage(hero.img_name)} alt={hero.name} style={{ width: '42px', height: '42px', objectFit: 'cover', objectPosition: 'center 30%', borderRadius: '4px', flexShrink: 0 }} />}
         <div style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
@@ -214,7 +214,7 @@ function HeroBuildBox({ player, scrubTime }: { player: any; scrubTime: number })
  * available to this app timestamps individual talent picks (only the flat
  * ability_upgrades_arr order, unlike purchase_log's real timestamps).
  */
-export default function BuildsPanel({ matchData, allPlayers, currentTime }: { matchData: any; allPlayers: any[]; currentTime?: number }) {
+export default function BuildsPanel({ matchData, allPlayers, currentTime, onSelectPlayer }: { matchData: any; allPlayers: any[]; currentTime?: number; onSelectPlayer?: (p: any) => void }) {
   const maxPurchaseTime = Math.max(0, ...allPlayers.flatMap((p) => purchaseLogOf(p).map((e: any) => e.time || 0)));
   const duration = matchData?.duration || maxPurchaseTime || 1;
   // Driven by the page's shared playback clock when given (the global
@@ -240,7 +240,7 @@ export default function BuildsPanel({ matchData, allPlayers, currentTime }: { ma
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 28px 1fr', gap: '0.6rem' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              {radiantSorted.map((p) => <HeroBuildBox key={p.player_slot} player={p} scrubTime={scrubTime} />)}
+              {radiantSorted.map((p) => <HeroBuildBox key={p.player_slot} player={p} scrubTime={scrubTime} onClick={onSelectPlayer ? () => onSelectPlayer(p) : undefined} />)}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-around', alignItems: 'center' }}>
               {[1, 2, 3, 4, 5].map((pos) => (
@@ -250,7 +250,7 @@ export default function BuildsPanel({ matchData, allPlayers, currentTime }: { ma
               ))}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              {direSorted.map((p) => <HeroBuildBox key={p.player_slot} player={p} scrubTime={scrubTime} />)}
+              {direSorted.map((p) => <HeroBuildBox key={p.player_slot} player={p} scrubTime={scrubTime} onClick={onSelectPlayer ? () => onSelectPlayer(p) : undefined} />)}
             </div>
           </div>
 
