@@ -51,11 +51,14 @@ logger = logging.getLogger(__name__)
 _ZSTD_MAGIC = b'\x28\xb5\x2f\xfd'
 _BZ2_MAGIC = b'BZh'
 
-# Real per-hero base stats, read from the exact same heroes.json the
-# frontend ships (frontend/src/lib/constants/heroes.json) — one source of
-# truth for both sides instead of a second hand-copied table that could
-# drift out of sync.
-_HERO_STATS_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'frontend', 'src', 'lib', 'constants', 'heroes.json')
+# Real per-hero base stats. Vendored into the backend itself
+# (services/constants/heroes.json, a straight copy of
+# frontend/src/lib/constants/heroes.json) because the deployed backend
+# Docker image's build context is the backend/ directory only — it has no
+# access to frontend/ at runtime, which is why the original path (pointing
+# across into frontend/) failed silently in production. Re-copy from the
+# frontend file if hero data is ever refreshed there.
+_HERO_STATS_PATH = os.path.join(os.path.dirname(__file__), 'constants', 'heroes.json')
 _hero_stats_cache: Optional[dict] = None
 
 
@@ -204,9 +207,13 @@ async def parse_hero_vitals(match_id: int, cluster_id: int, replay_salt: int, pl
             return
         lvl = level_by_slot.get(pslot, 1)
         max_hp, max_mana = _max_hp_mana(hero_id, lvl)
-        if dead_until.get(pslot, -1) > last_time.get(pslot, t):
+        du = dead_until.get(pslot)
+        # Dota's game clock is negative during the pre-game/pick phase, so a
+        # sentinel like -1 can spuriously compare as "still in the future"
+        # against an even-more-negative last_time — check membership instead.
+        if du is not None and du > last_time.get(pslot, t):
             # Still dead through this interval — stays at 0 until respawn.
-            if t >= dead_until[pslot]:
+            if t >= du:
                 hp[pslot] = max_hp
                 mana[pslot] = max_mana
             last_time[pslot] = t
