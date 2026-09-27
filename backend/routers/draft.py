@@ -230,6 +230,16 @@ def update_gsi_draft_state(gsi_data: dict):
         _gsi_state["phase"] = "pick" if "HERO_SELECTION" in game_state else "strategy"
 
         draft = gsi_data.get("draft", {})
+        # Unconditional, every call during pick/strategy phase — unlike the
+        # block below, this fires even when "draft" comes back empty/absent,
+        # which is exactly the case that needs diagnosing: the previous
+        # version only logged once real pick data was already found, so it
+        # went completely silent when the draft block itself was the
+        # problem rather than the parsing of it.
+        logger.info(
+            f"[GSI draft] game_state={game_state} top_level_keys={sorted(gsi_data.keys())} "
+            f"draft_present={'draft' in gsi_data} draft_raw={draft!r}"
+        )
         if draft:
             # Real GSI team keys are team0/team1, not team2/team3 — fixed.
             # Each side's "home_team" flag (or, defensively, team_name on
