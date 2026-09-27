@@ -4,7 +4,7 @@ import { getHeroImage, getItemImage } from '../lib/dota';
 // Interpolates a per-minute cumulative array (gold_t/xp_t/lh_t/networth_t/
 // hero_damage_t/hero_healing_t style) at an arbitrary time in seconds, same
 // lerp approach as MatchMap's hero-position interpolation.
-function interpAtTime(arr: any, t: number): number {
+export function interpAtTime(arr: any, t: number): number {
   let series = arr;
   if (typeof series === 'string') {
     try { series = JSON.parse(series); } catch { return 0; }
@@ -19,7 +19,7 @@ function interpAtTime(arr: any, t: number): number {
   return v0 + (v1 - v0) * frac;
 }
 
-function liveCount(player: any, key: string, currentTime: number): number {
+export function liveCount(player: any, key: string, currentTime: number): number {
   let log = player[key];
   if (typeof log === 'string') {
     try { log = JSON.parse(log); } catch { return 0; }
@@ -28,7 +28,7 @@ function liveCount(player: any, key: string, currentTime: number): number {
   return log.filter((e: any) => (e.time ?? 0) <= currentTime).length;
 }
 
-function liveItems(player: any, currentTime: number): string[] {
+export function liveItems(player: any, currentTime: number): string[] {
   let log = player.purchase_log;
   if (typeof log === 'string') {
     try { log = JSON.parse(log); } catch { return []; }

@@ -7,6 +7,7 @@ interface PlaybackSectionProps {
   matchData: any;
   allPlayers: any[];
   selectedPlayer: any;
+  onOpenFullPlayback?: () => void;
 }
 
 /**
@@ -17,7 +18,7 @@ interface PlaybackSectionProps {
  * always starts at 0 and autoplays on its own once scrolled into view,
  * like a video player, independent of wherever the page's own scrubber is.
  */
-export default function PlaybackSection({ matchData, allPlayers, selectedPlayer }: PlaybackSectionProps) {
+export default function PlaybackSection({ matchData, allPlayers, selectedPlayer, onOpenFullPlayback }: PlaybackSectionProps) {
   const playback = useMatchPlayback();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasStartedRef = useRef(false);
@@ -62,7 +63,15 @@ export default function PlaybackSection({ matchData, allPlayers, selectedPlayer 
 
   return (
     <div ref={containerRef} style={{ marginTop: '2rem' }}>
-      <h3 style={{ marginBottom: '1rem', color: 'var(--text-primary)' }}>Match Playback</h3>
+      <h3
+        onClick={onOpenFullPlayback}
+        style={{ marginBottom: '1rem', color: 'var(--text-primary)', cursor: onOpenFullPlayback ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+        title={onOpenFullPlayback ? 'Open full Playback page' : undefined}
+        onMouseEnter={(e) => { if (onOpenFullPlayback) e.currentTarget.style.color = 'var(--accent-gold)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-primary)'; }}
+      >
+        Match Playback {onOpenFullPlayback && <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>↗</span>}
+      </h3>
       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 320px', minWidth: '300px', maxWidth: '420px' }}>
           <MatchMap

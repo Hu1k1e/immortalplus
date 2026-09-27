@@ -6,12 +6,13 @@ import { getGameModeLabel, getLobbyTypeLabel, getRegionLabel } from '../lib/matc
 
 import MatchNavBar from '../components/MatchNavBar';
 import MatchOverview from '../components/MatchOverview';
+import MatchPlaybackPage from '../components/MatchPlaybackPage';
 import { IconRadiant, IconDire } from '../components/Icons';
 import MovementTab from '../components/MovementTab';
 import { BenchmarksTab, PerformancesTab, LaningTab, CombatTab, FarmTab, ItemsTab, CastsTab, ObjectivesTab, VisionTab, ActionsTab, TeamfightsTab, ChatTab, LogTab, StoryTab, GraphsTab } from '../components/MatchTabs';
 import { useMatchPlayback } from '../hooks/useMatchPlayback';
 
-const MAIN_TABS = ['Overview', 'Benchmarks', 'Performances', 'Laning', 'Movement', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'];
+const MAIN_TABS = ['Overview', 'Playback', 'Benchmarks', 'Performances', 'Laning', 'Movement', 'Combat', 'Farm', 'Items', 'Graphs', 'Casts', 'Objectives', 'Vision', 'Actions', 'Teamfights', 'Chat', 'Story', 'Log'];
 
 export default function MatchDetail() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -316,9 +317,11 @@ export default function MatchDetail() {
           selectedPlayer={selectedPlayer}
           setSelectedPlayer={setSelectedPlayer}
           playback={playback}
+          onOpenFullPlayback={() => goToTab('Playback')}
         />
       )}
 
+      {mainTab === 'Playback' && <MatchPlaybackPage matchData={matchData} allPlayers={allPlayers} />}
       {mainTab === 'Benchmarks' && <BenchmarksTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Performances' && <PerformancesTab allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}
       {mainTab === 'Laning' && <LaningTab matchData={matchData} allPlayers={allPlayers} radiantWin={matchData.radiant_win} />}

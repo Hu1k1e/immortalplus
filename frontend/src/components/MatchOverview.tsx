@@ -16,11 +16,12 @@ interface MatchOverviewProps {
   selectedPlayer: any;
   setSelectedPlayer: (p: any) => void;
   playback: any;
+  onOpenFullPlayback?: () => void;
 }
 
 export default function MatchOverview({
   matchData, allPlayers, analysis, aiCoaching, aiError,
-  activeMistakeTab, setActiveMistakeTab, selectedPlayer, setSelectedPlayer, playback,
+  activeMistakeTab, setActiveMistakeTab, selectedPlayer, setSelectedPlayer, playback, onOpenFullPlayback,
 }: MatchOverviewProps) {
   if (selectedPlayer) {
     return (
@@ -38,7 +39,7 @@ export default function MatchOverview({
     );
   }
 
-  return <OverviewBody matchData={matchData} allPlayers={allPlayers} setSelectedPlayer={setSelectedPlayer} playback={playback} />;
+  return <OverviewBody matchData={matchData} allPlayers={allPlayers} setSelectedPlayer={setSelectedPlayer} playback={playback} onOpenFullPlayback={onOpenFullPlayback} />;
 }
 
 /**
@@ -57,7 +58,7 @@ export default function MatchOverview({
  * PlaybackSection's own — that one always starts at 0 and autoplays once
  * scrolled into view, independent of wherever this one is scrubbed to.
  */
-function OverviewBody({ matchData, allPlayers, setSelectedPlayer, playback }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void, playback: any }) {
+function OverviewBody({ matchData, allPlayers, setSelectedPlayer, playback, onOpenFullPlayback }: { matchData: any; allPlayers: any[]; setSelectedPlayer: (p: any) => void, playback: any, onOpenFullPlayback?: () => void }) {
   const isParsed = !!matchData?.is_parsed;
   const displayTime = isParsed ? playback.displayTime : undefined;
 
@@ -78,7 +79,7 @@ function OverviewBody({ matchData, allPlayers, setSelectedPlayer, playback }: { 
         <div style={{ marginTop: '1.5rem' }}>
           <KillBreakdownTable allPlayers={allPlayers} />
         </div>
-        <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} />
+        <PlaybackSection matchData={matchData} allPlayers={allPlayers} selectedPlayer={null} onOpenFullPlayback={onOpenFullPlayback} />
       </div>
       {isParsed && (
         <GlobalPlaybackBar
