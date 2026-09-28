@@ -27,6 +27,14 @@ class Player(SQLModel, table=True):
     # happened to accumulate over time, not the account's real complete
     # history. None means never backfilled (or backfill in progress).
     history_backfilled_at: Optional[datetime] = None
+    # How many pages of the backfill have completed so far (persisted,
+    # not just an in-memory loop counter) — a backfill can take a couple
+    # minutes for an active account, and a redeploy restarting the
+    # backend mid-backfill would otherwise always restart from page 0
+    # forever if redeploys happen more often than the backfill can
+    # finish. Resuming from here instead means a redeploy costs the
+    # backfill's already-fetched pages nothing.
+    history_backfill_page: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

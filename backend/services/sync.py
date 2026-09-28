@@ -194,6 +194,12 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
     deduped by match_id the same way the incremental sync is — but is
     only meant to run once per player (see Player.history_backfilled_at,
     checked by the caller in main.py).
+
+    Resumes from Player.history_backfill_page rather than always
+    starting at page 0 - a full backfill can take a couple minutes for
+    an active account, and this app got redeployed several times in
+    quick succession while this was being tested, which would otherwise
+    have restarted it from scratch every time and never let it finish.
     """
     if not player.account_id:
         logger.warning(f"Player {player.steam_id} has no account_id — skipping history backfill")
@@ -201,8 +207,11 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
 
     source = settings.data_source if settings else "both"
     total_new = 0
+    start_page = player.history_backfill_page or 0
+    if start_page:
+        logger.info(f"History backfill: resuming for {player.account_id} from page {start_page}")
 
-    for page in range(_BACKFILL_MAX_PAGES):
+    for page in range(start_page, _BACKFILL_MAX_PAGES):
         skip = page * _BACKFILL_PAGE_SIZE
         matches = None
 
@@ -247,9 +256,13 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
             session.add(_match_row_from_dict(m, player.id))
             page_new += 1
 
-        if page_new:
-            session.commit()
-            total_new += page_new
+        total_new += page_new
+        # Persisted after every page (not just at the very end) so a
+        # redeploy mid-backfill resumes here next time instead of
+        # re-fetching pages already stored — see this function's
+        # docstring.
+        player.history_backfill_page = page + 1
+        session.commit()
 
         # Respect rate limits between pages — same pacing already used
         # elsewhere in this file (sync_hero_matchups/sync_hero_synergy).
