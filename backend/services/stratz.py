@@ -39,7 +39,18 @@ class StratzClient:
         self.api_token = api_token
         self.headers = {
             "Authorization": f"Bearer {api_token}",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            # Stratz's own API docs (stratz.com/api) explicitly require
+            # this exact header on every request: "Please ensure that all
+            # API requests include the header User-Agent: STRATZ_API".
+            # This was a browser-spoofed UA instead — real candidate for
+            # why heroStats.stats/matchUp were returning HTTP 200 with no
+            # GraphQL error but zero rows for every hero: a server quietly
+            # filtering unidentified clients rather than rejecting them
+            # outright fits that evidence exactly. get_player_matches/
+            # get_match kept working regardless, which fits too if the
+            # UA requirement specifically gates these proprietary
+            # analytics endpoints rather than basic match/player data.
+            "User-Agent": "STRATZ_API",
         }
         # Configure client without HTTP/2 to prevent framing errors
         self.client = httpx.AsyncClient(headers=self.headers, http2=False)
