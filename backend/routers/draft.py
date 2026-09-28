@@ -298,8 +298,29 @@ async def data_health(session: Session = Depends(get_session)):
         if s["label"] == "hero_synergy" and not has_stratz and s["count"] == 0:
             s["status"] = "not_configured"
 
+    # "Your best" completeness — added directly in response to reports of
+    # it only reflecting "some games" despite the account having played
+    # for a long time. Exposes the real backfill state (see services/
+    # sync.py's sync_full_match_history) instead of that being invisible:
+    # how many matches are actually stored locally right now, and whether
+    # the one-time full-history backfill has actually finished or is
+    # still (or still needs to be) working through it.
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    match_history = None
+    if player:
+        local_match_count = session.exec(
+            select(func.count()).select_from(Match).where(Match.player_id == player.id)
+        ).one()
+        match_history = {
+            "local_match_count": local_match_count,
+            "backfill_complete": bool(player.history_backfilled_at),
+            "backfill_completed_at": player.history_backfilled_at.isoformat() if player.history_backfilled_at else None,
+            "backfill_pages_fetched": player.history_backfill_page or 0,
+        }
+
     return {
         "sources": sources,
+        "match_history": match_history,
         "overall": "ok" if all(s["status"] in ("ok", "not_configured") for s in sources) else "attention_needed",
         "checked_at": now.isoformat(),
     }

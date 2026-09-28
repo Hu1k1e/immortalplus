@@ -482,8 +482,11 @@ export default function DraftHelper() {
             <div key={s.hero_id} className="position-row">
               <img src={getHeroIcon(s.hero_id)} alt={hero.name} className="position-row-icon" />
               <span className="position-row-name">{hero.name}</span>
-              <span className={`position-row-score ${s.score >= 55 ? 'good' : s.score <= 45 ? 'bad' : ''}`}>
-                {s.score >= 50 ? '+' : ''}{(s.score - 50).toFixed(1)}
+              <span
+                className={`position-row-score ${s.score >= 55 ? 'good' : s.score <= 45 ? 'bad' : ''}`}
+                title="Suggestion score out of 100 (meta strength + your comfort + matchups + synergy blended) — 50 is neutral, higher is better"
+              >
+                {Math.round(s.score)}
               </span>
               {breakdown.length > 0 && (
                 <div className="position-row-tooltip">

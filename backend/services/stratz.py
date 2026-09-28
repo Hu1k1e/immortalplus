@@ -431,15 +431,26 @@ class StratzClient:
         assumed (root-caused after this returned empty with no logged
         error — see the raise-on-empty and error-array logging below,
         added specifically because that failure was silent before).
+
+        bracketBasicIds is no longer sent, matching the fix confirmed for
+        the sibling heroStats.matchUp query (get_hero_synergy_and_
+        matchups): bracketBasicIds: ["ALL"] was confirmed there to
+        silently zero out an otherwise-correct query, on the exact same
+        enum this call also passes "ALL" into. This call's own previously
+        "intermittent" behavior (worked once, then fell back to the
+        Dota2ProTracker scrape on a later attempt — see
+        services/protracker.py's sync_hero_position_meta) fits that same
+        bug rather than genuine flakiness. bracket_basic is kept as an
+        accepted-but-unused param so callers don't need to change.
         """
         if hero_ids is None:
             from utils.dota_constants import HEROES
             hero_ids = list(HEROES.keys())
 
         query = """
-        query($heroIds: [Short], $bracketBasicIds: [RankBracketBasicEnum]) {
+        query($heroIds: [Short]) {
           heroStats {
-            stats(heroIds: $heroIds, bracketBasicIds: $bracketBasicIds, groupByPosition: true) {
+            stats(heroIds: $heroIds, groupByPosition: true) {
               heroId
               position
               matchCount
@@ -448,7 +459,7 @@ class StratzClient:
           }
         }
         """
-        variables = {"heroIds": hero_ids, "bracketBasicIds": [bracket_basic]}
+        variables = {"heroIds": hero_ids}
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:

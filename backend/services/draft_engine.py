@@ -186,6 +186,21 @@ def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, 
     return max(0.0, min(100.0, score)), reasons[:2], breakdown
 
 
+# Minimum real matches at a position before its winrate is trusted for
+# ranking at all. Confirmed as a real, live bug (not guessed) by pulling
+# ProTracker's own API response directly: Ancient Apparition and Pugna
+# both showed "pos 1 matches: 1, pos 1 winrate: 1" (one single Carry game
+# — a win) — a real number, correctly scraped, but statistically
+# meaningless, and with no floor it sorted to the very top of "Best This
+# Patch" ahead of heroes with hundreds or thousands of real matches at
+# that position, since a lone 100% winrate blends to a near-maximal
+# score. 20 is comfortably above that kind of noise while still well
+# below the hundreds-to-thousands of matches a genuinely-played
+# position/hero combo has in the real data (e.g. Pugna pos 4: 571
+# matches, Jakiro pos 5: 1541).
+MIN_META_MATCHES = 20
+
+
 def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_rank: dict[int, dict]) -> tuple[float, str | None]:
     """
     Blends Dota2ProTracker's position-specific (but high-MMR/pro-only)
@@ -196,7 +211,8 @@ def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_
     position" — HeroMeta only adjusts it toward how the hero performs at
     the player's actual rank generally.
     """
-    position_winrate = position_stats["winrate"] if position_stats and position_stats.get("winrate") else None
+    has_enough_matches = position_stats and (position_stats.get("matches") or 0) >= MIN_META_MATCHES
+    position_winrate = position_stats["winrate"] if has_enough_matches and position_stats.get("winrate") is not None else None
     rank_meta = hero_meta_at_rank.get(hero_id)
     rank_winrate = rank_meta["winrate"] if rank_meta and rank_meta.get("winrate") else None
 
@@ -255,7 +271,16 @@ def calculate_role_based_suggestions(
         # ── meta_best: current-patch winrate at this position, rank-adjusted ──
         meta_best = []
         for hero_id, stats in meta_for_role.items():
-            if hero_id in unavailable or not stats.get("winrate"):
+            if hero_id in unavailable or stats.get("winrate") is None:
+                continue
+            if (stats.get("matches") or 0) < MIN_META_MATCHES:
+                # Real matches at this position, but too few to be a
+                # meaningful "current patch at this position" signal — see
+                # MIN_META_MATCHES. Excluded from this list entirely
+                # rather than kept with a diluted score, since a hero
+                # essentially never played here doesn't belong in
+                # "current-patch winrate at this position" no matter how
+                # the score shakes out.
                 continue
             score, reason = _rank_adjusted_meta(hero_id, stats, hero_meta_at_rank)
             meta_best.append({
