@@ -8,6 +8,7 @@ backend (it isn't, normally: this runs on the *gaming* PC).
 """
 
 import os
+import sys
 
 BACKEND_URL = os.environ.get("IMMORTALPLUS_BACKEND_URL", "https://dota.hulksmash.ca")
 
@@ -19,10 +20,19 @@ PHASE_POLL_INTERVAL_S = 2.0
 # How often to capture + match the screen once the draft phase is active.
 CAPTURE_INTERVAL_S = 1.0
 
-# Minimum template-match confidence (0-1) to accept a hero identification
-# for a slot. Tuned conservatively — a missed pick (we just don't update
-# yet) is much better than a wrong one (bad suggestions).
-MATCH_CONFIDENCE_THRESHOLD = 0.75
+# Match confidence thresholds live next to the matchers that use them —
+# matcher.py's MIN_GOOD_MATCHES, ban_ocr.py's fuzzy-match cutoff — since
+# they're specific to each matching algorithm's own scoring scale.
 
 # Where cached hero icon reference images are stored after first download.
-ICON_CACHE_DIR = os.path.join(os.path.dirname(__file__), ".icon_cache")
+# Not next to the script: when packaged as a onefile .exe (build.spec),
+# that "next to the script" location is a fresh temp dir every single
+# run (PyInstaller onefile mode self-extracts and cleans up after exit),
+# which would force a full re-download of all ~125 icons on every
+# launch. %LOCALAPPDATA% persists across runs like any normal installed
+# app's data would.
+if getattr(sys, "frozen", False):
+    _cache_root = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "draft-scanner")
+else:
+    _cache_root = os.path.dirname(__file__)
+ICON_CACHE_DIR = os.path.join(_cache_root, "icon_cache")

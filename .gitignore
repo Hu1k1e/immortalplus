@@ -32,3 +32,7 @@ draft-scanner/calibration_grid.png
 draft-scanner/regions_preview.png
 draft-scanner/_crop_*.png
 draft-scanner/_verify_*.png
+draft-scanner/build/
+draft-scanner/dist/
+draft-scanner/_tesseract_bundle/
+draft-scanner/*.spec.bak

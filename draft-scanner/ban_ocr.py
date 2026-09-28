@@ -17,6 +17,10 @@ this directly during setup even right after a successful install. Since
 the actual exe lands in one of a couple of predictable locations
 regardless, check those directly instead of making every user fight
 their PATH.
+
+The packaged .exe (see build.spec) bundles its own copy of Tesseract
+instead of depending on a system install at all — end users shouldn't
+need to install anything separately. That bundled copy is checked first.
 """
 
 import difflib
@@ -24,6 +28,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 
 import numpy as np
 
@@ -37,6 +42,16 @@ _KNOWN_INSTALL_PATHS = [
 ]
 
 
+def _bundled_tesseract_path() -> str | None:
+    """Path to the copy bundled inside the packaged .exe (build.spec),
+    when running as that .exe rather than as a plain Python script."""
+    if not getattr(sys, "frozen", False):
+        return None
+    bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    path = os.path.join(bundle_dir, "Tesseract-OCR", "tesseract.exe")
+    return path if os.path.exists(path) else None
+
+
 _tesseract_path_configured = False
 
 
@@ -47,6 +62,17 @@ def _configure_tesseract_path():
     _tesseract_path_configured = True
 
     import pytesseract
+
+    bundled = _bundled_tesseract_path()
+    if bundled:
+        pytesseract.pytesseract.tesseract_cmd = bundled
+        # Tesseract needs to find its trained-language data (tessdata/) —
+        # it looks relative to the exe by default, but be explicit rather
+        # than rely on that, since TESSDATA_PREFIX is what it actually
+        # checks first.
+        os.environ["TESSDATA_PREFIX"] = os.path.join(os.path.dirname(bundled), "tessdata")
+        logger.info(f"Using bundled Tesseract at {bundled}")
+        return
 
     if shutil.which("tesseract"):
         return  # already on PATH, nothing to do
