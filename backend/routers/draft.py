@@ -385,6 +385,76 @@ async def debug_stratz_matchup(session: Session = Depends(get_session)):
     return results
 
 
+@router.get("/debug-stratz-heroperf")
+async def debug_stratz_heroperf(session: Session = Depends(get_session)):
+    """
+    TEMPORARY diagnostic — remove once "your best" is confirmed accurate.
+    heroesPerformance (wired in as the primary "your best" source) is
+    reported still showing "not enough games" in production even though
+    the request looked correct. matchUp just taught a real lesson: an
+    extra, seemingly-harmless optional arg (bracketBasicIds: ["ALL"])
+    silently zeroed an otherwise-correct query. Rather than assume the
+    same shape is safe here, this runs a few real variants against the
+    account's own data and returns each one's raw response.
+    """
+    settings = session.exec(select(UserSettings).limit(1)).first()
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    if not settings or not getattr(settings, "stratz_api_token", None):
+        raise HTTPException(status_code=400, detail="No Stratz token configured")
+    if not player or not player.account_id:
+        raise HTTPException(status_code=400, detail="No player/account_id found")
+
+    import httpx
+    headers = {"Authorization": f"Bearer {settings.stratz_api_token}", "User-Agent": "STRATZ_API"}
+    account_id = player.account_id
+
+    variants = {
+        "A_take_only_current_shape": {
+            "query": """query($accountId: Long!, $take: Int) { player(steamAccountId: $accountId) {
+                heroesPerformance(take: $take) { heroId matchCount winCount
+                positionScore { id matchCount winCount } } } }""",
+            "variables": {"accountId": account_id, "take": 150},
+        },
+        "B_no_args_at_all": {
+            "query": """query($accountId: Long!) { player(steamAccountId: $accountId) {
+                heroesPerformance { heroId matchCount winCount
+                positionScore { id matchCount winCount } } } }""",
+            "variables": {"accountId": account_id},
+        },
+        "C_small_take": {
+            "query": """query($accountId: Long!, $take: Int) { player(steamAccountId: $accountId) {
+                heroesPerformance(take: $take) { heroId matchCount winCount
+                positionScore { id matchCount winCount } } } }""",
+            "variables": {"accountId": account_id, "take": 25},
+        },
+        "D_player_top_level_only": {
+            "query": """query($accountId: Long!) { player(steamAccountId: $accountId) {
+                steamAccountId matchCount winCount } }""",
+            "variables": {"accountId": account_id},
+        },
+    }
+
+    results = {}
+    async with httpx.AsyncClient(headers=headers, http2=False) as client:
+        for name, payload in variants.items():
+            try:
+                resp = await client.post(STRATZ_API_URL, json=payload, timeout=20)
+                body = resp.json()
+                player_data = (body.get("data") or {}).get("player")
+                heroes = (player_data or {}).get("heroesPerformance") if isinstance(player_data, dict) else None
+                results[name] = {
+                    "http_status": resp.status_code,
+                    "errors": body.get("errors"),
+                    "player_is_null": player_data is None,
+                    "heroesPerformance_count": len(heroes) if isinstance(heroes, list) else None,
+                    "sample": (heroes[:2] if isinstance(heroes, list) else player_data),
+                }
+            except Exception as e:
+                results[name] = {"exception": str(e)}
+
+    return results
+
+
 @router.get("/state")
 async def get_draft_state():
     """Get current GSI draft state."""

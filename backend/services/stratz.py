@@ -418,30 +418,25 @@ class StratzClient:
         {"with": [{hero_id, synergy, matches, winrate}, ...],
          "vs": [...]} — hero_id in each entry is the OTHER hero in the pair.
 
-        Uses heroIds (plural, a 1-element list) rather than the singular
-        heroId arg this originally used: the sibling heroStats.stats
-        query had the exact same symptom (HTTP 200, no GraphQL error,
-        silently zero rows) and was confirmed fixed by switching from an
-        omitted/singular hero filter to explicit heroIds. That fix alone
-        did NOT fix this query (confirmed: still 0 rows for every hero
-        in real production logs after deploying it).
-
-        Root-caused from Stratz's own real C# GraphQL query-builder
-        source (TheAmazingLooser/STRATZ_Models, HeroStatsQueryQueryBuilder.
-        WithMatchUp) rather than guessed again: matchUp's real signature
-        is matchUp(heroId, heroIds, week, bracketBasicIds, orderBy,
-        matchLimit, skip, take) — it takes pagination args (skip/take)
-        that this query never set. Stratz's OTHER working queries in this
-        file all pass an explicit take (get_player_matches's
-        `matches(request: {take: $limit})`), consistent with take
-        defaulting to 0 (not "unlimited") when omitted — which would
-        explain exactly zero rows, every hero, every time, with no
-        GraphQL error. take is now passed explicitly.
+        Real root cause, confirmed by running several query-shape variants
+        directly against Stratz for a real hero (via a temporary debug
+        endpoint) rather than guessing further from an SDK's parameter
+        list: bracketBasicIds: ["ALL"] — not skip/take, not heroId vs
+        heroIds — is what silently zeroes this query out. The exact same
+        query with bracketBasicIds omitted entirely returned real data
+        (Anti-Mage: 10 real "with" pairs, 10 real "vs" pairs, real
+        synergy/winrate/matchCount numbers) on the first try. "ALL" is
+        apparently not a real wildcard value for this particular field,
+        unlike bracket-specific values which presumably do work (not
+        needed here — this app only ever queries the unfiltered case).
+        bracketBasicIds is no longer sent at all. bracket_basic is kept
+        as an accepted-but-unused param so the call site doesn't need to
+        change if a real bracket filter is added later.
         """
         query = """
-        query($heroIds: [Short], $bracketBasicIds: [RankBracketBasicEnum], $take: Int) {
+        query($heroIds: [Short]) {
           heroStats {
-            matchUp(heroIds: $heroIds, bracketBasicIds: $bracketBasicIds, take: $take) {
+            matchUp(heroIds: $heroIds) {
               heroId
               with {
                 heroId2
@@ -459,7 +454,7 @@ class StratzClient:
           }
         }
         """
-        variables = {"heroIds": [hero_id], "bracketBasicIds": [bracket_basic], "take": 50}
+        variables = {"heroIds": [hero_id]}
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:
