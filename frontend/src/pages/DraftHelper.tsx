@@ -2,6 +2,7 @@ import { getHeroImage, getHeroIcon } from '../lib/dota';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import api from '../lib/api';
 import { HEROES } from '../lib/heroes';
+import HeroPool from '../components/HeroPool';
 
 interface GsiState {
   active: boolean;
@@ -143,9 +144,27 @@ export default function DraftHelper() {
   // until new picks arrive and it resets back to a fresh guess.
   const [allyOverride, setAllyOverride] = useState<Record<number, number | null> | null>(null);
   const [enemyOverride, setEnemyOverride] = useState<Record<number, number | null> | null>(null);
-  const dragSource = useRef<{ side: 'ally' | 'enemy'; position: number } | null>(null);
+  // Drag source covers both tabs: a slot already holding a hero (either
+  // tab, swaps with the drop target) or a hero dragged straight out of
+  // the Manual tab's hero pool (places into the drop target instead of
+  // swapping, since the pool isn't "consumed" from anywhere).
+  const dragSource = useRef<
+    { kind: 'slot'; side: 'ally' | 'enemy'; position: number } | { kind: 'pool'; heroId: number } | null
+  >(null);
   const ws = useRef<WebSocket | null>(null);
   const lastFetchedSignature = useRef<string>('');
+
+  // ── Manual Draft tab — same board/suggestions UI as Live, but picks are
+  // placed explicitly by the user (drag from the hero pool, or click a
+  // slot then click a hero) instead of coming from GSI/the screen scanner.
+  const [activeTab, setActiveTab] = useState<'live' | 'manual'>('live');
+  const emptySlots = (): Record<number, number | null> => ({ 1: null, 2: null, 3: null, 4: null, 5: null });
+  const [manualAlly, setManualAlly] = useState<Record<number, number | null>>(emptySlots());
+  const [manualEnemy, setManualEnemy] = useState<Record<number, number | null>>(emptySlots());
+  const [manualByRole, setManualByRole] = useState<ByRole | null>(null);
+  const [manualUpdating, setManualUpdating] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState<{ side: 'ally' | 'enemy'; position: number } | null>(null);
+  const [heroSearch, setHeroSearch] = useState('');
 
   const fetchSuggestions = useCallback(async (state: GsiState) => {
     setUpdating(true);
@@ -269,7 +288,7 @@ export default function DraftHelper() {
   const enemySlots = enemyOverride ?? autoEnemySlots;
 
   const handleDragStart = (side: 'ally' | 'enemy', position: number) => (e: React.DragEvent) => {
-    dragSource.current = { side, position };
+    dragSource.current = { kind: 'slot', side, position };
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -277,7 +296,7 @@ export default function DraftHelper() {
     e.preventDefault();
     const source = dragSource.current;
     dragSource.current = null;
-    if (!source || source.side !== side || source.position === position) return;
+    if (!source || source.kind !== 'slot' || source.side !== side || source.position === position) return;
 
     const current = side === 'ally' ? allySlots : enemySlots;
     const setOverride = side === 'ally' ? setAllyOverride : setEnemyOverride;
@@ -288,6 +307,96 @@ export default function DraftHelper() {
     next[position] = current[source.position];
     setOverride(next);
   };
+
+  // ── Manual tab handlers ──────────────────────────────────────────────
+  // Dota doesn't allow the same hero on both teams or twice on one team,
+  // so placing a hero anywhere first strips it out of every other slot
+  // it might already occupy — otherwise drag/click placement could create
+  // impossible duplicate drafts.
+  const placeHeroInManualSlot = (side: 'ally' | 'enemy', position: number, heroId: number) => {
+    setManualAlly(prev => {
+      const next = { ...prev };
+      for (const p of [1, 2, 3, 4, 5]) if (next[p] === heroId) next[p] = null;
+      if (side === 'ally') next[position] = heroId;
+      return next;
+    });
+    setManualEnemy(prev => {
+      const next = { ...prev };
+      for (const p of [1, 2, 3, 4, 5]) if (next[p] === heroId) next[p] = null;
+      if (side === 'enemy') next[position] = heroId;
+      return next;
+    });
+  };
+
+  const handlePoolDragStart = (heroId: number) => {
+    dragSource.current = { kind: 'pool', heroId };
+  };
+
+  const handlePoolHeroClick = (heroId: number) => {
+    if (!selectedSlot) return;
+    placeHeroInManualSlot(selectedSlot.side, selectedSlot.position, heroId);
+    setSelectedSlot(null);
+  };
+
+  const handleManualSlotClick = (side: 'ally' | 'enemy', position: number) => {
+    const slots = side === 'ally' ? manualAlly : manualEnemy;
+    const isSameSelected = selectedSlot?.side === side && selectedSlot?.position === position;
+    if (isSameSelected && slots[position] !== null) {
+      // Clicking an already-selected, filled slot clears it — the only
+      // way to remove a placed hero without dragging another on top of it.
+      const setSlots = side === 'ally' ? setManualAlly : setManualEnemy;
+      setSlots(prev => ({ ...prev, [position]: null }));
+      setSelectedSlot(null);
+      return;
+    }
+    setSelectedSlot(isSameSelected ? null : { side, position });
+  };
+
+  const handleManualSlotDrop = (side: 'ally' | 'enemy', position: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    const source = dragSource.current;
+    dragSource.current = null;
+    if (!source) return;
+
+    if (source.kind === 'pool') {
+      placeHeroInManualSlot(side, position, source.heroId);
+      return;
+    }
+    // Slot-to-slot: swap within the same side only (dragging across
+    // sides would silently move a hero to the other team, surprising).
+    if (source.side !== side || source.position === position) return;
+    const current = side === 'ally' ? manualAlly : manualEnemy;
+    const setSlots = side === 'ally' ? setManualAlly : setManualEnemy;
+    const next = { ...current };
+    next[source.position] = current[position];
+    next[position] = current[source.position];
+    setSlots(next);
+  };
+
+  const manualAllyIds = useMemo(
+    () => Object.values(manualAlly).filter((id): id is number => id !== null),
+    [manualAlly]
+  );
+  const manualEnemyIds = useMemo(
+    () => Object.values(manualEnemy).filter((id): id is number => id !== null),
+    [manualEnemy]
+  );
+
+  useEffect(() => {
+    if (activeTab !== 'manual') return;
+    let cancelled = false;
+    setManualUpdating(true);
+    api.post('/draft/suggest', {
+      ally_picks: manualAllyIds,
+      enemy_picks: manualEnemyIds,
+      bans: [],
+    })
+      .then(res => { if (!cancelled) setManualByRole(res.data.by_role || null); })
+      .catch(err => console.error(err))
+      .finally(() => { if (!cancelled) setManualUpdating(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, manualAllyIds.join(','), manualEnemyIds.join(',')]);
 
   const renderBanStrip = (heroIds: number[]) => (
     <div className="draft-hero-strip">
@@ -310,7 +419,7 @@ export default function DraftHelper() {
     return (
       <div
         className={`position-slot ${hero ? 'filled' : 'empty'}`}
-        onDragOver={(e) => { if (dragSource.current?.side === side) e.preventDefault(); }}
+        onDragOver={(e) => { if (dragSource.current?.kind === 'slot' && dragSource.current.side === side) e.preventDefault(); }}
         onDrop={handleDrop(side, position)}
         title={hero ? 'Drag to another column if this guess looks wrong' : undefined}
       >
@@ -323,6 +432,33 @@ export default function DraftHelper() {
           />
         ) : (
           <span className="position-slot-placeholder">Hero…</span>
+        )}
+        <span className="position-slot-label">{ROLE_LABELS[roleKey]}</span>
+      </div>
+    );
+  };
+
+  const renderManualSlot = (heroId: number | null, roleKey: string, side: 'ally' | 'enemy') => {
+    const hero = heroId ? HEROES[heroId] : null;
+    const position = POSITION_OF_ROLE[roleKey];
+    const selected = selectedSlot?.side === side && selectedSlot?.position === position;
+    return (
+      <div
+        className={`position-slot manual-slot ${hero ? 'filled' : 'empty'} ${selected ? 'selected' : ''}`}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleManualSlotDrop(side, position)}
+        onClick={() => handleManualSlotClick(side, position)}
+        title={hero ? 'Click to select (click again to remove), or drag a hero from the pool' : 'Click, then pick a hero from the pool above'}
+      >
+        {hero ? (
+          <img
+            src={getHeroImage(heroId!)}
+            alt={hero.name}
+            draggable
+            onDragStart={handleDragStart(side, position)}
+          />
+        ) : (
+          <span className="position-slot-placeholder">{selected ? 'Pick a hero…' : 'Hero…'}</span>
         )}
         <span className="position-slot-label">{ROLE_LABELS[roleKey]}</span>
       </div>
@@ -387,16 +523,42 @@ export default function DraftHelper() {
     );
   };
 
+  const renderManualPositionColumn = (roleKey: string, side: 'ally' | 'enemy') => {
+    const position = POSITION_OF_ROLE[roleKey];
+    const slots = side === 'ally' ? manualAlly : manualEnemy;
+    const block = manualByRole?.[roleKey];
+    // Same choice as the Live tab: ally gets the personalized "combined"
+    // ranking, enemy gets meta strength only (combined is computed from
+    // YOUR perspective — matchup vs your enemies, synergy with your
+    // allies — which isn't meaningful mirrored onto the enemy picks).
+    const list = side === 'ally' ? block?.combined : block?.meta_best;
+    return (
+      <div className="position-column" key={roleKey}>
+        {renderManualSlot(slots[position], roleKey, side)}
+        {renderScoreList(list || [], manualByRole ? 'No data yet.' : 'Add heroes above to see suggestions.')}
+      </div>
+    );
+  };
+
   const summaryBlock = byRole?.[summaryRole];
+  const manualSummaryBlock = manualByRole?.[summaryRole];
+  const activeByRole = activeTab === 'live' ? byRole : manualByRole;
+  const activeSummaryBlock = activeTab === 'live' ? summaryBlock : manualSummaryBlock;
+  const manualUsedHeroIds = useMemo(
+    () => new Set<number>([...manualAllyIds, ...manualEnemyIds]),
+    [manualAllyIds, manualEnemyIds]
+  );
 
   return (
     <div>
       <header className="page-header draft-header">
         <div>
-          <h1 className="gold-text-gradient">Live Draft Helper</h1>
+          <h1 className="gold-text-gradient">Draft Helper</h1>
           <p className="text-secondary">
-            {gsiState.active ? `Drafting phase active (${gsiState.phase})...` : 'Waiting for Dota 2 draft phase to begin...'}
-            {updating && <span className="draft-updating-badge">updating…</span>}
+            {activeTab === 'live'
+              ? (gsiState.active ? `Drafting phase active (${gsiState.phase})...` : 'Waiting for Dota 2 draft phase to begin...')
+              : 'Manually build both teams to get suggestions — no live game needed.'}
+            {(activeTab === 'live' ? updating : manualUpdating) && <span className="draft-updating-badge">updating…</span>}
           </p>
         </div>
         <button
@@ -410,6 +572,21 @@ export default function DraftHelper() {
           {refreshStatus === 'idle' && 'Refresh Meta Data'}
         </button>
       </header>
+
+      <div className="draft-mode-tabs">
+        <button
+          className={`draft-mode-tab ${activeTab === 'live' ? 'draft-mode-tab-active' : ''}`}
+          onClick={() => setActiveTab('live')}
+        >
+          Live Draft
+        </button>
+        <button
+          className={`draft-mode-tab ${activeTab === 'manual' ? 'draft-mode-tab-active' : ''}`}
+          onClick={() => setActiveTab('manual')}
+        >
+          Manual Draft
+        </button>
+      </div>
 
       {dataHealth && (
         <div className="glass-surface data-health-panel">
@@ -426,29 +603,64 @@ export default function DraftHelper() {
         </div>
       )}
 
-      <div className="draft-board">
-        <div className="draft-side draft-side-ally">
-          <div className="draft-side-header ally">
-            <span className="draft-side-title">Your Team</span>
-            <span className="draft-side-subtitle">Allies</span>
+      {activeTab === 'manual' && (
+        <HeroPool
+          usedHeroIds={manualUsedHeroIds}
+          search={heroSearch}
+          onSearchChange={setHeroSearch}
+          onDragStart={handlePoolDragStart}
+          onHeroClick={handlePoolHeroClick}
+          selectedSlotActive={!!selectedSlot}
+        />
+      )}
+
+      {activeTab === 'live' ? (
+        <div className="draft-board">
+          <div className="draft-side draft-side-ally">
+            <div className="draft-side-header ally">
+              <span className="draft-side-title">Your Team</span>
+              <span className="draft-side-subtitle">Allies</span>
+            </div>
+            <div className="position-columns">
+              {ROLE_ORDER.map(k => renderPositionColumn(k, 'ally'))}
+            </div>
           </div>
-          <div className="position-columns">
-            {ROLE_ORDER.map(k => renderPositionColumn(k, 'ally'))}
+
+          <div className="draft-side draft-side-enemy">
+            <div className="draft-side-header enemy">
+              <span className="draft-side-title">Enemy Team</span>
+              <span className="draft-side-subtitle">Enemies</span>
+            </div>
+            <div className="position-columns">
+              {ROLE_ORDER.map(k => renderPositionColumn(k, 'enemy'))}
+            </div>
           </div>
         </div>
-
-        <div className="draft-side draft-side-enemy">
-          <div className="draft-side-header enemy">
-            <span className="draft-side-title">Enemy Team</span>
-            <span className="draft-side-subtitle">Enemies</span>
+      ) : (
+        <div className="draft-board">
+          <div className="draft-side draft-side-ally">
+            <div className="draft-side-header ally">
+              <span className="draft-side-title">Your Team</span>
+              <span className="draft-side-subtitle">Allies</span>
+            </div>
+            <div className="position-columns">
+              {ROLE_ORDER.map(k => renderManualPositionColumn(k, 'ally'))}
+            </div>
           </div>
-          <div className="position-columns">
-            {ROLE_ORDER.map(k => renderPositionColumn(k, 'enemy'))}
+
+          <div className="draft-side draft-side-enemy">
+            <div className="draft-side-header enemy">
+              <span className="draft-side-title">Enemy Team</span>
+              <span className="draft-side-subtitle">Enemies</span>
+            </div>
+            <div className="position-columns">
+              {ROLE_ORDER.map(k => renderManualPositionColumn(k, 'enemy'))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {gsiState.bans.length > 0 && (
+      {activeTab === 'live' && gsiState.bans.length > 0 && (
         <div className="glass-surface draft-bans-panel">
           <h4>Banned</h4>
           {renderBanStrip(gsiState.bans)}
@@ -468,22 +680,24 @@ export default function DraftHelper() {
           ))}
         </div>
 
-        {!byRole ? (
+        {!activeByRole ? (
           <div className="suggestion-placeholder">
-            <p className="text-muted">More detail appears here once the draft starts.</p>
+            <p className="text-muted">
+              {activeTab === 'live' ? 'More detail appears here once the draft starts.' : 'Add heroes above to see suggestions.'}
+            </p>
           </div>
-        ) : summaryBlock ? (
+        ) : activeSummaryBlock ? (
           <div className="suggestion-columns">
             <div className="suggestion-column">
               <div className="suggestion-column-header">
                 <h4>Best This Patch</h4>
                 <span className="suggestion-column-subtitle">Highest winrate at this position</span>
               </div>
-              {summaryBlock.meta_best.length === 0 ? (
+              {activeSummaryBlock.meta_best.length === 0 ? (
                 <p className="text-muted suggestion-empty">Not enough data yet.</p>
               ) : (
                 <div className="suggestion-list">
-                  {summaryBlock.meta_best.slice(0, 6).map((s, i) => {
+                  {activeSummaryBlock.meta_best.slice(0, 6).map((s, i) => {
                     const hero = HEROES[s.hero_id];
                     if (!hero) return null;
                     return (
@@ -508,11 +722,11 @@ export default function DraftHelper() {
                 <h4>Your Best</h4>
                 <span className="suggestion-column-subtitle">Your history at this position</span>
               </div>
-              {summaryBlock.your_best.length === 0 ? (
+              {activeSummaryBlock.your_best.length === 0 ? (
                 <p className="text-muted suggestion-empty">Not enough games yet.</p>
               ) : (
                 <div className="suggestion-list">
-                  {summaryBlock.your_best.slice(0, 6).map((s, i) => {
+                  {activeSummaryBlock.your_best.slice(0, 6).map((s, i) => {
                     const hero = HEROES[s.hero_id];
                     if (!hero) return null;
                     return (
