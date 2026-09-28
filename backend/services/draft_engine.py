@@ -102,6 +102,18 @@ def compute_personal_position_stats(matches: list) -> dict[int, dict[int, dict]]
     return stats
 
 
+# Same real bug class as MIN_META_MATCHES, applied to per-matchup and
+# per-pair-synergy samples too: OpenDota's matchup "advantage" and
+# Stratz's pair "synergy" are both computed from a specific two-hero
+# sample that can be tiny (a rarely-seen combo might have only 1-5
+# recorded games), and a 1-game 100%-or-0% result produces an extreme
+# advantage/synergy value that isn't statistically meaningful. Any
+# matchup/pair sample below this is treated as "no data" (falls back to
+# neutral) rather than trusted at full weight.
+MIN_MATCHUP_MATCHES = 20
+MIN_SYNERGY_MATCHES = 20
+
+
 def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int, list[dict]]) -> tuple[float, list[str], list[dict]]:
     """Average advantage vs EVERY currently-picked enemy hero this app
     has matchup data for (previously stopped at the first match found,
@@ -116,7 +128,11 @@ def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int
         return 50.0, [], []
 
     matchup_data = hero_matchups.get(hero_id, [])
-    by_enemy = {m.get("hero_id"): m.get("advantage", 0) or 0 for m in matchup_data}
+    by_enemy = {
+        m.get("hero_id"): m.get("advantage", 0) or 0
+        for m in matchup_data
+        if (m.get("games_played") or 0) >= MIN_MATCHUP_MATCHES
+    }
 
     advantages = []
     reasons = []
@@ -147,23 +163,24 @@ def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, 
     sync_hero_synergy) — same shape and same normalization approach as
     _matchup_score's "advantage" handling.
 
-    Honesty note on the scaling: Stratz's `synergy` field's exact numeric
-    range wasn't verified against live data before writing this (no
-    working API token was available in the environment this was written
-    in — see the PR/commit this shipped in). It's treated the same way
-    as OpenDota's matchup `advantage` field (assumed roughly a
-    percentage-point-scale deviation, same *5 normalization and clamp to
-    0-100) since both come from a comparable "winrate deviation from
-    baseline" concept, but this should be spot-checked against real
-    suggestion output once a real token is live, and the scaling factor
-    adjusted if the real numbers turn out to be a very different
-    magnitude (e.g. a 0-1 fraction, or a raw percentage already).
+    Scaling verified directly against real production data once a
+    working Stratz token was live (this was previously an unverified
+    assumption): real synergy values for actual hero pairs came back as
+    1.9-3.4-ish (e.g. Anti-Mage paired with Invoker/Lone Druid/Dazzle/
+    Enchantress), the same single-digit-to-low-double-digit magnitude as
+    OpenDota's matchup `advantage` field — confirming the shared *5
+    normalization and 0-100 clamp is the right scale for both, not a
+    guess.
     """
     if not ally_picks:
         return 50.0, [], []
 
     synergy_data = hero_synergy.get(hero_id, [])
-    by_ally = {s.get("hero_id"): s.get("synergy", 0) or 0 for s in synergy_data}
+    by_ally = {
+        s.get("hero_id"): s.get("synergy", 0) or 0
+        for s in synergy_data
+        if (s.get("matches") or 0) >= MIN_SYNERGY_MATCHES
+    }
 
     values = []
     reasons = []

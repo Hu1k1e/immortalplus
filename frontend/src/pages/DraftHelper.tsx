@@ -165,6 +165,12 @@ export default function DraftHelper() {
   const [manualUpdating, setManualUpdating] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ side: 'ally' | 'enemy'; position: number } | null>(null);
   const [heroSearch, setHeroSearch] = useState('');
+  // Transient "type anywhere to search" overlay (Manual tab only) — the
+  // typed text flashes center-screen and fades after a pause of no new
+  // keystrokes, while the filter itself stays applied until cleared
+  // (Escape, Backspace down to empty, or placing a hero).
+  const [showSearchOverlay, setShowSearchOverlay] = useState(false);
+  const searchOverlayTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchSuggestions = useCallback(async (state: GsiState) => {
     setUpdating(true);
@@ -326,6 +332,9 @@ export default function DraftHelper() {
       if (side === 'enemy') next[position] = heroId;
       return next;
     });
+    // Placing a hero brings back the full pool list — matches clearing
+    // via Escape/Backspace-to-empty (see the type-to-search effect below).
+    setHeroSearch('');
   };
 
   const handlePoolDragStart = (heroId: number) => {
@@ -397,6 +406,53 @@ export default function DraftHelper() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, manualAllyIds.join(','), manualEnemyIds.join(',')]);
+
+  // Type-to-search on the Manual tab: typing anywhere on the page (not
+  // just inside the search box) filters the hero pool. Keystrokes that
+  // land directly in the search input are left alone here — its own
+  // onChange already handles those — this only intercepts typing
+  // elsewhere on the page.
+  useEffect(() => {
+    if (activeTab !== 'manual') return;
+
+    const flashOverlay = () => {
+      setShowSearchOverlay(true);
+      if (searchOverlayTimeout.current) clearTimeout(searchOverlayTimeout.current);
+      searchOverlayTimeout.current = setTimeout(() => setShowSearchOverlay(false), 1200);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+
+      if (e.key === 'Escape') {
+        setHeroSearch('');
+        setShowSearchOverlay(false);
+        return;
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        setHeroSearch(prev => {
+          const next = prev.slice(0, -1);
+          if (next) flashOverlay(); else setShowSearchOverlay(false);
+          return next;
+        });
+        return;
+      }
+      // Single printable character, no modifier held (so Ctrl/Cmd/Alt
+      // shortcuts elsewhere on the page still work normally).
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setHeroSearch(prev => prev + e.key);
+        flashOverlay();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (searchOverlayTimeout.current) clearTimeout(searchOverlayTimeout.current);
+    };
+  }, [activeTab]);
 
   const renderBanStrip = (heroIds: number[]) => (
     <div className="draft-hero-strip">
@@ -607,14 +663,25 @@ export default function DraftHelper() {
       )}
 
       {activeTab === 'manual' && (
-        <HeroPool
-          usedHeroIds={manualUsedHeroIds}
-          search={heroSearch}
-          onSearchChange={setHeroSearch}
-          onDragStart={handlePoolDragStart}
-          onHeroClick={handlePoolHeroClick}
-          selectedSlotActive={!!selectedSlot}
-        />
+        <>
+          <HeroPool
+            usedHeroIds={manualUsedHeroIds}
+            search={heroSearch}
+            onSearchChange={setHeroSearch}
+            onDragStart={handlePoolDragStart}
+            onHeroClick={handlePoolHeroClick}
+            selectedSlotActive={!!selectedSlot}
+          />
+          {showSearchOverlay && heroSearch && (
+            // Keyed by the search string so the fade-out CSS animation
+            // (see .type-search-overlay) restarts on every keystroke
+            // instead of only playing once and staying invisible while
+            // still actively typing.
+            <div className="type-search-overlay" key={heroSearch}>
+              <span className="type-search-overlay-text">{heroSearch}</span>
+            </div>
+          )}
+        </>
       )}
 
       {activeTab === 'live' ? (

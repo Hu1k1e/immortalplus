@@ -573,6 +573,37 @@ button {
 }
 .hero-pool-item.used:hover { background: none; }
 
+/* Type-to-search flash — typing anywhere on the Manual tab filters the
+   hero pool; this is just the transient center-screen visual cue that
+   the keystroke landed, not the filter itself (see HeroPool's own
+   search box for the persistent state). */
+.type-search-overlay {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 200;
+  pointer-events: none;
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  background: rgba(20, 23, 29, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: type-search-fade 1.2s ease forwards;
+}
+.type-search-overlay-text {
+  font-size: 2.2rem;
+  font-weight: 700;
+  color: var(--accent-gold, #d4a349);
+  letter-spacing: 0.02em;
+}
+@keyframes type-search-fade {
+  0% { opacity: 0; }
+  10% { opacity: 1; }
+  75% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 .manual-slot { cursor: pointer; }
 .manual-slot.selected {
   outline: 2px solid var(--accent-gold, #d4a349);

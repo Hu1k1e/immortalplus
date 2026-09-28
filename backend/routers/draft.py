@@ -57,12 +57,17 @@ async def suggest_picks(
 
     # Hero matchup data (X vs each enemy hero), from DB — populated by
     # the background sync loop (services/sync.py:sync_hero_matchups).
+    # games_played passed through so draft_engine can ignore a matchup
+    # with too small a sample to be meaningful (see its MIN_MATCHUP_MATCHES
+    # — same real bug class as the meta "100% WR from 1 game" issue: a
+    # 1-game matchup shows as a full +/-50 advantage otherwise).
     hero_matchups: dict[int, list[dict]] = {}
     matchups = session.exec(select(HeroMatchup)).all()
     for mu in matchups:
         hero_matchups.setdefault(mu.hero_id, []).append({
             "hero_id": mu.enemy_hero_id,
             "advantage": mu.advantage or 0,
+            "games_played": mu.games_played or 0,
         })
 
     # Current-patch per-position meta (Dota2ProTracker), from DB.
@@ -117,6 +122,7 @@ async def suggest_picks(
         hero_synergy.setdefault(hs.hero_id, []).append({
             "hero_id": hs.ally_hero_id,
             "synergy": hs.synergy,
+            "matches": hs.matches or 0,
         })
 
     by_role = calculate_role_based_suggestions(
