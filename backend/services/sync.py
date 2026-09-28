@@ -116,6 +116,7 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
             level=m.get("level"),
             lane=m.get("lane"),
             lane_role=m.get("lane_role"),
+            position=m.get("position"),
             party_size=m.get("party_size"),
             player_slot=player_slot,
             radiant_win=radiant_win,

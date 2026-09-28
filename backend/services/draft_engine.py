@@ -2,24 +2,39 @@
 Draft suggestion engine — 5 roles x 3 categories.
 
 Restructured from an earlier single-list version after real user testing
-showed two problems: (1) suggestions only ever cited a matchup against
-ONE enemy hero (the first match found, via an early `break`) instead of
-the whole enemy draft, and (2) a "synergy" score that was always zero —
-it read OpenDota's `with_hero_id` field, which OpenDota's matchup API
-never actually populates (confirmed earlier this session). Both are
-fixed here: matchup scoring now averages advantage across every enemy
-pick, and synergy is a role-completeness heuristic instead of a
-fabricated statistic — see _role_completeness_bonus's docstring for why
-that's the honest choice given what data is actually available.
+and feedback surfaced three real problems, all fixed here:
+
+1. Suggestions only ever cited a matchup against ONE enemy hero (an
+   early `break` in the old loop) instead of the whole enemy draft —
+   _matchup_score now averages advantage across every enemy pick.
+
+2. A "synergy" score that was always zero, since it read OpenDota's
+   `with_hero_id` field, which OpenDota's matchup API never actually
+   populates (confirmed directly). There is no real hero-pair "plays
+   well together" data available from any source this app uses. Rather
+   than keep faking a number, "team composition" here is exactly what
+   the data actually supports: each candidate hero's own general
+   strength (meta_component) combined with its measured performance
+   against the SPECIFIC enemies already picked (matchup_component). No
+   separate synergy term.
+
+3. Position-meta (Dota2ProTracker) is high-MMR/pro only, not adjusted to
+   the player's own rank. meta_component now blends it with HeroMeta
+   (OpenDota's overall hero winrate, broken down by rank bracket but not
+   by position) when the player's rank bracket is known — ProTracker
+   says how strong a hero is at this position among strong players,
+   HeroMeta says how that hero performs specifically at the player's own
+   rank; blending gets a rank-relative read that neither alone provides.
 
 Per Dota2ProTracker's convention (matches backend/utils/dota_constants.py
 POSITIONS), positions are 1=Hard Carry, 2=Mid, 3=Offlane, 4=Soft Support,
 5=Hard Support. Each gets three ranked lists:
-  - meta_best: highest current-patch winrate at that position (HeroPositionMeta)
+  - meta_best: highest current-patch winrate at that position (HeroPositionMeta),
+    rank-adjusted by HeroMeta when available
   - your_best: the player's own best heroes at that position, from their
     own match history
-  - combined: a blended ranking (meta + personal + enemy matchup +
-    role-completeness), the "best overall suggestion" list
+  - combined: a blended ranking (meta + personal + enemy matchup), the
+    "best overall suggestion" list
 """
 
 import logging
@@ -36,14 +51,16 @@ MIN_PERSONAL_GAMES = 3
 
 def estimate_position(lane_role: int | None, gpm: int | None) -> int | None:
     """
-    Rough hero-position estimate (1-5) from data Match rows actually
-    have. OpenDota's lane_role is only 1=Safe/2=Mid/3=Off/4=Jungle — it
+    Fallback hero-position estimate (1-5), used only when a Match row
+    has no real Stratz-provided position (OpenDota-sourced matches, or
+    Stratz matches synced before this field was added — see
+    compute_personal_position_stats, which prefers the real value and
+    only falls back to this).
+
+    OpenDota's lane_role is only 1=Safe/2=Mid/3=Off/4=Jungle — it
     doesn't distinguish a core from a support sharing the same lane, so
     this uses GPM as a second signal to split each lane into its core
-    and support position. This is a heuristic, not a precise classifier
-    (a real one would need item timings / support-gold-spent, which
-    isn't stored) — good enough for ranking "your best heroes in this
-    role" relative to each other, not presented as exact.
+    and support position. This is a heuristic, not a precise classifier.
     """
     if lane_role is None:
         return None
@@ -62,47 +79,24 @@ def estimate_position(lane_role: int | None, gpm: int | None) -> int | None:
 def compute_personal_position_stats(matches: list) -> dict[int, dict[int, dict]]:
     """
     Buckets a player's own Match rows into {position: {hero_id: {games,
-    wins}}} via estimate_position. Takes Match ORM objects directly
-    (needs .hero_id, .lane_role, .gpm, .result) so the router can pass
+    wins}}}. Prefers each match's real .position (Stratz's own computed
+    1-5 position — see services/stratz.py's _parse_stratz_position and
+    models.py's Match.position) when present, falling back to the
+    lane_role+GPM heuristic (estimate_position) only for matches that
+    don't have it (OpenDota-sourced, or synced before this field
+    existed). Takes Match ORM objects directly so the router can pass
     its own query result straight through.
     """
     stats: dict[int, dict[int, dict]] = {p: {} for p in ROLE_KEYS}
     for m in matches:
-        position = estimate_position(m.lane_role, m.gpm)
-        if position is None:
+        position = m.position or estimate_position(m.lane_role, m.gpm)
+        if position is None or position not in stats:
             continue
         bucket = stats[position].setdefault(m.hero_id, {"games": 0, "wins": 0})
         bucket["games"] += 1
         if m.result == "win":
             bucket["wins"] += 1
     return stats
-
-
-def _role_completeness_bonus(hero_id: int, ally_picks: list[int]) -> tuple[float, str | None]:
-    """
-    Small bonus (0-10) if none of the allies already picked share this
-    hero's primary role tag (HEROES[hero]["roles"][0] — Carry/Support/
-    Initiator/etc). This is a heuristic for team-composition diversity,
-    NOT a real statistical synergy score: OpenDota's matchup API has no
-    real hero-pair "plays well together" data to draw from (its
-    with_hero_id field is present in the schema but never actually
-    populated — confirmed directly, not assumed), and no other source in
-    this app currently has that data either. Better to be honest about
-    "probably fills a gap in your comp" than report a fabricated
-    percentage with false precision.
-    """
-    hero_roles = set(HEROES.get(hero_id, {}).get("roles", []))
-    if not hero_roles:
-        return 0.0, None
-    primary_role = HEROES[hero_id]["roles"][0]
-
-    ally_roles = set()
-    for ally_id in ally_picks:
-        ally_roles.update(HEROES.get(ally_id, {}).get("roles", [])[:1])
-
-    if primary_role not in ally_roles:
-        return 10.0, f"Fills a {primary_role} gap in your team"
-    return 0.0, None
 
 
 def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int, list[dict]]) -> tuple[float, list[str]]:
@@ -136,6 +130,30 @@ def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int
     return max(0.0, min(100.0, score)), reasons[:2]
 
 
+def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_rank: dict[int, dict]) -> tuple[float, str | None]:
+    """
+    Blends Dota2ProTracker's position-specific (but high-MMR/pro-only)
+    winrate with OpenDota's HeroMeta winrate at the player's OWN rank
+    bracket (position-agnostic, but rank-specific) when both are
+    available. 60/40 weight toward the position-specific number, since
+    it's the more relevant signal for "should I pick this at THIS
+    position" — HeroMeta only adjusts it toward how the hero performs at
+    the player's actual rank generally.
+    """
+    position_winrate = position_stats["winrate"] if position_stats and position_stats.get("winrate") else None
+    rank_meta = hero_meta_at_rank.get(hero_id)
+    rank_winrate = rank_meta["winrate"] if rank_meta and rank_meta.get("winrate") else None
+
+    if position_winrate is not None and rank_winrate is not None:
+        blended = position_winrate * 0.6 + rank_winrate * 0.4
+        return blended * 100, f"{position_winrate*100:.1f}% WR this patch, {rank_winrate*100:.1f}% WR at your rank"
+    if position_winrate is not None:
+        return position_winrate * 100, f"{position_winrate*100:.1f}% WR this patch ({position_stats.get('matches', 0)} matches)"
+    if rank_winrate is not None:
+        return rank_winrate * 100, f"{rank_winrate*100:.1f}% WR at your rank"
+    return 50.0, None
+
+
 def calculate_role_based_suggestions(
     ally_picks: list[int],
     enemy_picks: list[int],
@@ -143,40 +161,43 @@ def calculate_role_based_suggestions(
     hero_position_meta: dict[int, dict[int, dict]],
     personal_position_stats: dict[int, dict[int, dict]],
     hero_matchups: dict[int, list[dict]],
+    hero_meta_at_rank: dict[int, dict] | None = None,
     top_n: int = 6,
 ) -> dict[str, dict[str, list[dict]]]:
     """
     Args:
         hero_position_meta: {position: {hero_id: {winrate, matches, d2pt_rating}}}
-            from HeroPositionMeta (Dota2ProTracker, current patch).
-        personal_position_stats: {position: {hero_id: {games, wins, winrate}}}
-            from the player's own match history, bucketed via estimate_position.
+            from HeroPositionMeta (Dota2ProTracker, current patch, 7000+ MMR/pro).
+        personal_position_stats: {position: {hero_id: {games, wins}}}
+            from the player's own match history (compute_personal_position_stats).
         hero_matchups: {hero_id: [{hero_id, advantage}, ...]} vs enemy heroes,
             from HeroMatchup — hero_id here is the ENEMY being matched against.
+        hero_meta_at_rank: {hero_id: {winrate, ...}} from HeroMeta, filtered to
+            the player's own rank bracket — optional, used to rank-adjust the
+            meta component when available (see _rank_adjusted_meta).
 
     Returns {role_key: {"meta_best": [...], "your_best": [...], "combined": [...]}}
     for all 5 roles, each list sorted best-first, length up to top_n.
     """
     unavailable = set(ally_picks + enemy_picks + bans)
+    hero_meta_at_rank = hero_meta_at_rank or {}
     result = {}
 
     for position, role_key in ROLE_KEYS.items():
         meta_for_role = hero_position_meta.get(position, {})
         personal_for_role = personal_position_stats.get(position, {})
 
-        # ── meta_best: current-patch winrate at this position ────────
+        # ── meta_best: current-patch winrate at this position, rank-adjusted ──
         meta_best = []
         for hero_id, stats in meta_for_role.items():
-            if hero_id in unavailable:
+            if hero_id in unavailable or not stats.get("winrate"):
                 continue
-            winrate = stats.get("winrate")
-            if winrate is None:
-                continue
+            score, reason = _rank_adjusted_meta(hero_id, stats, hero_meta_at_rank)
             meta_best.append({
                 "hero_id": hero_id,
                 "hero_name": get_hero_name(hero_id),
-                "score": round(winrate * 100, 1),
-                "reason": f"{winrate*100:.1f}% WR this patch ({stats.get('matches', 0)} matches)",
+                "score": round(score, 1),
+                "reason": reason,
             })
         meta_best.sort(key=lambda x: x["score"], reverse=True)
         meta_best = meta_best[:top_n]
@@ -197,14 +218,15 @@ def calculate_role_based_suggestions(
         your_best = your_best[:top_n]
 
         # ── combined: blended overall suggestion ──────────────────────
+        # Team composition here is just these two real signals combined —
+        # no fabricated synergy term (see module docstring, point 2).
         candidate_ids = set(meta_for_role.keys()) | set(personal_for_role.keys())
         combined = []
         for hero_id in candidate_ids:
             if hero_id in unavailable:
                 continue
 
-            meta_stats = meta_for_role.get(hero_id)
-            meta_component = (meta_stats["winrate"] * 100) if meta_stats and meta_stats.get("winrate") else 50.0
+            meta_component, meta_reason = _rank_adjusted_meta(hero_id, meta_for_role.get(hero_id), hero_meta_at_rank)
 
             personal_stats = personal_for_role.get(hero_id)
             if personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES:
@@ -215,22 +237,18 @@ def calculate_role_based_suggestions(
                 personal_component = 50.0
 
             matchup_component, matchup_reasons = _matchup_score(hero_id, enemy_picks, hero_matchups)
-            role_bonus, role_reason = _role_completeness_bonus(hero_id, ally_picks)
 
             score = (
-                meta_component * 0.35 +
+                meta_component * 0.40 +
                 personal_component * 0.30 +
-                matchup_component * 0.25 +
-                role_bonus
+                matchup_component * 0.30
             )
 
             reasons = list(matchup_reasons)
             if personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES:
                 reasons.append(f"You: {personal_stats['games']} games, {personal_stats['wins']/personal_stats['games']*100:.0f}% WR")
-            if meta_stats and meta_stats.get("winrate"):
-                reasons.append(f"{meta_stats['winrate']*100:.1f}% WR this patch")
-            if role_reason:
-                reasons.append(role_reason)
+            if meta_reason:
+                reasons.append(meta_reason)
 
             combined.append({
                 "hero_id": hero_id,

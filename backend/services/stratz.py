@@ -6,6 +6,18 @@ logger = logging.getLogger(__name__)
 
 STRATZ_API_URL = "https://api.stratz.com/graphql"
 
+
+def _parse_stratz_position(position: Optional[str]) -> Optional[int]:
+    """"POSITION_1".."POSITION_5" -> 1..5; "UNKNOWN"/"FILTERED"/"ALL"/None -> None."""
+    if not position or not position.startswith("POSITION_"):
+        return None
+    try:
+        n = int(position.rsplit("_", 1)[1])
+        return n if 1 <= n <= 5 else None
+    except (ValueError, IndexError):
+        return None
+
+
 class StratzClient:
     def __init__(self, api_token: str):
         self.api_token = api_token
@@ -43,6 +55,7 @@ class StratzClient:
                 heroDamage
                 towerDamage
                 partyId
+                position
               }
             }
           }
@@ -52,7 +65,7 @@ class StratzClient:
             "accountId": account_id,
             "limit": limit
         }
-        
+
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:
@@ -60,14 +73,14 @@ class StratzClient:
             response.raise_for_status()
             data = response.json()
             matches = data.get("data", {}).get("player", {}).get("matches", [])
-            
+
             # Format to match OpenDota style for our sync engine
             formatted_matches = []
             for m in matches:
                 # Find the target player
                 p_list = m.get("players", [])
                 p = next((player for player in p_list if player.get("steamAccountId") == account_id), {})
-                
+
                 formatted_matches.append({
                     "match_id": m.get("id"),
                     "hero_id": p.get("heroId"),
@@ -88,6 +101,12 @@ class StratzClient:
                     "denies": p.get("numDenies"),
                     "level": p.get("level"),
                     "party_size": 1 if not p.get("partyId") else 2, # Approximation
+                    # Stratz computes the real 1-5 position itself (far
+                    # better than our own lane+GPM guess — confirmed via
+                    # their real schema, MatchPlayerType.position, enum
+                    # POSITION_1..POSITION_5/UNKNOWN/FILTERED/ALL) — parse
+                    # "POSITION_3" -> 3, anything else (unknown/missing) -> None.
+                    "position": _parse_stratz_position(p.get("position")),
                 })
             return formatted_matches
         except Exception as e:

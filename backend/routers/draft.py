@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, Match
+from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta, Match
 from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
 from services.protracker import sync_hero_position_meta
 from services.sync import sync_hero_meta, sync_hero_matchups
-from utils.dota_constants import get_hero_id_by_name
+from utils.dota_constants import get_hero_id_by_name, rank_tier_to_bracket
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/draft", tags=["draft"])
@@ -73,13 +73,24 @@ async def suggest_picks(
                 "d2pt_rating": pm.d2pt_rating,
             }
 
-    # Player's own match history, bucketed into positions via a GPM/
-    # lane heuristic (see draft_engine.estimate_position) since we don't
-    # store the finer 1-5 position directly.
+    # Player's own match history, bucketed into positions — prefers the
+    # real Stratz-provided position when available, falling back to a
+    # lane_role+GPM heuristic otherwise (see draft_engine.estimate_position).
     player_matches = session.exec(
         select(Match).where(Match.player_id == player.id).where(Match.hero_id.is_not(None))
     ).all()
     personal_position_stats = compute_personal_position_stats(player_matches)
+
+    # Overall hero winrate at the PLAYER'S OWN rank bracket (OpenDota
+    # HeroMeta) — position-agnostic but rank-specific, the opposite
+    # tradeoff from HeroPositionMeta (position-specific but high-MMR/pro
+    # only). draft_engine blends the two so the meta score reflects the
+    # player's actual rank, not just what's strong among top players.
+    hero_meta_at_rank: dict[int, dict] = {}
+    bracket = rank_tier_to_bracket(player.rank_tier or 0)
+    metas = session.exec(select(HeroMeta).where(HeroMeta.rank_bracket == bracket)).all()
+    for m in metas:
+        hero_meta_at_rank[m.hero_id] = {"winrate": m.winrate}
 
     by_role = calculate_role_based_suggestions(
         ally_picks=ally_picks,
@@ -88,6 +99,7 @@ async def suggest_picks(
         hero_position_meta=hero_position_meta,
         personal_position_stats=personal_position_stats,
         hero_matchups=hero_matchups,
+        hero_meta_at_rank=hero_meta_at_rank,
     )
 
     return {

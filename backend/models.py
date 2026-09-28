@@ -46,6 +46,11 @@ class Match(SQLModel, table=True):
     level: Optional[int] = None
     lane: Optional[int] = None
     lane_role: Optional[int] = None
+    position: Optional[int] = None  # 1-5, real value from Stratz (MatchPlayerType.position) when
+                                     # available — NOT derivable from OpenDota, which only gives the
+                                     # coarser lane_role. None for OpenDota-sourced matches; the draft
+                                     # engine falls back to a lane_role+GPM heuristic in that case
+                                     # (see backend/services/draft_engine.py's estimate_position).
     items: Optional[str] = None         # JSON array
     backpack: Optional[str] = None      # JSON array
     neutral_item: Optional[int] = None
