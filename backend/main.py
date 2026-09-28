@@ -73,27 +73,49 @@ async def background_sync_loop():
             # (rotating through whichever are most stale — see
             # sync_hero_matchups), so this stays well within normal API
             # rate limits even at the default 30-minute interval.
+            #
+            # Each call gets its own try/except — sync_hero_meta and
+            # sync_hero_matchups now raise on failure instead of
+            # swallowing it internally (so /refresh-meta's manual button
+            # can report real per-source success/failure), which meant
+            # one of them failing used to skip every sync after it in
+            # this block for the whole cycle, including the one that
+            # actually populates HeroPositionMeta below — confirmed
+            # hitting this directly (position-meta stayed empty in
+            # production). One source failing must never block the rest.
             if settings:
-                await sync_hero_meta(session, settings)
-                await sync_hero_matchups(session, settings)
-                # Real ally-synergy data (Stratz only — no-ops if no
-                # token configured, see sync_hero_synergy's docstring).
-                await sync_hero_synergy(session, settings)
+                try:
+                    await sync_hero_meta(session, settings)
+                except Exception as e:
+                    logger.error(f"Background sync: hero_meta failed: {e}", exc_info=True)
 
-                # Dota2ProTracker: real per-position (Carry/Mid/Offlane/
-                # Soft Support/Hard Support) hero win rates — data
+                try:
+                    await sync_hero_matchups(session, settings)
+                except Exception as e:
+                    logger.error(f"Background sync: hero_matchups failed: {e}", exc_info=True)
+
+                try:
+                    # Real ally-synergy data (Stratz only — no-ops if no
+                    # token configured, see sync_hero_synergy's docstring).
+                    await sync_hero_synergy(session, settings)
+                except Exception as e:
+                    logger.error(f"Background sync: hero_synergy failed: {e}", exc_info=True)
+
+                # Dota2ProTracker/Stratz: real per-position (Carry/Mid/
+                # Offlane/Soft Support/Hard Support) hero win rates — data
                 # OpenDota's bulk endpoints don't have at all. Heavier
-                # than the syncs above (real browser automation, not a
-                # plain API call — see services/protracker.py for why),
-                # so runs on its own longer interval instead of every
-                # cycle.
+                # than the syncs above, so runs on its own longer
+                # interval instead of every cycle.
                 interval_hours = settings.protracker_interval_hours or 6
                 due = (
                     last_protracker_sync is None
                     or datetime.utcnow() - last_protracker_sync >= timedelta(hours=interval_hours)
                 )
                 if settings.protracker_enabled and due:
-                    await sync_hero_position_meta(session, settings)
+                    try:
+                        await sync_hero_position_meta(session, settings)
+                    except Exception as e:
+                        logger.error(f"Background sync: hero_position_meta failed: {e}", exc_info=True)
                     last_protracker_sync = datetime.utcnow()
 
             session.close()

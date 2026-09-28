@@ -356,6 +356,22 @@ def update_gsi_draft_state(gsi_data: dict):
     game_state = map_data.get("game_state", "")
 
     if game_state in ("DOTA_GAMERULES_STATE_HERO_SELECTION", "DOTA_GAMERULES_STATE_STRATEGY_TIME"):
+        # A fresh draft starting (we were inactive a moment ago, now
+        # we're not) has to wipe whatever picks/bans are left over from
+        # the previous match — otherwise a stale pick from a game that
+        # already ended sits in _gsi_state forever, since screen-report's
+        # "never overwrite with an empty result" protection (there to
+        # stop one bad OCR/match frame from erasing an already-confirmed
+        # pick WITHIN a draft) also blocks the legitimate empty state a
+        # brand new draft starts in. Confirmed hitting this directly: a
+        # hero from an earlier game stayed shown as picked into the next
+        # one. GSI's own game_state is reliable here even in All Pick —
+        # it's only the pick/ban *content* Valve blanks, not the phase.
+        if not _gsi_state["active"]:
+            _gsi_state["ally_picks"] = []
+            _gsi_state["enemy_picks"] = []
+            _gsi_state["bans"] = []
+
         _gsi_state["active"] = True
         _gsi_state["phase"] = "pick" if "HERO_SELECTION" in game_state else "strategy"
 
