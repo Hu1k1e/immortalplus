@@ -75,6 +75,48 @@ def report_to_backend(result: dict):
         logger.warning(f"Failed to report scan result to backend: {e}")
 
 
+# How many CONSECUTIVE scans a hero must appear in before it's trusted —
+# a wrong hero from a single flaky ORB match was confirmed reaching real
+# users (see the "Enchantress that was never actually picked" report).
+# One matched frame is cheap noise; the same wrong hero matching several
+# frames in a row is much less likely.
+CONFIRM_THRESHOLD = 2
+MAX_PICKS_PER_SIDE = 5
+
+
+def update_confirmed(pending: dict[int, int], confirmed: set[int], detected: list[int], label: str):
+    """
+    Only promotes a detected hero into `confirmed` after CONFIRM_THRESHOLD
+    consecutive scans see it — a streak, not just "seen twice ever" (a
+    hero not seen this frame drops out of `pending` immediately, so a
+    one-off false positive can't slowly accumulate credit across scans
+    spaced minutes apart). Also hard-caps `confirmed` at
+    MAX_PICKS_PER_SIDE — a real team can never have more than 5 heroes,
+    so a 6th candidate is refused and logged rather than silently kept,
+    which is exactly what let a phantom pick sit in the list undetected
+    before.
+    """
+    detected_set = set(detected)
+    for hero_id in list(pending.keys()):
+        if hero_id not in detected_set:
+            del pending[hero_id]
+    for hero_id in detected_set:
+        if hero_id in confirmed:
+            continue
+        pending[hero_id] = pending.get(hero_id, 0) + 1
+        if pending[hero_id] >= CONFIRM_THRESHOLD:
+            del pending[hero_id]
+            if len(confirmed) >= MAX_PICKS_PER_SIDE:
+                logger.warning(
+                    f"{label}: hero {hero_id} confirmed but {label} already has "
+                    f"{MAX_PICKS_PER_SIDE} picks — a real team can't have more, "
+                    f"ignoring this one as a likely false detection"
+                )
+            else:
+                confirmed.add(hero_id)
+                logger.info(f"{label}: confirmed hero {hero_id} after {CONFIRM_THRESHOLD} consecutive detections")
+
+
 def main():
     logger.info(f"draft-scanner starting, backend={BACKEND_URL}")
     hero_icons = fetch_hero_icons()
@@ -85,13 +127,16 @@ def main():
 
     was_active = False
     # Accumulated, never-shrinking within a single draft: a pick, once
-    # locked in, and a ban, once announced, never reverses — so a single
-    # flaky OCR/match pass missing something it caught a moment ago
-    # should never un-report it and let a banned hero back into
-    # suggestions mid-draft.
+    # CONFIRMED (see update_confirmed — requires several consecutive
+    # detections, not just one), and a ban, once announced, never
+    # reverses — so a single flaky OCR/match pass missing something it
+    # caught a moment ago should never un-report it and let a banned
+    # hero back into suggestions mid-draft.
     seen_ally_picks: set[int] = set()
     seen_enemy_picks: set[int] = set()
     seen_bans: set[int] = set()
+    pending_ally: dict[int, int] = {}
+    pending_enemy: dict[int, int] = {}
     last_reported = None
 
     while True:
@@ -104,14 +149,20 @@ def main():
             seen_ally_picks.clear()
             seen_enemy_picks.clear()
             seen_bans.clear()
+            pending_ally.clear()
+            pending_enemy.clear()
             last_reported = None
         was_active = active
 
         if active:
             result = scan_once(hero_icons, hero_names)
             if result is not None:
-                seen_ally_picks.update(result["ally_picks"])
-                seen_enemy_picks.update(result["enemy_picks"])
+                update_confirmed(pending_ally, seen_ally_picks, result["ally_picks"], "ally_picks")
+                update_confirmed(pending_enemy, seen_enemy_picks, result["enemy_picks"], "enemy_picks")
+                # Bans already go through OCR's own fuzzy-match confidence
+                # threshold (see ban_ocr.py) and don't have a clean "max
+                # count" the way a 5-hero team does, so they're still
+                # accumulated directly rather than debounced the same way.
                 seen_bans.update(result["bans"])
 
                 accumulated = {

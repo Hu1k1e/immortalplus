@@ -149,16 +149,39 @@ export default function DraftHelper() {
   }, [fetchSuggestions]);
 
   const refreshMeta = async () => {
+    // A full resync (hero_matchups alone rate-limits to 30 heroes at
+    // 1.5s apart, synergy similarly) genuinely takes over a minute —
+    // confirmed directly from production logs, where the sync was
+    // working the whole time but the button showed "failed" because it
+    // was waiting on one HTTP request for the entire thing. The backend
+    // now runs this as a background task; poll its status instead of
+    // waiting on the POST response.
     setRefreshStatus('loading');
     try {
-      const res = await api.post('/draft/refresh-meta');
-      setRefreshStatus(res.data.status === 'ok' ? 'ok' : 'error');
+      await api.post('/draft/refresh-meta');
     } catch (err) {
       console.error(err);
       setRefreshStatus('error');
-    } finally {
       setTimeout(() => setRefreshStatus('idle'), 4000);
+      return;
     }
+
+    const poll = async () => {
+      try {
+        const res = await api.get('/draft/refresh-meta/status');
+        if (res.data.state === 'done') {
+          const results = res.data.results || {};
+          const allOk = Object.values(results).every((r: any) => r.status === 'ok');
+          setRefreshStatus(allOk ? 'ok' : 'error');
+          setTimeout(() => setRefreshStatus('idle'), 4000);
+          return;
+        }
+      } catch (err) {
+        console.error(err);
+      }
+      setTimeout(poll, 3000);
+    };
+    setTimeout(poll, 3000);
   };
 
   useEffect(() => {

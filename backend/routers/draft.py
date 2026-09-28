@@ -3,8 +3,10 @@ Draft helper endpoints.
 Uses GSI data + cached meta to suggest hero picks during draft phase.
 """
 
+import asyncio
 import json
 import logging
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 from sqlmodel import select
@@ -136,50 +138,87 @@ async def suggest_picks(
     }
 
 
+
+# In-memory status for the manual refresh — see refresh_meta's docstring
+# for why this doesn't just await everything and return.
+_refresh_status: dict = {"state": "idle", "results": {}, "started_at": None, "finished_at": None}
+
+
+async def _run_refresh_meta():
+    """
+    The actual sync work, run as a background task (see refresh_meta).
+    Opens its own DB session since the request that triggered this
+    returns long before this finishes.
+    """
+    from database import SessionLocal
+
+    _refresh_status["state"] = "running"
+    _refresh_status["results"] = {}
+    _refresh_status["started_at"] = datetime.utcnow().isoformat()
+
+    session = SessionLocal()
+    try:
+        settings = session.exec(select(UserSettings).limit(1)).first()
+
+        try:
+            count = await sync_hero_meta(session, settings)
+            _refresh_status["results"]["hero_meta"] = {"status": "ok", "count": count}
+        except Exception as e:
+            logger.error(f"Manual refresh: hero_meta sync failed: {e}", exc_info=True)
+            _refresh_status["results"]["hero_meta"] = {"status": "error", "message": str(e)}
+
+        try:
+            count = await sync_hero_matchups(session, settings)
+            _refresh_status["results"]["hero_matchups"] = {"status": "ok", "count": count}
+        except Exception as e:
+            logger.error(f"Manual refresh: hero_matchups sync failed: {e}", exc_info=True)
+            _refresh_status["results"]["hero_matchups"] = {"status": "error", "message": str(e)}
+
+        try:
+            count = await sync_hero_position_meta(session, settings)
+            _refresh_status["results"]["hero_position_meta"] = {"status": "ok" if count else "error", "count": count}
+        except Exception as e:
+            logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
+            _refresh_status["results"]["hero_position_meta"] = {"status": "error", "message": str(e)}
+
+        # Optional — no-ops (0, not an error) if no Stratz token is configured.
+        try:
+            count = await sync_hero_synergy(session, settings)
+            _refresh_status["results"]["hero_synergy"] = {"status": "ok", "count": count}
+        except Exception as e:
+            logger.error(f"Manual refresh: hero_synergy sync failed: {e}", exc_info=True)
+            _refresh_status["results"]["hero_synergy"] = {"status": "error", "message": str(e)}
+    finally:
+        session.close()
+        _refresh_status["state"] = "done"
+        _refresh_status["finished_at"] = datetime.utcnow().isoformat()
+
+
 @router.post("/refresh-meta")
-async def refresh_meta(session: Session = Depends(get_session)):
+async def refresh_meta():
     """
-    Manual trigger for an immediate meta/matchup/position-meta resync,
-    for the "Refresh Meta Data" button on the Draft Helper page — rather
-    than waiting for the background loop's next scheduled cycle. Returns
-    per-source success/failure so the UI (and the logs, via each sync
-    function's own logger calls) can show exactly what happened rather
-    than a single opaque "done".
+    Manual trigger for an immediate meta/matchup/position-meta/synergy
+    resync, for the "Refresh Meta Data" button — rather than waiting for
+    the background loop's next scheduled cycle.
+
+    Runs as a background task instead of awaiting everything inline: a
+    full resync (hero_matchups alone rate-limits itself to 30 heroes at
+    1.5s apart, hero_synergy similarly at ~30x1s) genuinely takes over a
+    minute end to end — confirmed directly from production logs, where
+    the sync was working correctly the whole time but the button showed
+    "failed" because the HTTP request timed out waiting for it. The
+    frontend now polls GET /refresh-meta/status instead of waiting on
+    this response.
     """
-    settings = session.exec(select(UserSettings).limit(1)).first()
-    results = {}
+    if _refresh_status["state"] == "running":
+        return {"status": "already_running"}
+    asyncio.create_task(_run_refresh_meta())
+    return {"status": "started"}
 
-    try:
-        count = await sync_hero_meta(session, settings)
-        results["hero_meta"] = {"status": "ok", "count": count}
-    except Exception as e:
-        logger.error(f"Manual refresh: hero_meta sync failed: {e}", exc_info=True)
-        results["hero_meta"] = {"status": "error", "message": str(e)}
 
-    try:
-        count = await sync_hero_matchups(session, settings)
-        results["hero_matchups"] = {"status": "ok", "count": count}
-    except Exception as e:
-        logger.error(f"Manual refresh: hero_matchups sync failed: {e}", exc_info=True)
-        results["hero_matchups"] = {"status": "error", "message": str(e)}
-
-    try:
-        count = await sync_hero_position_meta(session, settings)
-        results["hero_position_meta"] = {"status": "ok" if count else "error", "count": count}
-    except Exception as e:
-        logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
-        results["hero_position_meta"] = {"status": "error", "message": str(e)}
-
-    # Optional — no-ops (0, not an error) if no Stratz token is configured.
-    try:
-        count = await sync_hero_synergy(session, settings)
-        results["hero_synergy"] = {"status": "ok", "count": count}
-    except Exception as e:
-        logger.error(f"Manual refresh: hero_synergy sync failed: {e}", exc_info=True)
-        results["hero_synergy"] = {"status": "error", "message": str(e)}
-
-    overall_ok = all(r["status"] == "ok" for r in results.values())
-    return {"status": "ok" if overall_ok else "partial_failure", "results": results}
+@router.get("/refresh-meta/status")
+async def refresh_meta_status():
+    return _refresh_status
 
 
 @router.get("/state")

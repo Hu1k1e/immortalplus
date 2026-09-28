@@ -25,6 +25,19 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { Dota2Client } = require('dota2-gc');
+// Not re-exported from the package's public index (its package.json
+// "exports" map only allows ".", so a plain require('dota2-gc/dist/...')
+// is blocked by Node itself, not just convention) — dota2-gc's own
+// login() calls this internally before doing anything else (confirmed
+// directly in its source, Dota2Client.js) but our token-based path below
+// replicates that method's other steps without this one, which is
+// exactly why it was crash-looping in production ("Protos not loaded.
+// Call loadProtos() first.", thrown from sendToGC/startGCConnection).
+// require.resolve() finds the real on-disk path Node already resolved
+// the main entry to; requiring THAT absolute path (unlike a package
+// specifier) isn't subject to the exports map at all.
+const dota2GcCjsDir = path.dirname(require.resolve('dota2-gc'));
+const { loadProtos } = require(path.join(dota2GcCjsDir, 'utils', 'proto-loader.js'));
 
 const PORT = process.env.PORT || 3500;
 const DATA_DIR = process.env.DATA_DIR || '/app/data';
@@ -92,6 +105,7 @@ async function login() {
 
   if (savedToken) {
     console.log('[AUTH] Found a saved refresh token, logging in without password/Steam Guard...');
+    await loadProtos();
     await new Promise((resolve, reject) => {
       client.steamClient.once('loggedOn', () => {
         client._ready = true;
