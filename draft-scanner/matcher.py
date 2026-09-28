@@ -28,10 +28,18 @@ _matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
 # Absolute minimum good-keypoint-match count to accept an identification.
 # Lina's ground-truth case (the weaker of two real test picks) scored 10;
-# every confirmed-empty slot and wrong-hero comparison scored 0-2. Set
-# comfortably above the empty-slot noise floor, comfortably below the
-# weakest real positive seen so far.
-MIN_GOOD_MATCHES = 5
+# every confirmed-empty slot and wrong-hero comparison scored 0-2 in that
+# same test. Set comfortably above that noise floor, comfortably below
+# the weakest real positive seen so far.
+#
+# Raised from 5 to 7 after a real, reproducible false positive: ally
+# slot 0 consistently matched hero 58 (Enchantress) at score 5 — right
+# at the old floor — from the first scan of TWO separate real drafts,
+# before any hero was ever actually there, and never changed the entire
+# draft. Whatever's rendered in that slot before a pick (very possibly
+# a "this is your own slot" UI marker Dota adds only there) apparently
+# has just enough incidental texture to clear a bare floor of 5.
+MIN_GOOD_MATCHES = 7
 _GOOD_MATCH_DISTANCE = 40
 
 
@@ -66,13 +74,31 @@ def identify_hero(crop: np.ndarray, hero_icons: dict[int, np.ndarray]) -> tuple[
 
     best_hero_id = None
     best_count = 0
+    second_best_count = 0
 
     for hero_id, icon in hero_icons.items():
         ref_gray = cv2.cvtColor(icon, cv2.COLOR_BGR2GRAY)
         count = _good_match_count(crop_gray, ref_gray)
         if count > best_count:
+            second_best_count = best_count
             best_count = count
             best_hero_id = hero_id
+        elif count > second_best_count:
+            second_best_count = count
 
-    accepted = best_hero_id if best_count >= MIN_GOOD_MATCHES else None
+    # A real hero portrait wins decisively against every OTHER reference
+    # icon too, not just against the empty-slot floor — the validated
+    # ground truth cases won by >5x over their own runner-up (Lion: 142
+    # vs 1, Lina: 10 vs 2). Incidental background/UI texture producing a
+    # false positive (see MIN_GOOD_MATCHES's docstring — the real
+    # Enchantress case above) instead tends to score close to several
+    # candidates, since it's matching noise rather than one distinctive
+    # portrait. Requiring the winner to dominate its own runner-up, not
+    # just clear an absolute floor, catches that kind of false positive
+    # even if a future one happens to score above the floor.
+    accepted = (
+        best_hero_id
+        if best_count >= MIN_GOOD_MATCHES and best_count >= second_best_count * 2
+        else None
+    )
     return accepted, best_count, best_hero_id
