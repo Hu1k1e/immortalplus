@@ -3,32 +3,25 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (needed for Playwright and some python packages)
+# Install system dependencies needed for some python packages (Playwright's
+# own OS deps are installed separately below via `install-deps`, not this
+# hand-maintained list — that list drifted out of date and was confirmed
+# missing packages (libpango-1.0-0, libcairo2) in production, breaking the
+# Dota2ProTracker scrape at runtime with no build-time failure to catch it)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     build-essential \
-    libglib2.0-0 \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Playwright browsers (for Dota2ProTracker scraping)
-RUN playwright install chromium
+# Install Playwright's browser + all OS-level dependencies it needs (for
+# Dota2ProTracker scraping) — install-deps installs exactly what the
+# pinned Playwright version in requirements.txt actually requires, so
+# this doesn't rot the way a manually-copied apt package list does.
+RUN playwright install --with-deps chromium
 
 # Copy application code
 COPY . .

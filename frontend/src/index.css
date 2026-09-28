@@ -631,6 +631,45 @@ button {
   filter: grayscale(0.7) brightness(0.6);
 }
 
+/* ── Data health panel ─────────────────────────────────────── */
+
+.data-health-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  padding: 0.6rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.78rem;
+}
+
+.data-health-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-secondary);
+}
+
+.data-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.data-health-dot.status-ok { background: var(--radiant-green); }
+.data-health-dot.status-stale { background: var(--accent-gold); }
+.data-health-dot.status-empty { background: var(--dire-red); }
+.data-health-dot.status-not_configured { background: var(--text-muted); }
+
+.data-health-label { font-weight: 600; color: var(--text-primary); }
+.data-health-count { color: var(--text-muted); }
+.data-health-age { color: var(--text-muted); font-family: monospace; }
+
+.data-health-item.status-empty .data-health-age,
+.data-health-item.status-stale .data-health-age {
+  color: var(--accent-gold);
+}
+.data-health-item.status-empty .data-health-age { color: var(--dire-red); }
+
 @media (max-width: 1100px) {
   .draft-board { grid-template-columns: 1fr; }
 }

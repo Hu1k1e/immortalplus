@@ -343,10 +343,18 @@ class StratzClient:
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:
-                logger.error(f"Stratz get_hero_synergy_and_matchups 400 body: {response.text}")
+                logger.error(f"Stratz get_hero_synergy_and_matchups {response.status_code} body: {response.text[:2000]}")
             response.raise_for_status()
             data = response.json()
-            matchup_list = data.get("data", {}).get("heroStats", {}).get("matchUp", [])
+
+            # A 200 response doesn't rule out a GraphQL-level error with
+            # partial/empty data — confirmed this exact failure mode was
+            # silent elsewhere in this file (get_hero_position_stats) and
+            # produced zero rows with no logged reason. Always log it here too.
+            if data.get("errors"):
+                logger.error(f"Stratz get_hero_synergy_and_matchups GraphQL errors for hero {hero_id}: {data['errors']}")
+
+            matchup_list = ((data.get("data") or {}).get("heroStats") or {}).get("matchUp") or []
             match_up = matchup_list[0] if matchup_list else {}
 
             def _format(entries):
@@ -362,28 +370,45 @@ class StratzClient:
                     })
                 return out
 
-            return {"with": _format(match_up.get("with")), "vs": _format(match_up.get("vs"))}
+            result = {"with": _format(match_up.get("with")), "vs": _format(match_up.get("vs"))}
+            if not result["with"] and not result["vs"]:
+                logger.warning(
+                    f"Stratz get_hero_synergy_and_matchups: hero {hero_id} returned 0 with/vs "
+                    f"rows (raw matchUp entries: {len(matchup_list)}, errors: {data.get('errors')})"
+                )
+            return result
         except Exception as e:
             logger.error(f"Stratz get_hero_synergy_and_matchups error for hero {hero_id}: {e}")
             raise
 
-    async def get_hero_position_stats(self, bracket_basic: str = "ALL") -> List[Dict[str, Any]]:
+    async def get_hero_position_stats(self, bracket_basic: str = "ALL", hero_ids: Optional[List[int]] = None) -> List[Dict[str, Any]]:
         """
-        Per-hero, per-position match count/winrate for every hero in one
-        call — from Stratz's heroStats.stats query, grouped by position
-        (STRATZ.HeroStatsQuery.Stats -> HeroPositionTimeDetailType,
-        confirmed directly against their real schema). This is the same
-        underlying data Dota2ProTracker's site displays (Stratz's own API
-        page lists ProTracker as built on this API) — querying it
-        directly here means the fragile Playwright-based scrape of
-        ProTracker's page (see services/protracker.py) isn't the only
-        source; sync_hero_position_meta tries this first and only falls
-        back to the scrape if Stratz isn't configured or fails.
+        Per-hero, per-position match count/winrate — from Stratz's
+        heroStats.stats query, grouped by position (STRATZ.HeroStatsQuery.
+        Stats -> HeroPositionTimeDetailType, confirmed directly against
+        their real schema). This is the same underlying data
+        Dota2ProTracker's site displays (Stratz's own API page lists
+        ProTracker as built on this API) — querying it directly here
+        means the fragile Playwright-based scrape of ProTracker's page
+        (see services/protracker.py) isn't the only source;
+        sync_hero_position_meta tries this first and only falls back to
+        the scrape if Stratz isn't configured or fails.
+
+        hero_ids is passed explicitly (all real hero IDs, by default)
+        rather than omitted: confirmed in production that omitting it
+        silently returns zero rows instead of "all heroes" as first
+        assumed (root-caused after this returned empty with no logged
+        error — see the raise-on-empty and error-array logging below,
+        added specifically because that failure was silent before).
         """
+        if hero_ids is None:
+            from utils.dota_constants import HEROES
+            hero_ids = list(HEROES.keys())
+
         query = """
-        query($bracketBasicIds: [RankBracketBasicEnum]) {
+        query($heroIds: [Short], $bracketBasicIds: [RankBracketBasicEnum]) {
           heroStats {
-            stats(bracketBasicIds: $bracketBasicIds, groupByPosition: true) {
+            stats(heroIds: $heroIds, bracketBasicIds: $bracketBasicIds, groupByPosition: true) {
               heroId
               position
               matchCount
@@ -392,14 +417,21 @@ class StratzClient:
           }
         }
         """
-        variables = {"bracketBasicIds": [bracket_basic]}
+        variables = {"heroIds": hero_ids, "bracketBasicIds": [bracket_basic]}
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:
-                logger.error(f"Stratz get_hero_position_stats 400 body: {response.text}")
+                logger.error(f"Stratz get_hero_position_stats {response.status_code} body: {response.text[:2000]}")
             response.raise_for_status()
             data = response.json()
-            stats = data.get("data", {}).get("heroStats", {}).get("stats", [])
+
+            # GraphQL can return HTTP 200 with an "errors" array and
+            # partial/empty "data" — that's exactly the failure mode that
+            # was silently producing zero rows before. Always log it.
+            if data.get("errors"):
+                logger.error(f"Stratz get_hero_position_stats GraphQL errors: {data['errors']}")
+
+            stats = ((data.get("data") or {}).get("heroStats") or {}).get("stats") or []
 
             rows = []
             for s in stats:
@@ -415,6 +447,15 @@ class StratzClient:
                     "winrate": wins / matches,
                     "d2pt_rating": None,  # Stratz has no equivalent of ProTracker's own branded rating stat
                 })
+
+            if not rows:
+                # Treat empty as a real failure, not a quiet success — an
+                # empty result here used to fall through to the
+                # Dota2ProTracker fallback with zero explanation logged.
+                raise ValueError(
+                    f"Stratz returned 0 usable hero/position rows (raw stats entries: {len(stats)}, "
+                    f"errors: {data.get('errors')})"
+                )
             return rows
         except Exception as e:
             logger.error(f"Stratz get_hero_position_stats error: {e}")

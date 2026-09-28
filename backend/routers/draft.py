@@ -8,6 +8,7 @@ import json
 import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlmodel import select
 
@@ -219,6 +220,72 @@ async def refresh_meta():
 @router.get("/refresh-meta/status")
 async def refresh_meta_status():
     return _refresh_status
+
+
+# How stale a source can get before the UI should flag it rather than
+# just show a green dot — matches roughly double each source's own sync
+# interval, so a single slightly-late cycle doesn't look alarming.
+_STALE_AFTER_HOURS = {
+    "hero_meta": 1.0,          # syncs every background cycle (~30 min default)
+    "hero_matchups": 1.0,
+    "hero_position_meta": 14.0,  # syncs every protracker_interval_hours (default 6h)
+    "hero_synergy": 1.0,
+}
+
+
+@router.get("/data-health")
+async def data_health(session: Session = Depends(get_session)):
+    """
+    Real counts and last-updated time for every data source the draft
+    engine actually reads, so "do we have the data" is answerable by
+    looking at this endpoint instead of grepping docker logs — directly
+    requested after two rounds of "still shows no data" reports that
+    each turned out to have a real, different root cause once actually
+    investigated. Every number here is a live DB query, not cached.
+    """
+    now = datetime.utcnow()
+
+    def source_health(model, label: str):
+        count = session.exec(select(func.count()).select_from(model)).one()
+        last_updated = session.exec(select(func.max(model.updated_at))).one()
+        stale_after = _STALE_AFTER_HOURS[label]
+        age_hours = (now - last_updated).total_seconds() / 3600 if last_updated else None
+        if count == 0:
+            status = "empty"
+        elif age_hours is not None and age_hours > stale_after:
+            status = "stale"
+        else:
+            status = "ok"
+        return {
+            "label": label,
+            "count": count,
+            "last_updated": last_updated.isoformat() if last_updated else None,
+            "age_hours": round(age_hours, 1) if age_hours is not None else None,
+            "status": status,
+        }
+
+    settings = session.exec(select(UserSettings).limit(1)).first()
+
+    sources = [
+        source_health(HeroMeta, "hero_meta"),
+        source_health(HeroMatchup, "hero_matchups"),
+        source_health(HeroPositionMeta, "hero_position_meta"),
+        source_health(HeroSynergy, "hero_synergy"),
+    ]
+    # hero_synergy and the Stratz path for hero_position_meta are both
+    # genuinely optional (no token = intentionally inactive, not broken) —
+    # don't flag them "empty" as if something's wrong when there's simply
+    # no token configured to make them do anything.
+    has_stratz = bool(settings and getattr(settings, "stratz_api_token", None))
+    for s in sources:
+        if s["label"] == "hero_synergy" and not has_stratz and s["count"] == 0:
+            s["status"] = "not_configured"
+
+    return {
+        "sources": sources,
+        "overall": "ok" if all(s["status"] in ("ok", "not_configured") for s in sources) else "attention_needed",
+        "checked_at": now.isoformat(),
+    }
 
 
 @router.get("/state")
@@ -472,9 +539,23 @@ def update_gsi_draft_state(gsi_data: dict):
             )
 
     elif game_state == "DOTA_GAMERULES_STATE_GAME_IN_PROGRESS":
+        # Symmetric with the inactive->active clear above: leaving the
+        # draft phase must also drop whatever was picked, or a finished
+        # draft's picks stay shown as if still live all through the game
+        # and into the next "waiting for draft" state — confirmed hitting
+        # exactly this (a hero from the last draft still showing at a
+        # position during "Waiting for Dota 2 draft phase to begin").
+        if _gsi_state["active"]:
+            _gsi_state["ally_picks"] = []
+            _gsi_state["enemy_picks"] = []
+            _gsi_state["bans"] = []
         _gsi_state["active"] = False
         _gsi_state["phase"] = "playing"
     else:
+        if _gsi_state["active"]:
+            _gsi_state["ally_picks"] = []
+            _gsi_state["enemy_picks"] = []
+            _gsi_state["bans"] = []
         _gsi_state["active"] = False
         _gsi_state["phase"] = None
 

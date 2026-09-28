@@ -28,6 +28,28 @@ interface RoleBlock {
 }
 
 type ByRole = Record<string, RoleBlock>;
+
+interface DataSourceHealth {
+  label: string;
+  count: number;
+  last_updated: string | null;
+  age_hours: number | null;
+  status: 'ok' | 'stale' | 'empty' | 'not_configured';
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  hero_meta: 'Hero Meta (OpenDota)',
+  hero_matchups: 'Matchups (OpenDota)',
+  hero_position_meta: 'Position Meta (Stratz/ProTracker)',
+  hero_synergy: 'Synergy (Stratz)',
+};
+
+function formatAge(hours: number | null): string {
+  if (hours === null) return 'never';
+  if (hours < 1) return `${Math.round(hours * 60)}m ago`;
+  if (hours < 48) return `${hours.toFixed(1)}h ago`;
+  return `${(hours / 24).toFixed(1)}d ago`;
+}
 type PositionFit = Record<number, Record<number, number>>; // hero_id -> position -> matches
 
 const ROLE_ORDER = ['carry', 'mid', 'offlane', 'soft_support', 'hard_support'];
@@ -100,6 +122,7 @@ export default function DraftHelper() {
   const [updating, setUpdating] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle');
   const [summaryRole, setSummaryRole] = useState('carry');
+  const [dataHealth, setDataHealth] = useState<DataSourceHealth[] | null>(null);
   // Our position-assignment is a best guess (see assignPositions — GSI has
   // no real "queued role" data to confirm it against), so it can get it
   // wrong. null means "use the auto-assigned guess"; once the user drags
@@ -148,6 +171,15 @@ export default function DraftHelper() {
     }
   }, [fetchSuggestions]);
 
+  const fetchDataHealth = useCallback(async () => {
+    try {
+      const res = await api.get('/draft/data-health');
+      setDataHealth(res.data.sources || null);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
   const refreshMeta = async () => {
     // A full resync (hero_matchups alone rate-limits to 30 heroes at
     // 1.5s apart, synergy similarly) genuinely takes over a minute —
@@ -174,6 +206,7 @@ export default function DraftHelper() {
           const allOk = Object.values(results).every((r: any) => r.status === 'ok');
           setRefreshStatus(allOk ? 'ok' : 'error');
           setTimeout(() => setRefreshStatus('idle'), 4000);
+          fetchDataHealth();
           return;
         }
       } catch (err) {
@@ -206,9 +239,10 @@ export default function DraftHelper() {
 
     connectWs();
     api.get('/draft/state').then(res => applyState(res.data)).catch(console.error);
+    fetchDataHealth();
 
     return () => { if (ws.current) ws.current.close(); };
-  }, [applyState]);
+  }, [applyState, fetchDataHealth]);
 
   const autoAllySlots = useMemo(() => assignPositions(gsiState.ally_picks, positionFit), [gsiState.ally_picks, positionFit]);
   const autoEnemySlots = useMemo(() => assignPositions(gsiState.enemy_picks, positionFit), [gsiState.enemy_picks, positionFit]);
@@ -347,6 +381,21 @@ export default function DraftHelper() {
           {refreshStatus === 'idle' && 'Refresh Meta Data'}
         </button>
       </header>
+
+      {dataHealth && (
+        <div className="glass-surface data-health-panel">
+          {dataHealth.map(s => (
+            <div key={s.label} className={`data-health-item status-${s.status}`}>
+              <span className={`data-health-dot status-${s.status}`} />
+              <span className="data-health-label">{SOURCE_LABELS[s.label] || s.label}</span>
+              <span className="data-health-count">{s.count.toLocaleString()} rows</span>
+              <span className="data-health-age">
+                {s.status === 'not_configured' ? 'not configured' : formatAge(s.age_hours)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="draft-board">
         <div className="draft-side draft-side-ally">
