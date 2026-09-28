@@ -17,6 +17,7 @@ from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta
 from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
 from services.protracker import sync_hero_position_meta
 from services.sync import sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock
+from services.stratz import STRATZ_API_URL
 from utils.dota_constants import get_hero_id_by_name, rank_tier_to_bracket
 
 logger = logging.getLogger(__name__)
@@ -76,13 +77,36 @@ async def suggest_picks(
                 "d2pt_rating": pm.d2pt_rating,
             }
 
-    # Player's own match history, bucketed into positions — prefers the
-    # real Stratz-provided position when available, falling back to a
-    # lane_role+GPM heuristic otherwise (see draft_engine.estimate_position).
-    player_matches = session.exec(
-        select(Match).where(Match.player_id == player.id).where(Match.hero_id.is_not(None))
-    ).all()
-    personal_position_stats = compute_personal_position_stats(player_matches)
+    # Player's own per-hero, per-position stats for "your best" — prefers
+    # Stratz's heroesPerformance query (computed server-side from the
+    # account's COMPLETE match history, no local backfill needed — see
+    # services/stratz.py's get_player_hero_position_performance) when a
+    # token is configured. Falls back to bucketing this app's own locally-
+    # synced Match rows (compute_personal_position_stats) otherwise, which
+    # only reflects whatever's been synced locally so far and can be
+    # incomplete for a freshly-linked account.
+    personal_position_stats = None
+    settings_row = session.exec(select(UserSettings).limit(1)).first()
+    if settings_row and getattr(settings_row, "stratz_api_token", None) and player.account_id:
+        try:
+            from services.stratz import get_stratz_client
+            stratz_client = get_stratz_client(settings_row.stratz_api_token)
+            perf_rows = await stratz_client.get_player_hero_position_performance(player.account_id)
+            if perf_rows:
+                personal_position_stats = {p: {} for p in range(1, 6)}
+                for row in perf_rows:
+                    personal_position_stats[row["position"]][row["hero_id"]] = {
+                        "games": row["matches"],
+                        "wins": row["wins"],
+                    }
+        except Exception as e:
+            logger.warning(f"Stratz personal hero/position stats failed, falling back to local match history: {e}")
+
+    if personal_position_stats is None:
+        player_matches = session.exec(
+            select(Match).where(Match.player_id == player.id).where(Match.hero_id.is_not(None))
+        ).all()
+        personal_position_stats = compute_personal_position_stats(player_matches)
 
     # Overall hero winrate at the PLAYER'S OWN rank bracket (OpenDota
     # HeroMeta) — position-agnostic but rank-specific, the opposite
@@ -291,6 +315,74 @@ async def data_health(session: Session = Depends(get_session)):
         "overall": "ok" if all(s["status"] in ("ok", "not_configured") for s in sources) else "attention_needed",
         "checked_at": now.isoformat(),
     }
+
+
+@router.get("/debug-stratz-matchup")
+async def debug_stratz_matchup(session: Session = Depends(get_session)):
+    """
+    TEMPORARY diagnostic — remove once hero_synergy's real root cause is
+    confirmed. heroStats.matchUp has now failed two different
+    evidence-based fixes in a row (User-Agent header; heroIds param;
+    explicit take) while still returning exactly 0 top-level matchUp
+    entries every time — not just empty with/vs — for every hero. Rather
+    than guess a fourth time, this runs several real query-shape variants
+    directly against Stratz for one well-known hero (Anti-Mage, 1) and
+    returns each variant's raw response, so the actual failing shape is
+    visible instead of inferred from an SDK's C# parameter list.
+    """
+    settings = session.exec(select(UserSettings).limit(1)).first()
+    if not settings or not getattr(settings, "stratz_api_token", None):
+        raise HTTPException(status_code=400, detail="No Stratz token configured")
+
+    import httpx
+    headers = {"Authorization": f"Bearer {settings.stratz_api_token}", "User-Agent": "STRATZ_API"}
+    hero_id = 1  # Anti-Mage — guaranteed enormous real sample size
+
+    variants = {
+        "A_heroId_singular_only": {
+            "query": """query($heroId: Short) { heroStats { matchUp(heroId: $heroId) {
+                heroId with { heroId2 synergy matchCount } vs { heroId2 synergy matchCount } } } }""",
+            "variables": {"heroId": hero_id},
+        },
+        "B_heroIds_plural_only": {
+            "query": """query($heroIds: [Short]) { heroStats { matchUp(heroIds: $heroIds) {
+                heroId with { heroId2 synergy matchCount } vs { heroId2 synergy matchCount } } } }""",
+            "variables": {"heroIds": [hero_id]},
+        },
+        "C_both_heroId_and_heroIds": {
+            "query": """query($heroId: Short, $heroIds: [Short]) { heroStats { matchUp(heroId: $heroId, heroIds: $heroIds) {
+                heroId with { heroId2 synergy matchCount } vs { heroId2 synergy matchCount } } } }""",
+            "variables": {"heroId": hero_id, "heroIds": [hero_id]},
+        },
+        "D_heroId_with_bracket_and_take": {
+            "query": """query($heroId: Short, $bracketBasicIds: [RankBracketBasicEnum], $take: Int) {
+                heroStats { matchUp(heroId: $heroId, bracketBasicIds: $bracketBasicIds, take: $take) {
+                heroId with { heroId2 synergy matchCount } vs { heroId2 synergy matchCount } } } }""",
+            "variables": {"heroId": hero_id, "bracketBasicIds": ["ALL"], "take": 50},
+        },
+        "E_no_args_at_all": {
+            "query": """query { heroStats { matchUp { heroId with { heroId2 synergy matchCount } vs { heroId2 synergy matchCount } } } }""",
+            "variables": {},
+        },
+    }
+
+    results = {}
+    async with httpx.AsyncClient(headers=headers, http2=False) as client:
+        for name, payload in variants.items():
+            try:
+                resp = await client.post(STRATZ_API_URL, json=payload, timeout=20)
+                body = resp.json()
+                match_up = ((body.get("data") or {}).get("heroStats") or {}).get("matchUp")
+                results[name] = {
+                    "http_status": resp.status_code,
+                    "errors": body.get("errors"),
+                    "matchUp_entry_count": len(match_up) if isinstance(match_up, list) else None,
+                    "matchUp_sample": match_up[:1] if isinstance(match_up, list) else match_up,
+                }
+            except Exception as e:
+                results[name] = {"exception": str(e)}
+
+    return results
 
 
 @router.get("/state")
