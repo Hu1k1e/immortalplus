@@ -10,13 +10,16 @@ and feedback surfaced three real problems, all fixed here:
 
 2. A "synergy" score that was always zero, since it read OpenDota's
    `with_hero_id` field, which OpenDota's matchup API never actually
-   populates (confirmed directly). There is no real hero-pair "plays
-   well together" data available from any source this app uses. Rather
-   than keep faking a number, "team composition" here is exactly what
-   the data actually supports: each candidate hero's own general
-   strength (meta_component) combined with its measured performance
-   against the SPECIFIC enemies already picked (matchup_component). No
-   separate synergy term.
+   populates (confirmed directly) — OpenDota has no real hero-pair
+   "plays well together" data. This was fixed in two steps: first by
+   dropping the fake number entirely (a brief period where "team
+   composition" was just meta + matchup, no synergy term at all), then
+   by finding that Stratz's public GraphQL API — the exact one this app
+   already has a client and token for — DOES have real pair data
+   (heroStats.matchUp[].with, a genuine `synergy` field, confirmed
+   directly against Stratz's real schema). synergy_component now uses
+   that when available (see services/sync.py's sync_hero_synergy),
+   and is neutral (50) for any hero pair without data yet — never faked.
 
 3. Position-meta (Dota2ProTracker) is high-MMR/pro only, not adjusted to
    the player's own rank. meta_component now blends it with HeroMeta
@@ -33,8 +36,8 @@ POSITIONS), positions are 1=Hard Carry, 2=Mid, 3=Offlane, 4=Soft Support,
     rank-adjusted by HeroMeta when available
   - your_best: the player's own best heroes at that position, from their
     own match history
-  - combined: a blended ranking (meta + personal + enemy matchup), the
-    "best overall suggestion" list
+  - combined: a blended ranking (rank-adjusted meta + personal comfort +
+    enemy matchup + ally synergy), the "best overall suggestion" list
 """
 
 import logging
@@ -130,6 +133,49 @@ def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int
     return max(0.0, min(100.0, score)), reasons[:2]
 
 
+def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, list[dict]]) -> tuple[float, list[str]]:
+    """
+    Average REAL synergy vs every currently-picked ally hero, from
+    Stratz's heroStats.matchUp[].with data (see services/sync.py's
+    sync_hero_synergy) — same shape and same normalization approach as
+    _matchup_score's "advantage" handling.
+
+    Honesty note on the scaling: Stratz's `synergy` field's exact numeric
+    range wasn't verified against live data before writing this (no
+    working API token was available in the environment this was written
+    in — see the PR/commit this shipped in). It's treated the same way
+    as OpenDota's matchup `advantage` field (assumed roughly a
+    percentage-point-scale deviation, same *5 normalization and clamp to
+    0-100) since both come from a comparable "winrate deviation from
+    baseline" concept, but this should be spot-checked against real
+    suggestion output once a real token is live, and the scaling factor
+    adjusted if the real numbers turn out to be a very different
+    magnitude (e.g. a 0-1 fraction, or a raw percentage already).
+    """
+    if not ally_picks:
+        return 50.0, []
+
+    synergy_data = hero_synergy.get(hero_id, [])
+    by_ally = {s.get("hero_id"): s.get("synergy", 0) or 0 for s in synergy_data}
+
+    values = []
+    reasons = []
+    for ally_id in ally_picks:
+        if ally_id in by_ally:
+            val = by_ally[ally_id]
+            values.append(val)
+            if abs(val) > 1.0:
+                verb = "Strong pairing with" if val > 0 else "Weak pairing with"
+                reasons.append(f"{verb} {get_hero_name(ally_id)} ({val:+.1f})")
+
+    if not values:
+        return 50.0, []
+
+    avg_synergy = sum(values) / len(values)
+    score = 50 + avg_synergy * 5
+    return max(0.0, min(100.0, score)), reasons[:2]
+
+
 def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_rank: dict[int, dict]) -> tuple[float, str | None]:
     """
     Blends Dota2ProTracker's position-specific (but high-MMR/pro-only)
@@ -162,6 +208,7 @@ def calculate_role_based_suggestions(
     personal_position_stats: dict[int, dict[int, dict]],
     hero_matchups: dict[int, list[dict]],
     hero_meta_at_rank: dict[int, dict] | None = None,
+    hero_synergy: dict[int, list[dict]] | None = None,
     top_n: int = 6,
 ) -> dict[str, dict[str, list[dict]]]:
     """
@@ -175,12 +222,16 @@ def calculate_role_based_suggestions(
         hero_meta_at_rank: {hero_id: {winrate, ...}} from HeroMeta, filtered to
             the player's own rank bracket — optional, used to rank-adjust the
             meta component when available (see _rank_adjusted_meta).
+        hero_synergy: {hero_id: [{hero_id, synergy}, ...]} vs ally heroes, from
+            HeroSynergy (Stratz) — optional, real pair data when present (see
+            _synergy_score), neutral when absent (no Stratz token configured).
 
     Returns {role_key: {"meta_best": [...], "your_best": [...], "combined": [...]}}
     for all 5 roles, each list sorted best-first, length up to top_n.
     """
     unavailable = set(ally_picks + enemy_picks + bans)
     hero_meta_at_rank = hero_meta_at_rank or {}
+    hero_synergy = hero_synergy or {}
     result = {}
 
     for position, role_key in ROLE_KEYS.items():
@@ -218,8 +269,12 @@ def calculate_role_based_suggestions(
         your_best = your_best[:top_n]
 
         # ── combined: blended overall suggestion ──────────────────────
-        # Team composition here is just these two real signals combined —
-        # no fabricated synergy term (see module docstring, point 2).
+        # Four real signals: the hero's own (rank-adjusted) strength, the
+        # player's personal comfort, how it matches up against the
+        # specific enemies picked, and (when Stratz is configured) real
+        # pair-synergy with the allies already picked. No fabricated
+        # numbers — a signal with no data for a given hero just sits at
+        # the neutral midpoint (50) instead of pulling the score either way.
         candidate_ids = set(meta_for_role.keys()) | set(personal_for_role.keys())
         combined = []
         for hero_id in candidate_ids:
@@ -237,14 +292,16 @@ def calculate_role_based_suggestions(
                 personal_component = 50.0
 
             matchup_component, matchup_reasons = _matchup_score(hero_id, enemy_picks, hero_matchups)
+            synergy_component, synergy_reasons = _synergy_score(hero_id, ally_picks, hero_synergy)
 
             score = (
-                meta_component * 0.40 +
-                personal_component * 0.30 +
-                matchup_component * 0.30
+                meta_component * 0.35 +
+                personal_component * 0.25 +
+                matchup_component * 0.25 +
+                synergy_component * 0.15
             )
 
-            reasons = list(matchup_reasons)
+            reasons = list(matchup_reasons) + list(synergy_reasons)
             if personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES:
                 reasons.append(f"You: {personal_stats['games']} games, {personal_stats['wins']/personal_stats['games']*100:.0f}% WR")
             if meta_reason:
@@ -254,7 +311,7 @@ def calculate_role_based_suggestions(
                 "hero_id": hero_id,
                 "hero_name": get_hero_name(hero_id),
                 "score": round(score, 1),
-                "reasons": reasons[:3],
+                "reasons": reasons[:4],
             })
         combined.sort(key=lambda x: x["score"], reverse=True)
         combined = combined[:top_n]

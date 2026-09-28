@@ -10,10 +10,10 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta, Match
+from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta, HeroSynergy, Match
 from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
 from services.protracker import sync_hero_position_meta
-from services.sync import sync_hero_meta, sync_hero_matchups
+from services.sync import sync_hero_meta, sync_hero_matchups, sync_hero_synergy
 from utils.dota_constants import get_hero_id_by_name, rank_tier_to_bracket
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,18 @@ async def suggest_picks(
     for m in metas:
         hero_meta_at_rank[m.hero_id] = {"winrate": m.winrate}
 
+    # Real ally-pair synergy (Stratz only — see sync_hero_synergy). Empty
+    # dict (not an error) if no Stratz token is configured; draft_engine
+    # treats a hero with no synergy rows as neutral, same as missing
+    # matchup data.
+    hero_synergy: dict[int, list[dict]] = {}
+    synergies = session.exec(select(HeroSynergy)).all()
+    for hs in synergies:
+        hero_synergy.setdefault(hs.hero_id, []).append({
+            "hero_id": hs.ally_hero_id,
+            "synergy": hs.synergy,
+        })
+
     by_role = calculate_role_based_suggestions(
         ally_picks=ally_picks,
         enemy_picks=enemy_picks,
@@ -100,6 +112,7 @@ async def suggest_picks(
         personal_position_stats=personal_position_stats,
         hero_matchups=hero_matchups,
         hero_meta_at_rank=hero_meta_at_rank,
+        hero_synergy=hero_synergy,
     )
 
     return {
@@ -143,6 +156,14 @@ async def refresh_meta(session: Session = Depends(get_session)):
     except Exception as e:
         logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
         results["hero_position_meta"] = {"status": "error", "message": str(e)}
+
+    # Optional — no-ops (0, not an error) if no Stratz token is configured.
+    try:
+        count = await sync_hero_synergy(session, settings)
+        results["hero_synergy"] = {"status": "ok", "count": count}
+    except Exception as e:
+        logger.error(f"Manual refresh: hero_synergy sync failed: {e}", exc_info=True)
+        results["hero_synergy"] = {"status": "error", "message": str(e)}
 
     overall_ok = all(r["status"] == "ok" for r in results.values())
     return {"status": "ok" if overall_ok else "partial_failure", "results": results}

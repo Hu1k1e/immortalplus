@@ -32,7 +32,7 @@ async def background_sync_loop():
     from models import Player, UserSettings
     from services.sync import (
         sync_player_matches, create_progress_snapshot,
-        sync_hero_meta, sync_hero_matchups,
+        sync_hero_meta, sync_hero_matchups, sync_hero_synergy,
     )
     from services.protracker import sync_hero_position_meta
 
@@ -76,6 +76,9 @@ async def background_sync_loop():
             if settings:
                 await sync_hero_meta(session, settings)
                 await sync_hero_matchups(session, settings)
+                # Real ally-synergy data (Stratz only — no-ops if no
+                # token configured, see sync_hero_synergy's docstring).
+                await sync_hero_synergy(session, settings)
 
                 # Dota2ProTracker: real per-position (Carry/Mid/Offlane/
                 # Soft Support/Hard Support) hero win rates — data

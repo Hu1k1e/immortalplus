@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from models import (
-    Match, Player, ProgressSnapshot, HeroMeta, HeroMatchup, UserSettings,
+    Match, Player, ProgressSnapshot, HeroMeta, HeroMatchup, HeroSynergy, UserSettings,
 )
 from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
@@ -628,6 +628,73 @@ async def sync_hero_matchups(session: Session, settings: UserSettings) -> int:
 
     session.commit()
     logger.info(f"Hero matchup data synced ({total_rows} rows across {len(stale_first[:30])} heroes)")
+    return total_rows
+
+
+async def sync_hero_synergy(session: Session, settings: UserSettings) -> int:
+    """
+    Real ally-pair synergy data from Stratz's public API (see
+    services/stratz.py's get_hero_synergy_and_matchups) — the "who wins
+    more often WITH this hero" data that OpenDota's API doesn't actually
+    provide (confirmed directly against OpenDota's own responses earlier
+    in this project). Requires a Stratz API token in settings; returns 0
+    (not an error — this is an optional enhancement) if none is set.
+
+    Same staleness-rotation pattern as sync_hero_matchups: 30 heroes per
+    call, whichever have gone longest without a sync, self-healing if
+    any individual hero's fetch fails.
+    """
+    if not settings or not getattr(settings, "stratz_api_token", None):
+        return 0
+
+    from services.stratz import get_stratz_client, rank_bracket_to_stratz
+    stratz_client = get_stratz_client(settings.stratz_api_token)
+
+    last_synced = dict(
+        session.exec(
+            select(HeroSynergy.hero_id, func.max(HeroSynergy.updated_at))
+            .group_by(HeroSynergy.hero_id)
+        ).all()
+    )
+    from utils.dota_constants import HEROES
+    all_hero_ids = list(HEROES.keys())
+    stale_first = sorted(all_hero_ids, key=lambda hid: last_synced.get(hid) or datetime.min)
+
+    total_rows = 0
+    for hero_id in stale_first[:30]:
+        try:
+            result = await stratz_client.get_hero_synergy_and_matchups(hero_id, rank_bracket_to_stratz(None))
+        except Exception as e:
+            logger.warning(f"Stratz synergy fetch failed for hero {hero_id}: {e}")
+            continue
+
+        now = datetime.utcnow()
+        for ally in result.get("with", []):
+            existing = session.exec(
+                select(HeroSynergy)
+                .where(HeroSynergy.hero_id == hero_id)
+                .where(HeroSynergy.ally_hero_id == ally["hero_id"])
+            ).first()
+            if existing:
+                existing.matches = ally["matches"]
+                existing.synergy = ally["synergy"]
+                existing.winrate_together = ally["winrate"]
+                existing.updated_at = now
+            else:
+                session.add(HeroSynergy(
+                    hero_id=hero_id,
+                    ally_hero_id=ally["hero_id"],
+                    matches=ally["matches"],
+                    synergy=ally["synergy"],
+                    winrate_together=ally["winrate"],
+                    updated_at=now,
+                ))
+            total_rows += 1
+
+        await asyncio.sleep(1.0)
+
+    session.commit()
+    logger.info(f"Hero synergy data synced from Stratz ({total_rows} rows across {len(stale_first[:30])} heroes)")
     return total_rows
 
 

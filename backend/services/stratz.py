@@ -7,6 +7,22 @@ logger = logging.getLogger(__name__)
 STRATZ_API_URL = "https://api.stratz.com/graphql"
 
 
+# Our app's rank_bracket is 1-8 (Herald..Immortal, see
+# utils/dota_constants.py RANK_BRACKETS); Stratz's RankBracketBasicEnum
+# only has 4 paired tiers. Confirmed via their real schema
+# (RankBracketBasicEnum.cs) — not a guess.
+_RANK_BRACKET_TO_STRATZ = {
+    1: "HERALD_GUARDIAN", 2: "HERALD_GUARDIAN",
+    3: "CRUSADER_ARCHON", 4: "CRUSADER_ARCHON",
+    5: "LEGEND_ANCIENT", 6: "LEGEND_ANCIENT",
+    7: "DIVINE_IMMORTAL", 8: "DIVINE_IMMORTAL",
+}
+
+
+def rank_bracket_to_stratz(rank_bracket: Optional[int]) -> str:
+    return _RANK_BRACKET_TO_STRATZ.get(rank_bracket, "ALL")
+
+
 def _parse_stratz_position(position: Optional[str]) -> Optional[int]:
     """"POSITION_1".."POSITION_5" -> 1..5; "UNKNOWN"/"FILTERED"/"ALL"/None -> None."""
     if not position or not position.startswith("POSITION_"):
@@ -293,6 +309,117 @@ class StratzClient:
         except Exception as e:
             logger.error(f"Stratz request_parse error: {e}")
             return False
+
+    async def get_hero_synergy_and_matchups(self, hero_id: int, bracket_basic: str = "ALL") -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Real ally-synergy and enemy-matchup data for one hero, from
+        Stratz's heroStats.matchUp query — confirmed directly against
+        their real GraphQL schema (STRATZ.HeroStatsQuery.MatchUp ->
+        HeroDryadType.with/vs -> HeroStatsHeroDryadType.synergy). Returns
+        {"with": [{hero_id, synergy, matches, winrate}, ...],
+         "vs": [...]} — hero_id in each entry is the OTHER hero in the pair.
+        """
+        query = """
+        query($heroId: Short!, $bracketBasicIds: [RankBracketBasicEnum]) {
+          heroStats {
+            matchUp(heroId: $heroId, bracketBasicIds: $bracketBasicIds) {
+              with {
+                heroId2
+                synergy
+                winRateHeroId1
+                matchCount
+              }
+              vs {
+                heroId2
+                synergy
+                winRateHeroId1
+                matchCount
+              }
+            }
+          }
+        }
+        """
+        variables = {"heroId": hero_id, "bracketBasicIds": [bracket_basic]}
+        try:
+            response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
+            if response.status_code != 200:
+                logger.error(f"Stratz get_hero_synergy_and_matchups 400 body: {response.text}")
+            response.raise_for_status()
+            data = response.json()
+            matchup_list = data.get("data", {}).get("heroStats", {}).get("matchUp", [])
+            match_up = matchup_list[0] if matchup_list else {}
+
+            def _format(entries):
+                out = []
+                for e in entries or []:
+                    if e.get("heroId2") is None:
+                        continue
+                    out.append({
+                        "hero_id": e["heroId2"],
+                        "synergy": e.get("synergy"),
+                        "matches": e.get("matchCount") or 0,
+                        "winrate": e.get("winRateHeroId1"),
+                    })
+                return out
+
+            return {"with": _format(match_up.get("with")), "vs": _format(match_up.get("vs"))}
+        except Exception as e:
+            logger.error(f"Stratz get_hero_synergy_and_matchups error for hero {hero_id}: {e}")
+            raise
+
+    async def get_hero_position_stats(self, bracket_basic: str = "ALL") -> List[Dict[str, Any]]:
+        """
+        Per-hero, per-position match count/winrate for every hero in one
+        call — from Stratz's heroStats.stats query, grouped by position
+        (STRATZ.HeroStatsQuery.Stats -> HeroPositionTimeDetailType,
+        confirmed directly against their real schema). This is the same
+        underlying data Dota2ProTracker's site displays (Stratz's own API
+        page lists ProTracker as built on this API) — querying it
+        directly here means the fragile Playwright-based scrape of
+        ProTracker's page (see services/protracker.py) isn't the only
+        source; sync_hero_position_meta tries this first and only falls
+        back to the scrape if Stratz isn't configured or fails.
+        """
+        query = """
+        query($bracketBasicIds: [RankBracketBasicEnum]) {
+          heroStats {
+            stats(bracketBasicIds: $bracketBasicIds, groupByPosition: true) {
+              heroId
+              position
+              matchCount
+              winCount
+            }
+          }
+        }
+        """
+        variables = {"bracketBasicIds": [bracket_basic]}
+        try:
+            response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
+            if response.status_code != 200:
+                logger.error(f"Stratz get_hero_position_stats 400 body: {response.text}")
+            response.raise_for_status()
+            data = response.json()
+            stats = data.get("data", {}).get("heroStats", {}).get("stats", [])
+
+            rows = []
+            for s in stats:
+                position = _parse_stratz_position(s.get("position"))
+                matches = s.get("matchCount") or 0
+                wins = s.get("winCount") or 0
+                if position is None or not s.get("heroId") or matches <= 0:
+                    continue
+                rows.append({
+                    "hero_id": s["heroId"],
+                    "position": position,
+                    "matches": matches,
+                    "winrate": wins / matches,
+                    "d2pt_rating": None,  # Stratz has no equivalent of ProTracker's own branded rating stat
+                })
+            return rows
+        except Exception as e:
+            logger.error(f"Stratz get_hero_position_stats error: {e}")
+            raise
+
 
 def get_stratz_client(api_token: Optional[str]) -> Optional[StratzClient]:
     if not api_token:

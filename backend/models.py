@@ -207,6 +207,31 @@ class HeroMatchup(SQLModel, table=True):
     updated_at: Optional[datetime] = None
 
 
+class HeroSynergy(SQLModel, table=True):
+    """
+    Real ally-pair synergy data — how often two heroes win when on the
+    SAME team together, not against each other (that's HeroMatchup).
+
+    Sourced from Stratz's public GraphQL API (heroStats.matchUp[].with),
+    which has a genuine `synergy` field per hero pair. Confirmed directly
+    against Stratz's real schema that this exists and is publicly
+    queryable — earlier in this project we'd concluded no public source
+    had real hero-pair synergy data (OpenDota's equivalent field is
+    present in its schema but never actually populated), which was true
+    for OpenDota specifically but not for Stratz.
+    """
+    __tablename__ = "hero_synergy"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    hero_id: int = Field(index=True)
+    ally_hero_id: int = Field(index=True)
+    matches: int = 0
+    synergy: Optional[float] = None  # Stratz's own computed synergy score
+    winrate_together: Optional[float] = None
+    rank_bracket: Optional[int] = None
+    updated_at: Optional[datetime] = None
+
+
 class HeroPositionMeta(SQLModel, table=True):
     """
     Per-hero, per-position (1-5: Carry/Mid/Offlane/Soft Support/Hard
