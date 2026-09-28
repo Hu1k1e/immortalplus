@@ -6,7 +6,7 @@ This is 100% safe — GSI is an intended Valve feature for third-party tools.
 
 import logging
 from fastapi import APIRouter, Request
-from routers.draft import update_gsi_draft_state, broadcast_draft_update, _gsi_state
+from routers.draft import update_gsi_draft_state, maybe_broadcast_draft_update, _gsi_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/gsi", tags=["gsi"])
@@ -51,10 +51,11 @@ async def receive_gsi(request: Request):
     # Update draft state if in pick phase
     update_gsi_draft_state(gsi_data)
 
-    # Broadcast to WebSocket clients
+    # Broadcast to WebSocket clients — only on an actual change (see
+    # maybe_broadcast_draft_update's docstring), not on every GSI packet.
     if _gsi_state["active"]:
         import asyncio
-        asyncio.create_task(broadcast_draft_update(_gsi_state))
+        asyncio.create_task(maybe_broadcast_draft_update())
 
     return {"status": "ok"}
 

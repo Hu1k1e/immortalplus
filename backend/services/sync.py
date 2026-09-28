@@ -505,16 +505,17 @@ async def create_progress_snapshot(session: Session, player: Player):
     logger.info(f"Created progress snapshot for player {player.account_id} — {today}")
 
 
-async def sync_hero_meta(session: Session, settings: UserSettings):
-    """Fetch and cache hero meta data from OpenDota."""
+async def sync_hero_meta(session: Session, settings: UserSettings) -> int:
+    """Fetch and cache hero meta data from OpenDota. Returns the number
+    of hero/bracket rows written, or raises on failure (rather than
+    swallowing it into a silent None) so callers — in particular the
+    manual "Refresh Meta Data" button's endpoint — can tell success from
+    failure instead of both looking identical."""
     client = get_opendota_client(settings.opendota_api_key if settings else None)
 
-    try:
-        hero_stats = await client.get_hero_stats()
-    except Exception as e:
-        logger.error(f"Failed to fetch hero stats: {e}")
-        return
+    hero_stats = await client.get_hero_stats()
 
+    count = 0
     for hero in hero_stats:
         hero_id = hero.get("id")
         if not hero_id:
@@ -551,12 +552,14 @@ async def sync_hero_meta(session: Session, settings: UserSettings):
                     updated_at=datetime.utcnow(),
                 )
                 session.add(meta)
+            count += 1
 
     session.commit()
-    logger.info("Hero meta data synced from OpenDota")
+    logger.info(f"Hero meta data synced from OpenDota ({count} hero/bracket rows)")
+    return count
 
 
-async def sync_hero_matchups(session: Session, settings: UserSettings):
+async def sync_hero_matchups(session: Session, settings: UserSettings) -> int:
     """
     Fetch hero matchup data from OpenDota, 30 heroes per call (rate-limit
     friendly). Previously always processed the same first 30 heroes in
@@ -566,8 +569,11 @@ async def sync_hero_matchups(session: Session, settings: UserSettings):
     rotate through the full hero list over time, self-healing if any
     individual hero's fetch fails (it just stays "oldest" and gets
     retried next cycle) — no separate cursor/offset field needed.
+
+    Returns the number of matchup rows written this call.
     """
     client = get_opendota_client(settings.opendota_api_key if settings else None)
+    total_rows = 0
 
     last_synced = dict(
         session.exec(
@@ -615,11 +621,13 @@ async def sync_hero_matchups(session: Session, settings: UserSettings):
                     advantage=round(advantage, 2),
                     updated_at=datetime.utcnow(),
                 ))
+            total_rows += 1
 
         await asyncio.sleep(1.5)  # Respect rate limits
 
     session.commit()
-    logger.info("Hero matchup data synced")
+    logger.info(f"Hero matchup data synced ({total_rows} rows across {len(stale_first[:30])} heroes)")
+    return total_rows
 
 
 # Import here to avoid circular dependency

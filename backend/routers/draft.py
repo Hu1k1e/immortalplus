@@ -10,10 +10,11 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import Player, UserSettings, HeroMatchup, HeroMeta
-from services.draft_engine import calculate_draft_suggestions
-from services.opendota import get_opendota_client
-from utils.dota_constants import rank_tier_to_bracket, get_hero_id_by_name
+from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, Match
+from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
+from services.protracker import sync_hero_position_meta
+from services.sync import sync_hero_meta, sync_hero_matchups
+from utils.dota_constants import get_hero_id_by_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/draft", tags=["draft"])
@@ -40,87 +41,99 @@ async def suggest_picks(
     session: Session = Depends(get_session),
 ):
     """
-    Get hero pick suggestions based on current draft state.
-    Uses only publicly visible picks + cached meta data.
+    Get hero pick suggestions, grouped by the 5 real Dota positions
+    (Carry/Mid/Offlane/Soft Support/Hard Support), each with 3 ranked
+    lists: best this patch, your best, and a blended overall suggestion.
+    See services/draft_engine.py for the scoring model and why it's
+    structured this way.
     """
     player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
-    settings = session.exec(select(UserSettings).limit(1)).first()
 
     if not player:
         raise HTTPException(status_code=404, detail="No player profile found")
 
-    # Get player's hero pool
-    client = get_opendota_client(settings.opendota_api_key if settings else None)
-    try:
-        player_heroes = await client.get_player_heroes(player.account_id)
-    except Exception:
-        player_heroes = []
-
-    # Get hero matchup data from DB
-    hero_matchups = {}
+    # Hero matchup data (X vs each enemy hero), from DB — populated by
+    # the background sync loop (services/sync.py:sync_hero_matchups).
+    hero_matchups: dict[int, list[dict]] = {}
     matchups = session.exec(select(HeroMatchup)).all()
     for mu in matchups:
-        if mu.hero_id not in hero_matchups:
-            hero_matchups[mu.hero_id] = []
-        hero_matchups[mu.hero_id].append({
+        hero_matchups.setdefault(mu.hero_id, []).append({
             "hero_id": mu.enemy_hero_id,
-            "games_played": mu.games_played,
-            "wins": mu.wins,
             "advantage": mu.advantage or 0,
         })
 
-    # If no local matchup data, fetch from OpenDota for enemy heroes
-    if not hero_matchups and enemy_picks:
-        try:
-            for enemy_id in enemy_picks:
-                data = await client.get_hero_matchups(enemy_id)
-                for m in data:
-                    hid = m.get("hero_id")
-                    if hid not in hero_matchups:
-                        hero_matchups[hid] = []
-                    games = m.get("games_played", 0)
-                    wins = m.get("wins", 0)
-                    hero_matchups[hid].append({
-                        "hero_id": enemy_id,
-                        "games_played": games,
-                        "wins": games - wins,  # Invert: these are enemy stats
-                        "advantage": ((wins / max(games, 1)) - 0.5) * -100,
-                    })
-        except Exception as e:
-            logger.warning(f"Failed to fetch matchups: {e}")
+    # Current-patch per-position meta (Dota2ProTracker), from DB.
+    hero_position_meta: dict[int, dict[int, dict]] = {p: {} for p in range(1, 6)}
+    position_metas = session.exec(select(HeroPositionMeta)).all()
+    for pm in position_metas:
+        if pm.position in hero_position_meta:
+            hero_position_meta[pm.position][pm.hero_id] = {
+                "winrate": pm.winrate,
+                "matches": pm.matches,
+                "d2pt_rating": pm.d2pt_rating,
+            }
 
-    # Get hero meta from DB
-    bracket = rank_tier_to_bracket(player.rank_tier or 0)
-    hero_meta = {}
-    metas = session.exec(
-        select(HeroMeta).where(HeroMeta.rank_bracket == bracket)
+    # Player's own match history, bucketed into positions via a GPM/
+    # lane heuristic (see draft_engine.estimate_position) since we don't
+    # store the finer 1-5 position directly.
+    player_matches = session.exec(
+        select(Match).where(Match.player_id == player.id).where(Match.hero_id.is_not(None))
     ).all()
-    for m in metas:
-        hero_meta[m.hero_id] = {
-            "winrate": m.winrate or 0.5,
-            "pickrate": (m.pick_count or 0) / max(sum(mm.pick_count or 0 for mm in metas), 1),
-        }
+    personal_position_stats = compute_personal_position_stats(player_matches)
 
-    suggestions = calculate_draft_suggestions(
+    by_role = calculate_role_based_suggestions(
         ally_picks=ally_picks,
         enemy_picks=enemy_picks,
         bans=bans,
-        player_hero_stats=player_heroes,
+        hero_position_meta=hero_position_meta,
+        personal_position_stats=personal_position_stats,
         hero_matchups=hero_matchups,
-        hero_meta=hero_meta,
-        rank_bracket=bracket,
-        min_comfort_games=settings.draft_min_comfort_games if settings else 10,
-        priority=settings.draft_priority if settings else "balanced",
     )
 
     return {
-        "suggestions": suggestions,
+        "by_role": by_role,
         "ally_picks": ally_picks,
         "enemy_picks": enemy_picks,
         "bans": bans,
-        "bracket": bracket,
-        "priority": settings.draft_priority if settings else "balanced",
     }
+
+
+@router.post("/refresh-meta")
+async def refresh_meta(session: Session = Depends(get_session)):
+    """
+    Manual trigger for an immediate meta/matchup/position-meta resync,
+    for the "Refresh Meta Data" button on the Draft Helper page — rather
+    than waiting for the background loop's next scheduled cycle. Returns
+    per-source success/failure so the UI (and the logs, via each sync
+    function's own logger calls) can show exactly what happened rather
+    than a single opaque "done".
+    """
+    settings = session.exec(select(UserSettings).limit(1)).first()
+    results = {}
+
+    try:
+        count = await sync_hero_meta(session, settings)
+        results["hero_meta"] = {"status": "ok", "count": count}
+    except Exception as e:
+        logger.error(f"Manual refresh: hero_meta sync failed: {e}", exc_info=True)
+        results["hero_meta"] = {"status": "error", "message": str(e)}
+
+    try:
+        count = await sync_hero_matchups(session, settings)
+        results["hero_matchups"] = {"status": "ok", "count": count}
+    except Exception as e:
+        logger.error(f"Manual refresh: hero_matchups sync failed: {e}", exc_info=True)
+        results["hero_matchups"] = {"status": "error", "message": str(e)}
+
+    try:
+        count = await sync_hero_position_meta(session, settings)
+        results["hero_position_meta"] = {"status": "ok" if count else "error", "count": count}
+    except Exception as e:
+        logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
+        results["hero_position_meta"] = {"status": "error", "message": str(e)}
+
+    overall_ok = all(r["status"] == "ok" for r in results.values())
+    return {"status": "ok" if overall_ok else "partial_failure", "results": results}
 
 
 @router.get("/state")
@@ -163,7 +176,7 @@ async def report_screen_scan(
     if bans:
         _gsi_state["bans"] = bans
 
-    await broadcast_draft_update(_gsi_state)
+    await maybe_broadcast_draft_update()
     return {"status": "ok", "state": _gsi_state}
 
 
@@ -199,6 +212,29 @@ async def broadcast_draft_update(state: dict):
             dead.append(ws)
     for ws in dead:
         _ws_clients.remove(ws)
+
+
+# Snapshot of the fields that actually matter to a viewer, so a broadcast
+# only fires on a real change — not on every GSI packet. Dota posts GSI
+# updates multiple times per second while a draft is active; broadcasting
+# unconditionally on every one of those (the original behavior) made the
+# frontend re-fetch and blank its suggestions panel every ~second even
+# though nothing had changed, which is exactly the flicker reported.
+_last_broadcast_snapshot: dict | None = None
+
+
+async def maybe_broadcast_draft_update():
+    global _last_broadcast_snapshot
+    snapshot = {
+        "active": _gsi_state["active"],
+        "phase": _gsi_state["phase"],
+        "ally_picks": list(_gsi_state["ally_picks"]),
+        "enemy_picks": list(_gsi_state["enemy_picks"]),
+        "bans": list(_gsi_state["bans"]),
+    }
+    if snapshot != _last_broadcast_snapshot:
+        _last_broadcast_snapshot = snapshot
+        await broadcast_draft_update(_gsi_state)
 
 
 def _resolve_hero_id(value) -> int | None:
