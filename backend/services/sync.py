@@ -207,6 +207,7 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
 
     source = settings.data_source if settings else "both"
     total_new = 0
+    total_upgraded = 0
     start_page = player.history_backfill_page or 0
     if start_page:
         logger.info(f"History backfill: resuming for {player.account_id} from page {start_page}")
@@ -246,17 +247,35 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
             break
 
         page_new = 0
+        page_upgraded = 0
         for m in matches:
             mid = m.get("match_id")
             if not mid:
                 continue
             existing = session.exec(select(Match).where(Match.match_id == mid)).first()
             if existing:
+                # Real, confirmed bug this fixes: a match synced long ago
+                # by the plain incremental loop (OpenDota's bulk match-list
+                # endpoint — confirmed via a direct real call to it — never
+                # includes lane_role/gpm/position at all, only Stratz's
+                # equivalent bulk call does) permanently had position=None,
+                # and every later sync (including this backfill) skipped it
+                # outright once a row existed, so it could never benefit
+                # from a real position value even after Stratz got
+                # configured — the actual root cause behind "your best"
+                # showing only a handful of games for a hero the player has
+                # played far more (e.g. 3 shown vs. 25 real Windranger
+                # games). If this fetch has real position data the stored
+                # row doesn't, upgrade it in place instead of skipping.
+                if existing.position is None and m.get("position") is not None:
+                    existing.position = m["position"]
+                    page_upgraded += 1
                 continue
             session.add(_match_row_from_dict(m, player.id))
             page_new += 1
 
         total_new += page_new
+        total_upgraded += page_upgraded
         # Persisted after every page (not just at the very end) so a
         # redeploy mid-backfill resumes here next time instead of
         # re-fetching pages already stored — see this function's
@@ -275,7 +294,10 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
 
     player.history_backfilled_at = datetime.utcnow()
     session.commit()
-    logger.info(f"History backfill complete for {player.account_id}: {total_new} new matches stored")
+    logger.info(
+        f"History backfill complete for {player.account_id}: {total_new} new matches stored, "
+        f"{total_upgraded} existing matches upgraded with real position data"
+    )
     return total_new
 
 

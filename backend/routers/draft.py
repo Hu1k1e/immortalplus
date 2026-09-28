@@ -17,7 +17,7 @@ from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta
 from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
 from services.protracker import sync_hero_position_meta
 from services.sync import sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock
-from utils.dota_constants import get_hero_id_by_name, rank_tier_to_bracket
+from utils.dota_constants import get_hero_id_by_name
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/draft", tags=["draft"])
@@ -101,17 +101,6 @@ async def suggest_picks(
     ).all()
     personal_position_stats = compute_personal_position_stats(player_matches)
 
-    # Overall hero winrate at the PLAYER'S OWN rank bracket (OpenDota
-    # HeroMeta) — position-agnostic but rank-specific, the opposite
-    # tradeoff from HeroPositionMeta (position-specific but high-MMR/pro
-    # only). draft_engine blends the two so the meta score reflects the
-    # player's actual rank, not just what's strong among top players.
-    hero_meta_at_rank: dict[int, dict] = {}
-    bracket = rank_tier_to_bracket(player.rank_tier or 0)
-    metas = session.exec(select(HeroMeta).where(HeroMeta.rank_bracket == bracket)).all()
-    for m in metas:
-        hero_meta_at_rank[m.hero_id] = {"winrate": m.winrate}
-
     # Real ally-pair synergy (Stratz only — see sync_hero_synergy). Empty
     # dict (not an error) if no Stratz token is configured; draft_engine
     # treats a hero with no synergy rows as neutral, same as missing
@@ -132,7 +121,6 @@ async def suggest_picks(
         hero_position_meta=hero_position_meta,
         personal_position_stats=personal_position_stats,
         hero_matchups=hero_matchups,
-        hero_meta_at_rank=hero_meta_at_rank,
         hero_synergy=hero_synergy,
     )
 
@@ -330,6 +318,49 @@ async def data_health(session: Session = Depends(get_session)):
         "overall": "ok" if all(s["status"] in ("ok", "not_configured") for s in sources) else "attention_needed",
         "checked_at": now.isoformat(),
     }
+
+
+@router.post("/backfill-history")
+async def trigger_backfill_history(session: Session = Depends(get_session)):
+    """
+    Manual re-trigger for the full match-history backfill (see services/
+    sync.py's sync_full_match_history). Added after finding a real bug in
+    it: an already-stored match (from the plain incremental sync, which
+    never has position data when sourced from OpenDota's bulk match-list
+    endpoint) was being skipped forever once a row existed, even after
+    the backfill itself started fetching real position data from Stratz —
+    so completing the backfill once wasn't enough to fix "your best" for
+    an account with a lot of pre-existing history. Resets the completed/
+    resume-page flags and reruns it as a background task (same pattern as
+    /refresh-meta) so the now-fixed upgrade-existing-rows logic actually
+    gets applied; check progress via GET /data-health's match_history
+    block rather than polling this endpoint.
+    """
+    from database import SessionLocal
+    from services.sync import sync_full_match_history
+
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    settings = session.exec(select(UserSettings).limit(1)).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="No player profile found")
+
+    player.history_backfilled_at = None
+    player.history_backfill_page = 0
+    session.commit()
+
+    async def _run():
+        bg_session = SessionLocal()
+        try:
+            bg_player = bg_session.exec(select(Player).where(Player.id == player.id)).first()
+            bg_settings = bg_session.exec(select(UserSettings).limit(1)).first()
+            await sync_full_match_history(bg_session, bg_player, bg_settings)
+        except Exception as e:
+            logger.error(f"Manual history backfill failed: {e}", exc_info=True)
+        finally:
+            bg_session.close()
+
+    asyncio.create_task(_run())
+    return {"status": "started"}
 
 
 @router.get("/state")

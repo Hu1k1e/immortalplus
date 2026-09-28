@@ -761,7 +761,7 @@ export default function DraftHelper() {
             <div className="suggestion-column">
               <div className="suggestion-column-header">
                 <h4>Best This Patch</h4>
-                <span className="suggestion-column-subtitle">Highest winrate at this position</span>
+                <span className="suggestion-column-subtitle">Meta strength + matchup vs enemies + synergy with allies</span>
               </div>
               {activeSummaryBlock.meta_best.length === 0 ? (
                 <p className="text-muted suggestion-empty">Not enough data yet.</p>
@@ -771,7 +771,12 @@ export default function DraftHelper() {
                     const hero = HEROES[s.hero_id];
                     if (!hero) return null;
                     return (
-                      <div key={s.hero_id} className="suggestion-card animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
+                      <div
+                        key={s.hero_id}
+                        className="suggestion-card animate-fade-in"
+                        style={{ animationDelay: `${i * 30}ms` }}
+                        title={s.reason || undefined}
+                      >
                         <img src={getHeroIcon(s.hero_id)} alt={hero.name} className="suggestion-card-icon" />
                         <div className="suggestion-card-body">
                           <div className="suggestion-card-top">
@@ -779,7 +784,6 @@ export default function DraftHelper() {
                             <span className="suggestion-card-score">{s.score.toFixed(0)}</span>
                           </div>
                           <div className="suggestion-score-bar"><div className="suggestion-score-bar-fill" style={{ width: `${Math.min(100, Math.max(4, s.score))}%` }} /></div>
-                          {s.reason && <span className="suggestion-card-reason">{s.reason}</span>}
                         </div>
                       </div>
                     );

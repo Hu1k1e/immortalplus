@@ -218,54 +218,38 @@ def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, 
 MIN_META_MATCHES = 20
 
 
-def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_rank: dict[int, dict]) -> tuple[float, str | None]:
+def _meta_score(position_stats: dict | None) -> tuple[float | None, str | None]:
     """
-    Blends Dota2ProTracker's own position-specific rating with OpenDota's
-    HeroMeta winrate at the player's OWN rank bracket (position-agnostic,
-    but rank-specific) when both are available. 60/40 weight toward the
-    position-specific number, since it's the more relevant signal for
-    "should I pick this at THIS position" — HeroMeta only adjusts it
-    toward how the hero performs at the player's actual rank generally.
+    ProTracker's own position-specific rating for this hero — no longer
+    blended with OpenDota's HeroMeta "winrate at your rank bracket"
+    (removed entirely, not just hidden from display, per explicit
+    request questioning its relevance: that field is position-agnostic —
+    a hero's overall winrate at a rank bracket regardless of which of the
+    5 positions it was played at — so mixing it into a POSITION-specific
+    suggestion list was pulling every position's score toward the same
+    one aggregate number, a real accuracy problem for exactly the same
+    reason ProTracker's own data is used per-position in the first place).
 
     Prefers ProTracker's own d2pt_rating (their site's real "Best This
     Patch" ranking column — confirmed directly against their live /meta
     page, which sorts by this exact number, 0-100, S/A/B/C/D/E-tiered)
-    over recomputing a rank from bare winrate ourselves: it's their
-    actual composite signal (accounts for more than winrate alone —
-    contest rate, lane advantage, etc., per their own site), already on
-    the same 0-100 scale our own score uses, and it's the literal number
-    a user cross-checking against dota2protracker.com's own "Best This
-    Patch" list would be comparing against. Falls back to a bare winrate*
-    100 (the previous approach) only for the hero/position combos
-    ProTracker doesn't compute a rating for (mainly very-low-sample ones,
-    which MIN_META_MATCHES mostly already excludes upstream, but the
-    rating can be null even with a moderate sample for some off-meta
-    combos).
+    over recomputing a rank from bare winrate ourselves. Falls back to a
+    bare winrate*100 only for the hero/position combos ProTracker doesn't
+    compute a rating for. Returns (None, None) — not a faked neutral
+    value — when there isn't enough real data (see MIN_META_MATCHES);
+    callers decide how to treat that absence (meta_best excludes the
+    hero entirely, combined/dynamic-meta_best fall back to neutral 50).
     """
     has_enough_matches = position_stats and (position_stats.get("matches") or 0) >= MIN_META_MATCHES
-    d2pt_rating = position_stats.get("d2pt_rating") if has_enough_matches else None
-    position_winrate = position_stats["winrate"] if has_enough_matches and position_stats.get("winrate") is not None else None
-    rank_meta = hero_meta_at_rank.get(hero_id)
-    rank_winrate = rank_meta["winrate"] if rank_meta and rank_meta.get("winrate") else None
-
+    if not has_enough_matches:
+        return None, None
+    d2pt_rating = position_stats.get("d2pt_rating")
     if d2pt_rating is not None:
-        position_score = d2pt_rating
-        position_label = f"D2PT rating {d2pt_rating:.0f}/100 this patch"
-    elif position_winrate is not None:
-        position_score = position_winrate * 100
-        position_label = f"{position_winrate*100:.1f}% WR this patch ({position_stats.get('matches', 0)} matches)"
-    else:
-        position_score = None
-        position_label = None
-
-    if position_score is not None and rank_winrate is not None:
-        blended = position_score * 0.6 + rank_winrate * 100 * 0.4
-        return blended, f"{position_label}, {rank_winrate*100:.1f}% WR at your rank"
-    if position_score is not None:
-        return position_score, position_label
-    if rank_winrate is not None:
-        return rank_winrate * 100, f"{rank_winrate*100:.1f}% WR at your rank"
-    return 50.0, None
+        return d2pt_rating, f"D2PT rating {d2pt_rating:.0f}/100 this patch"
+    winrate = position_stats.get("winrate")
+    if winrate is not None:
+        return winrate * 100, f"{winrate*100:.1f}% WR this patch ({position_stats.get('matches', 0)} matches)"
+    return None, None
 
 
 def calculate_role_based_suggestions(
@@ -275,7 +259,6 @@ def calculate_role_based_suggestions(
     hero_position_meta: dict[int, dict[int, dict]],
     personal_position_stats: dict[int, dict[int, dict]],
     hero_matchups: dict[int, list[dict]],
-    hero_meta_at_rank: dict[int, dict] | None = None,
     hero_synergy: dict[int, list[dict]] | None = None,
     top_n: int = 6,
     combined_limit: int = 200,
@@ -288,9 +271,6 @@ def calculate_role_based_suggestions(
             from the player's own match history (compute_personal_position_stats).
         hero_matchups: {hero_id: [{hero_id, advantage}, ...]} vs enemy heroes,
             from HeroMatchup — hero_id here is the ENEMY being matched against.
-        hero_meta_at_rank: {hero_id: {winrate, ...}} from HeroMeta, filtered to
-            the player's own rank bracket — optional, used to rank-adjust the
-            meta component when available (see _rank_adjusted_meta).
         hero_synergy: {hero_id: [{hero_id, synergy}, ...]} vs ally heroes, from
             HeroSynergy (Stratz) — optional, real pair data when present (see
             _synergy_score), neutral when absent (no Stratz token configured).
@@ -300,39 +280,25 @@ def calculate_role_based_suggestions(
     capped at top_n (summary lists); combined is capped at the much
     higher combined_limit since the frontend's per-position columns are
     meant to be scrolled through, not just show a top handful.
+
+    meta_best and combined are computed together in one pass per hero
+    (not two separate loops) since both need the same matchup/synergy
+    lookups — meta_best used to be a frozen, patch-only ranking that
+    never reacted to the current draft at all, confirmed as a real,
+    reported gap ("does not dynamically change to reflect what is good
+    this patch + what is good with enemy + our heroes"). It's now
+    meta(0.6) + matchup-vs-enemy(0.25) + synergy-with-allies(0.15) — the
+    same real per-draft signals `combined` uses, just without the
+    personal-comfort term (that's what `your_best`/`combined` are for)
+    — so it re-sorts on every pick exactly like `combined` already did.
     """
     unavailable = set(ally_picks + enemy_picks + bans)
-    hero_meta_at_rank = hero_meta_at_rank or {}
     hero_synergy = hero_synergy or {}
     result = {}
 
     for position, role_key in ROLE_KEYS.items():
         meta_for_role = hero_position_meta.get(position, {})
         personal_for_role = personal_position_stats.get(position, {})
-
-        # ── meta_best: current-patch winrate at this position, rank-adjusted ──
-        meta_best = []
-        for hero_id, stats in meta_for_role.items():
-            if hero_id in unavailable or stats.get("winrate") is None:
-                continue
-            if (stats.get("matches") or 0) < MIN_META_MATCHES:
-                # Real matches at this position, but too few to be a
-                # meaningful "current patch at this position" signal — see
-                # MIN_META_MATCHES. Excluded from this list entirely
-                # rather than kept with a diluted score, since a hero
-                # essentially never played here doesn't belong in
-                # "current-patch winrate at this position" no matter how
-                # the score shakes out.
-                continue
-            score, reason = _rank_adjusted_meta(hero_id, stats, hero_meta_at_rank)
-            meta_best.append({
-                "hero_id": hero_id,
-                "hero_name": get_hero_name(hero_id),
-                "score": round(score, 1),
-                "reason": reason,
-            })
-        meta_best.sort(key=lambda x: x["score"], reverse=True)
-        meta_best = meta_best[:top_n]
 
         # ── your_best: player's own history at this position ─────────
         your_best = []
@@ -349,20 +315,20 @@ def calculate_role_based_suggestions(
         your_best.sort(key=lambda x: (x["score"], personal_for_role[x["hero_id"]]["games"]), reverse=True)
         your_best = your_best[:top_n]
 
-        # ── combined: blended overall suggestion ──────────────────────
-        # Four real signals: the hero's own (rank-adjusted) strength, the
-        # player's personal comfort, how it matches up against the
-        # specific enemies picked, and (when Stratz is configured) real
-        # pair-synergy with the allies already picked. No fabricated
+        # ── meta_best (draft-reactive) + combined ──────────────────────
+        # One pass over every candidate hero computes both lists, since
+        # they share the same matchup/synergy lookups. No fabricated
         # numbers — a signal with no data for a given hero just sits at
         # the neutral midpoint (50) instead of pulling the score either way.
         candidate_ids = set(meta_for_role.keys()) | set(personal_for_role.keys())
+        meta_best = []
         combined = []
         for hero_id in candidate_ids:
             if hero_id in unavailable:
                 continue
 
-            meta_component, meta_reason = _rank_adjusted_meta(hero_id, meta_for_role.get(hero_id), hero_meta_at_rank)
+            meta_score, meta_reason = _meta_score(meta_for_role.get(hero_id))
+            meta_component = meta_score if meta_score is not None else 50.0
 
             personal_stats = personal_for_role.get(hero_id)
             if personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES:
@@ -375,7 +341,7 @@ def calculate_role_based_suggestions(
             matchup_component, matchup_reasons, matchup_breakdown = _matchup_score(hero_id, enemy_picks, hero_matchups)
             synergy_component, synergy_reasons, synergy_breakdown = _synergy_score(hero_id, ally_picks, hero_synergy)
 
-            score = (
+            combined_score = (
                 meta_component * 0.35 +
                 personal_component * 0.25 +
                 matchup_component * 0.25 +
@@ -391,7 +357,7 @@ def calculate_role_based_suggestions(
             combined.append({
                 "hero_id": hero_id,
                 "hero_name": get_hero_name(hero_id),
-                "score": round(score, 1),
+                "score": round(combined_score, 1),
                 "reasons": reasons[:4],
                 # Full per-hero breakdown (every currently-picked enemy/ally
                 # this hero has real data for, not just the top-2 that make
@@ -403,6 +369,26 @@ def calculate_role_based_suggestions(
                 "matchup_breakdown": matchup_breakdown,
                 "synergy_breakdown": synergy_breakdown,
             })
+
+            if meta_score is None:
+                # Real matches at this position are too few (or nonexistent)
+                # to trust at all — see MIN_META_MATCHES. Excluded from
+                # meta_best entirely rather than kept with a score diluted
+                # down to the neutral fallback, since a hero essentially
+                # never played here doesn't belong in "Best This Patch" no
+                # matter how the matchup/synergy terms shake out.
+                continue
+            meta_best.append({
+                "hero_id": hero_id,
+                "hero_name": get_hero_name(hero_id),
+                "score": round(meta_score * 0.6 + matchup_component * 0.25 + synergy_component * 0.15, 1),
+                "reason": meta_reason,
+                "matchup_breakdown": matchup_breakdown,
+                "synergy_breakdown": synergy_breakdown,
+            })
+
+        meta_best.sort(key=lambda x: x["score"], reverse=True)
+        meta_best = meta_best[:top_n]
         combined.sort(key=lambda x: x["score"], reverse=True)
         combined = combined[:combined_limit]
 
