@@ -115,8 +115,21 @@ async def suggest_picks(
         hero_synergy=hero_synergy,
     )
 
+    # {hero_id: {position: matches}} — how commonly each hero is played
+    # at each position, straight from HeroPositionMeta. Not a guess: the
+    # frontend uses this to figure out which position an ALREADY-PICKED
+    # hero most likely fills (GSI has no "queued role" field — confirmed
+    # directly against the real GSI schema, this app's only real signal
+    # for "what position is this pick" is which position that hero is
+    # most commonly played at).
+    hero_position_fit: dict[int, dict[int, int]] = {}
+    for position, heroes in hero_position_meta.items():
+        for hero_id, stats in heroes.items():
+            hero_position_fit.setdefault(hero_id, {})[position] = stats.get("matches") or 0
+
     return {
         "by_role": by_role,
+        "hero_position_fit": hero_position_fit,
         "ally_picks": ally_picks,
         "enemy_picks": enemy_picks,
         "bans": bans,

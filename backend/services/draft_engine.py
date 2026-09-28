@@ -210,6 +210,7 @@ def calculate_role_based_suggestions(
     hero_meta_at_rank: dict[int, dict] | None = None,
     hero_synergy: dict[int, list[dict]] | None = None,
     top_n: int = 6,
+    combined_limit: int = 200,
 ) -> dict[str, dict[str, list[dict]]]:
     """
     Args:
@@ -227,7 +228,10 @@ def calculate_role_based_suggestions(
             _synergy_score), neutral when absent (no Stratz token configured).
 
     Returns {role_key: {"meta_best": [...], "your_best": [...], "combined": [...]}}
-    for all 5 roles, each list sorted best-first, length up to top_n.
+    for all 5 roles, each list sorted best-first. meta_best/your_best are
+    capped at top_n (summary lists); combined is capped at the much
+    higher combined_limit since the frontend's per-position columns are
+    meant to be scrolled through, not just show a top handful.
     """
     unavailable = set(ally_picks + enemy_picks + bans)
     hero_meta_at_rank = hero_meta_at_rank or {}
@@ -314,7 +318,7 @@ def calculate_role_based_suggestions(
                 "reasons": reasons[:4],
             })
         combined.sort(key=lambda x: x["score"], reverse=True)
-        combined = combined[:top_n]
+        combined = combined[:combined_limit]
 
         result[role_key] = {
             "position": position,
