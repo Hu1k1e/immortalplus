@@ -14,6 +14,7 @@ See regions.py for the current calibration status before relying on this.
 
 import logging
 import os
+import sys
 import time
 from datetime import datetime
 
@@ -21,7 +22,7 @@ import cv2
 import requests
 
 from ban_ocr import extract_banned_hero_ids
-from config import BACKEND_URL, PHASE_POLL_INTERVAL_S, CAPTURE_INTERVAL_S
+from config import BACKEND_URL, PHASE_POLL_INTERVAL_S, CAPTURE_INTERVAL_S, ICON_CACHE_DIR
 from hero_icons import fetch_hero_icons, fetch_hero_names
 from matcher import identify_hero
 from regions import PICK_SLOTS, BAN_LOG_REGION, to_pixels
@@ -38,8 +39,19 @@ logger = logging.getLogger("draft-scanner")
 # failure mode that needs a real image to diagnose, confirmed directly
 # by "Enchantress" recurring even after the consecutive-frame debounce
 # fix. Set DEBUG_CAPTURES=0 to disable once detection is trusted.
+#
+# Same frozen-exe path bug already fixed once for the icon cache
+# (config.py's ICON_CACHE_DIR) — reused directly here instead of
+# repeating the mistake: os.path.dirname(__file__) resolves into the
+# packaged .exe's temporary self-extraction folder, not a location next
+# to the actual .exe the user ran, so the saved images were going
+# somewhere that gets wiped when the process exits and was never
+# findable in the first place. ICON_CACHE_DIR already resolves to a
+# persistent, real folder (next to the script when run from source,
+# %LOCALAPPDATA%\draft-scanner when packaged) — sitting debug_captures
+# next to it gets the same fix for free.
 DEBUG_CAPTURES = os.environ.get("DEBUG_CAPTURES", "1") == "1"
-DEBUG_CAPTURES_DIR = os.path.join(os.path.dirname(__file__), "debug_captures")
+DEBUG_CAPTURES_DIR = os.path.join(os.path.dirname(ICON_CACHE_DIR), "debug_captures")
 
 
 def save_debug_capture(image, tag: str):
@@ -77,21 +89,31 @@ def scan_once(hero_icons: dict, hero_names: dict) -> tuple[dict, dict] | tuple[N
         return None, None
     h, w = screen.shape[:2]
 
-    def scan_slots(slots):
+    def scan_slots(side, slots):
         heroes = []
         crops = {}
-        for region in slots:
+        for i, region in enumerate(slots):
             x, y, rw, rh = to_pixels(region, w, h)
             crop = screen[y:y + rh, x:x + rw]
-            hero_id, confidence = identify_hero(crop, hero_icons)
+            hero_id, best_count, best_candidate = identify_hero(crop, hero_icons)
+            # INFO, not DEBUG — this is the single most useful line for
+            # diagnosing a wrong pick (which slot, which hero, how
+            # confident, and — even when nothing was accepted — what the
+            # closest guess was), and it needs to show up in whatever
+            # console output gets shared without anyone having to dig up
+            # a debug folder or change the log level first.
             if hero_id:
                 heroes.append(hero_id)
                 crops[hero_id] = crop
-                logger.debug(f"Slot ({x},{y}) -> hero {hero_id} (confidence {confidence:.2f})")
+                logger.info(f"{side} slot {i}: hero {hero_id} (score {best_count})")
+            elif best_candidate:
+                logger.info(f"{side} slot {i}: no match — closest was hero {best_candidate} (score {best_count}, below threshold)")
+            else:
+                logger.info(f"{side} slot {i}: no match (empty slot, score {best_count})")
         return heroes, crops
 
-    ally_picks, ally_crops = scan_slots(PICK_SLOTS["radiant"])
-    enemy_picks, enemy_crops = scan_slots(PICK_SLOTS["dire"])
+    ally_picks, ally_crops = scan_slots("ally", PICK_SLOTS["radiant"])
+    enemy_picks, enemy_crops = scan_slots("enemy", PICK_SLOTS["dire"])
 
     x, y, rw, rh = to_pixels(BAN_LOG_REGION, w, h)
     ban_crop = screen[y:y + rh, x:x + rw]
@@ -159,7 +181,9 @@ def update_confirmed(pending: dict[int, int], confirmed: set[int], detected: lis
 
 
 def main():
-    logger.info(f"draft-scanner starting, backend={BACKEND_URL}, debug_captures={DEBUG_CAPTURES}")
+    logger.info(f"draft-scanner starting, backend={BACKEND_URL}")
+    if DEBUG_CAPTURES:
+        logger.info(f"Debug captures enabled — saving to: {DEBUG_CAPTURES_DIR}")
     hero_icons = fetch_hero_icons()
     hero_names = fetch_hero_names()
     if not hero_icons:

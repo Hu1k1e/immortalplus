@@ -44,14 +44,20 @@ def _good_match_count(crop_gray: np.ndarray, ref_gray: np.ndarray) -> int:
     return sum(1 for m in matches if m.distance < _GOOD_MATCH_DISTANCE)
 
 
-def identify_hero(crop: np.ndarray, hero_icons: dict[int, np.ndarray]) -> tuple[int | None, float]:
-    """Returns (hero_id, match_count) for the best match, or (None, 0) if
-    nothing clears MIN_GOOD_MATCHES. hero_icons should be the WIDE
-    portrait crops (see hero_icons.py) — ORB needs real texture/detail to
-    find keypoints in, which the small 32x32 icon crop doesn't have
-    enough of."""
+def identify_hero(crop: np.ndarray, hero_icons: dict[int, np.ndarray]) -> tuple[int | None, float, int | None]:
+    """Returns (accepted_hero_id, best_count, best_candidate_hero_id).
+    accepted_hero_id is None if nothing clears MIN_GOOD_MATCHES;
+    best_candidate_hero_id is the top scorer REGARDLESS of the
+    threshold, always returned rather than discarded — a below-threshold
+    call is exactly as useful to see for diagnosing a wrong detection as
+    an accepted one is ("this slot's actual best guess was hero X at a
+    score of 3, comfortably below the threshold" is a real, different
+    finding than "nothing scored anything at all"). hero_icons should be
+    the WIDE portrait crops (see hero_icons.py) — ORB needs real
+    texture/detail to find keypoints in, which the small 32x32 icon crop
+    doesn't have enough of."""
     if crop.size == 0:
-        return None, 0
+        return None, 0, None
 
     # Small crops (~150x95) don't give ORB much to work with — upscaling
     # measurably improved keypoint yield in testing.
@@ -68,6 +74,5 @@ def identify_hero(crop: np.ndarray, hero_icons: dict[int, np.ndarray]) -> tuple[
             best_count = count
             best_hero_id = hero_id
 
-    if best_count >= MIN_GOOD_MATCHES:
-        return best_hero_id, best_count
-    return None, best_count
+    accepted = best_hero_id if best_count >= MIN_GOOD_MATCHES else None
+    return accepted, best_count, best_hero_id
