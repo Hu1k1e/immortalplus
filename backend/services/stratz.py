@@ -329,11 +329,20 @@ class StratzClient:
         HeroDryadType.with/vs -> HeroStatsHeroDryadType.synergy). Returns
         {"with": [{hero_id, synergy, matches, winrate}, ...],
          "vs": [...]} — hero_id in each entry is the OTHER hero in the pair.
+
+        Uses heroIds (plural, a 1-element list) rather than the singular
+        heroId arg this originally used: the sibling heroStats.stats
+        query had the exact same symptom (HTTP 200, no GraphQL error,
+        silently zero rows) and was confirmed fixed by switching from an
+        omitted/singular hero filter to explicit heroIds — same fix
+        applied here on that same evidence, still pending live
+        confirmation this one behaves the same way.
         """
         query = """
-        query($heroId: Short!, $bracketBasicIds: [RankBracketBasicEnum]) {
+        query($heroIds: [Short], $bracketBasicIds: [RankBracketBasicEnum]) {
           heroStats {
-            matchUp(heroId: $heroId, bracketBasicIds: $bracketBasicIds) {
+            matchUp(heroIds: $heroIds, bracketBasicIds: $bracketBasicIds) {
+              heroId
               with {
                 heroId2
                 synergy
@@ -350,7 +359,7 @@ class StratzClient:
           }
         }
         """
-        variables = {"heroId": hero_id, "bracketBasicIds": [bracket_basic]}
+        variables = {"heroIds": [hero_id], "bracketBasicIds": [bracket_basic]}
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:
