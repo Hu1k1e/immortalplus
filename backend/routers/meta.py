@@ -11,7 +11,7 @@ from database import get_session
 from models import HeroMeta, HeroMatchup, UserSettings
 from services.opendota import get_opendota_client
 from services.sync import sync_hero_meta
-from utils.dota_constants import HEROES, get_hero_name, get_hero_image_url
+from utils.dota_constants import HEROES, get_hero_name, get_hero_image_url, get_hero_icon_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/meta", tags=["meta"])
@@ -132,6 +132,7 @@ async def get_hero_list():
             "hero_id": hid,
             "name": data["localized_name"],
             "image": get_hero_image_url(hid),
+            "icon": get_hero_icon_url(hid),
             "primary_attr": data.get("primary_attr", ""),
             "attack_type": data.get("attack_type", ""),
             "roles": data.get("roles", []),

@@ -9,17 +9,56 @@ name against the real hero list, tolerating OCR's occasional misreads.
 Requires the Tesseract OCR engine installed separately from its Python
 wrapper (pytesseract only calls out to it) — see README.md for the
 Windows install step.
+
+Doesn't rely on PATH to find it: Windows installers (including the
+Chocolatey package) frequently write the PATH entry but new shells
+still don't pick it up until a full logoff/reboot — confirmed hitting
+this directly during setup even right after a successful install. Since
+the actual exe lands in one of a couple of predictable locations
+regardless, check those directly instead of making every user fight
+their PATH.
 """
 
 import difflib
 import logging
+import os
 import re
+import shutil
 
 import numpy as np
 
 logger = logging.getLogger("draft-scanner.ban_ocr")
 
 _BAN_LINE_RE = re.compile(r"(.+?)\s+has\s+been\s+banned\.?", re.IGNORECASE)
+
+_KNOWN_INSTALL_PATHS = [
+    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+]
+
+
+_tesseract_path_configured = False
+
+
+def _configure_tesseract_path():
+    global _tesseract_path_configured
+    if _tesseract_path_configured:
+        return
+    _tesseract_path_configured = True
+
+    import pytesseract
+
+    if shutil.which("tesseract"):
+        return  # already on PATH, nothing to do
+    for path in _KNOWN_INSTALL_PATHS:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            logger.info(f"Found Tesseract at {path} (not on PATH — using directly)")
+            return
+    logger.warning(
+        "Tesseract not found on PATH or in standard install locations — "
+        "ban OCR will fail until it's installed (see README.md)"
+    )
 
 
 def extract_banned_hero_ids(crop: np.ndarray, hero_names: dict[int, str]) -> list[int]:
@@ -33,6 +72,8 @@ def extract_banned_hero_ids(crop: np.ndarray, hero_names: dict[int, str]) -> lis
     except ImportError:
         logger.error("Ban OCR failed: pytesseract not installed (pip install -r requirements.txt)")
         return []
+
+    _configure_tesseract_path()
 
     try:
         text = pytesseract.image_to_string(crop)

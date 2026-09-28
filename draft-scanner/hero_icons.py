@@ -1,8 +1,15 @@
 """
-Downloads and caches one reference icon image per hero, sourced from our
-own backend's /api/meta/hero-list (which already resolves each hero's
-icon to Valve's real CDN URL — see backend/routers/meta.py) rather than
-duplicating hero data here.
+Downloads and caches one reference portrait image per hero, sourced from
+our own backend's /api/meta/hero-list "image" field (the wide splash-art
+crop — see backend/utils/dota_constants.py's get_hero_image_url) rather
+than duplicating hero data here.
+
+Uses "image" specifically, NOT the list's "icon" field: "icon" is a tiny
+32x32 crop with too little texture/detail for the ORB feature matching
+matcher.py uses — confirmed directly (see matcher.py's docstring for the
+full real-test history: raw pixel template matching against "icon"
+failed on real ground-truth picks, and ORB against the larger "image"
+crop fixed it decisively).
 """
 
 import logging
