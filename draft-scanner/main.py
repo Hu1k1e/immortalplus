@@ -13,8 +13,11 @@ See regions.py for the current calibration status before relying on this.
 """
 
 import logging
+import os
 import time
+from datetime import datetime
 
+import cv2
 import requests
 
 from ban_ocr import extract_banned_hero_ids
@@ -26,6 +29,30 @@ from window_capture import capture_dota_window
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("draft-scanner")
+
+# Saves the actual crop image every time a pick gets CONFIRMED (see
+# update_confirmed) and every time the recognized ban list changes — so
+# a wrong detection can be looked at directly instead of guessed about.
+# On by default: this is cheap (a handful of small PNGs per draft, not
+# per scan) and a wrong detection reaching production is exactly the
+# failure mode that needs a real image to diagnose, confirmed directly
+# by "Enchantress" recurring even after the consecutive-frame debounce
+# fix. Set DEBUG_CAPTURES=0 to disable once detection is trusted.
+DEBUG_CAPTURES = os.environ.get("DEBUG_CAPTURES", "1") == "1"
+DEBUG_CAPTURES_DIR = os.path.join(os.path.dirname(__file__), "debug_captures")
+
+
+def save_debug_capture(image, tag: str):
+    if not DEBUG_CAPTURES:
+        return
+    try:
+        os.makedirs(DEBUG_CAPTURES_DIR, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        path = os.path.join(DEBUG_CAPTURES_DIR, f"{timestamp}_{tag}.png")
+        cv2.imwrite(path, image)
+        logger.info(f"Saved debug capture: {path}")
+    except Exception as e:
+        logger.warning(f"Failed to save debug capture ({tag}): {e}")
 
 
 def is_draft_active() -> bool:
@@ -39,32 +66,40 @@ def is_draft_active() -> bool:
         return False
 
 
-def scan_once(hero_icons: dict, hero_names: dict) -> dict | None:
+def scan_once(hero_icons: dict, hero_names: dict) -> tuple[dict, dict] | tuple[None, None]:
+    """Returns (result, crops) where crops maps each detected hero_id to
+    the actual crop image that produced that detection this scan — kept
+    around so a NEW confirmation (see update_confirmed) can save the
+    real image, not just log a hero_id."""
     screen = capture_dota_window()
     if screen is None:
         logger.warning("Dota 2 window not found — skipping this scan (is the game minimized or closed?)")
-        return None
+        return None, None
     h, w = screen.shape[:2]
 
     def scan_slots(slots):
         heroes = []
+        crops = {}
         for region in slots:
             x, y, rw, rh = to_pixels(region, w, h)
             crop = screen[y:y + rh, x:x + rw]
             hero_id, confidence = identify_hero(crop, hero_icons)
             if hero_id:
                 heroes.append(hero_id)
+                crops[hero_id] = crop
                 logger.debug(f"Slot ({x},{y}) -> hero {hero_id} (confidence {confidence:.2f})")
-        return heroes
+        return heroes, crops
 
-    ally_picks = scan_slots(PICK_SLOTS["radiant"])
-    enemy_picks = scan_slots(PICK_SLOTS["dire"])
+    ally_picks, ally_crops = scan_slots(PICK_SLOTS["radiant"])
+    enemy_picks, enemy_crops = scan_slots(PICK_SLOTS["dire"])
 
     x, y, rw, rh = to_pixels(BAN_LOG_REGION, w, h)
     ban_crop = screen[y:y + rh, x:x + rw]
     bans = extract_banned_hero_ids(ban_crop, hero_names)
 
-    return {"ally_picks": ally_picks, "enemy_picks": enemy_picks, "bans": bans}
+    result = {"ally_picks": ally_picks, "enemy_picks": enemy_picks, "bans": bans}
+    crops = {"ally": ally_crops, "enemy": enemy_crops, "ban_crop": ban_crop}
+    return result, crops
 
 
 def report_to_backend(result: dict):
@@ -84,7 +119,7 @@ CONFIRM_THRESHOLD = 2
 MAX_PICKS_PER_SIDE = 5
 
 
-def update_confirmed(pending: dict[int, int], confirmed: set[int], detected: list[int], label: str):
+def update_confirmed(pending: dict[int, int], confirmed: set[int], detected: list[int], label: str, crops: dict | None = None):
     """
     Only promotes a detected hero into `confirmed` after CONFIRM_THRESHOLD
     consecutive scans see it — a streak, not just "seen twice ever" (a
@@ -92,9 +127,13 @@ def update_confirmed(pending: dict[int, int], confirmed: set[int], detected: lis
     one-off false positive can't slowly accumulate credit across scans
     spaced minutes apart). Also hard-caps `confirmed` at
     MAX_PICKS_PER_SIDE — a real team can never have more than 5 heroes,
-    so a 6th candidate is refused and logged rather than silently kept,
-    which is exactly what let a phantom pick sit in the list undetected
-    before.
+    so a 6th candidate is refused and logged rather than silently kept.
+
+    If a hero got confirmed WRONGLY despite this (still possible if the
+    same wrong match happens consistently rather than randomly — the
+    debounce alone can't tell those apart), crops[hero_id] gets saved to
+    disk at the moment of confirmation so the actual crop can be looked
+    at directly instead of guessed about.
     """
     detected_set = set(detected)
     for hero_id in list(pending.keys()):
@@ -115,10 +154,12 @@ def update_confirmed(pending: dict[int, int], confirmed: set[int], detected: lis
             else:
                 confirmed.add(hero_id)
                 logger.info(f"{label}: confirmed hero {hero_id} after {CONFIRM_THRESHOLD} consecutive detections")
+                if crops and hero_id in crops:
+                    save_debug_capture(crops[hero_id], f"{label}_confirmed_hero{hero_id}")
 
 
 def main():
-    logger.info(f"draft-scanner starting, backend={BACKEND_URL}")
+    logger.info(f"draft-scanner starting, backend={BACKEND_URL}, debug_captures={DEBUG_CAPTURES}")
     hero_icons = fetch_hero_icons()
     hero_names = fetch_hero_names()
     if not hero_icons:
@@ -155,14 +196,18 @@ def main():
         was_active = active
 
         if active:
-            result = scan_once(hero_icons, hero_names)
+            result, crops = scan_once(hero_icons, hero_names)
             if result is not None:
-                update_confirmed(pending_ally, seen_ally_picks, result["ally_picks"], "ally_picks")
-                update_confirmed(pending_enemy, seen_enemy_picks, result["enemy_picks"], "enemy_picks")
+                update_confirmed(pending_ally, seen_ally_picks, result["ally_picks"], "ally_picks", crops.get("ally"))
+                update_confirmed(pending_enemy, seen_enemy_picks, result["enemy_picks"], "enemy_picks", crops.get("enemy"))
+
                 # Bans already go through OCR's own fuzzy-match confidence
                 # threshold (see ban_ocr.py) and don't have a clean "max
                 # count" the way a 5-hero team does, so they're still
                 # accumulated directly rather than debounced the same way.
+                new_bans = set(result["bans"]) - seen_bans
+                if new_bans and "ban_crop" in crops:
+                    save_debug_capture(crops["ban_crop"], f"ban_log_new_{'_'.join(map(str, sorted(new_bans)))}")
                 seen_bans.update(result["bans"])
 
                 accumulated = {

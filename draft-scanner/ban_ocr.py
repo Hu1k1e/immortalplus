@@ -113,6 +113,14 @@ def extract_banned_hero_ids(crop: np.ndarray, hero_names: dict[int, str]) -> lis
     name_to_id = {name.lower(): hero_id for hero_id, name in hero_names.items()}
     all_names_lower = list(name_to_id.keys())
 
+    # Logged at INFO unconditionally (not DEBUG) — bans not being picked
+    # up correctly was reported directly, and there was no way to tell
+    # from the normal logs whether OCR was reading garbage, reading the
+    # right text but failing to match it, or not seeing the ban log
+    # region at all. This makes that visible without changing log levels.
+    raw_text = text.strip()
+    logger.info(f"Ban OCR raw text: {raw_text!r}" if raw_text else "Ban OCR: no text found in the ban-log region")
+
     banned_ids = []
     for line in text.splitlines():
         match = _BAN_LINE_RE.search(line.strip())
@@ -126,6 +134,6 @@ def extract_banned_hero_ids(crop: np.ndarray, hero_names: dict[int, str]) -> lis
             if hero_id not in banned_ids:
                 banned_ids.append(hero_id)
         else:
-            logger.debug(f"Ban OCR: no confident hero match for OCR'd text '{ocr_name}'")
+            logger.info(f"Ban OCR: no confident hero match for OCR'd text '{ocr_name}'")
 
     return banned_ids

@@ -26,6 +26,18 @@ from models import MatchAnalysis
 
 logger = logging.getLogger(__name__)
 
+# Shared between background_sync_loop (main.py) and the manual "Refresh
+# Meta Data" button (routers/draft.py) — both call the same sequence of
+# external syncs (hero_meta, hero_matchups, hero_position_meta,
+# hero_synergy) with no coordination before this, so a manual refresh
+# triggered while the periodic loop was mid-cycle ran concurrently with
+# it: both competing for the same OpenDota/Stratz rate limits, each
+# taking noticeably longer, and a data-health check landing in that
+# window could show a source as "stale" simply because its cycle hadn't
+# committed yet — not because syncing was actually broken. This lock
+# makes the two paths take turns instead of overlapping.
+meta_sync_lock = asyncio.Lock()
+
 
 async def sync_player_matches(session: Session, player: Player, settings: UserSettings):
     """

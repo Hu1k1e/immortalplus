@@ -16,7 +16,7 @@ from database import get_session
 from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta, HeroSynergy, Match
 from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
 from services.protracker import sync_hero_position_meta
-from services.sync import sync_hero_meta, sync_hero_matchups, sync_hero_synergy
+from services.sync import sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock
 from utils.dota_constants import get_hero_id_by_name, rank_tier_to_bracket
 
 logger = logging.getLogger(__name__)
@@ -161,34 +161,39 @@ async def _run_refresh_meta():
     try:
         settings = session.exec(select(UserSettings).limit(1)).first()
 
-        try:
-            count = await sync_hero_meta(session, settings)
-            _refresh_status["results"]["hero_meta"] = {"status": "ok", "count": count}
-        except Exception as e:
-            logger.error(f"Manual refresh: hero_meta sync failed: {e}", exc_info=True)
-            _refresh_status["results"]["hero_meta"] = {"status": "error", "message": str(e)}
+        # Shared with background_sync_loop (main.py) — see meta_sync_lock's
+        # docstring for why: without it, a manual refresh triggered mid-
+        # cycle ran concurrently with the periodic loop, each slowing the
+        # other down against the same rate limits.
+        async with meta_sync_lock:
+            try:
+                count = await sync_hero_meta(session, settings)
+                _refresh_status["results"]["hero_meta"] = {"status": "ok", "count": count}
+            except Exception as e:
+                logger.error(f"Manual refresh: hero_meta sync failed: {e}", exc_info=True)
+                _refresh_status["results"]["hero_meta"] = {"status": "error", "message": str(e)}
 
-        try:
-            count = await sync_hero_matchups(session, settings)
-            _refresh_status["results"]["hero_matchups"] = {"status": "ok", "count": count}
-        except Exception as e:
-            logger.error(f"Manual refresh: hero_matchups sync failed: {e}", exc_info=True)
-            _refresh_status["results"]["hero_matchups"] = {"status": "error", "message": str(e)}
+            try:
+                count = await sync_hero_matchups(session, settings)
+                _refresh_status["results"]["hero_matchups"] = {"status": "ok", "count": count}
+            except Exception as e:
+                logger.error(f"Manual refresh: hero_matchups sync failed: {e}", exc_info=True)
+                _refresh_status["results"]["hero_matchups"] = {"status": "error", "message": str(e)}
 
-        try:
-            count = await sync_hero_position_meta(session, settings)
-            _refresh_status["results"]["hero_position_meta"] = {"status": "ok" if count else "error", "count": count}
-        except Exception as e:
-            logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
-            _refresh_status["results"]["hero_position_meta"] = {"status": "error", "message": str(e)}
+            try:
+                count = await sync_hero_position_meta(session, settings)
+                _refresh_status["results"]["hero_position_meta"] = {"status": "ok" if count else "error", "count": count}
+            except Exception as e:
+                logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
+                _refresh_status["results"]["hero_position_meta"] = {"status": "error", "message": str(e)}
 
-        # Optional — no-ops (0, not an error) if no Stratz token is configured.
-        try:
-            count = await sync_hero_synergy(session, settings)
-            _refresh_status["results"]["hero_synergy"] = {"status": "ok", "count": count}
-        except Exception as e:
-            logger.error(f"Manual refresh: hero_synergy sync failed: {e}", exc_info=True)
-            _refresh_status["results"]["hero_synergy"] = {"status": "error", "message": str(e)}
+            # Optional — no-ops (0, not an error) if no Stratz token is configured.
+            try:
+                count = await sync_hero_synergy(session, settings)
+                _refresh_status["results"]["hero_synergy"] = {"status": "ok", "count": count}
+            except Exception as e:
+                logger.error(f"Manual refresh: hero_synergy sync failed: {e}", exc_info=True)
+                _refresh_status["results"]["hero_synergy"] = {"status": "error", "message": str(e)}
     finally:
         session.close()
         _refresh_status["state"] = "done"

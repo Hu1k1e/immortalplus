@@ -32,7 +32,7 @@ async def background_sync_loop():
     from models import Player, UserSettings
     from services.sync import (
         sync_player_matches, create_progress_snapshot,
-        sync_hero_meta, sync_hero_matchups, sync_hero_synergy,
+        sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
     )
     from services.protracker import sync_hero_position_meta
 
@@ -84,39 +84,47 @@ async def background_sync_loop():
             # hitting this directly (position-meta stayed empty in
             # production). One source failing must never block the rest.
             if settings:
-                try:
-                    await sync_hero_meta(session, settings)
-                except Exception as e:
-                    logger.error(f"Background sync: hero_meta failed: {e}", exc_info=True)
-
-                try:
-                    await sync_hero_matchups(session, settings)
-                except Exception as e:
-                    logger.error(f"Background sync: hero_matchups failed: {e}", exc_info=True)
-
-                try:
-                    # Real ally-synergy data (Stratz only — no-ops if no
-                    # token configured, see sync_hero_synergy's docstring).
-                    await sync_hero_synergy(session, settings)
-                except Exception as e:
-                    logger.error(f"Background sync: hero_synergy failed: {e}", exc_info=True)
-
-                # Dota2ProTracker/Stratz: real per-position (Carry/Mid/
-                # Offlane/Soft Support/Hard Support) hero win rates — data
-                # OpenDota's bulk endpoints don't have at all. Heavier
-                # than the syncs above, so runs on its own longer
-                # interval instead of every cycle.
-                interval_hours = settings.protracker_interval_hours or 6
-                due = (
-                    last_protracker_sync is None
-                    or datetime.utcnow() - last_protracker_sync >= timedelta(hours=interval_hours)
-                )
-                if settings.protracker_enabled and due:
+                # Shared with the manual "Refresh Meta Data" button
+                # (routers/draft.py) — without this lock the two could
+                # run these same syncs concurrently, each slowing the
+                # other down and making a data-health check mid-overlap
+                # show a source as "stale" when it was really just still
+                # mid-cycle. See meta_sync_lock's docstring.
+                async with meta_sync_lock:
                     try:
-                        await sync_hero_position_meta(session, settings)
+                        await sync_hero_meta(session, settings)
                     except Exception as e:
-                        logger.error(f"Background sync: hero_position_meta failed: {e}", exc_info=True)
-                    last_protracker_sync = datetime.utcnow()
+                        logger.error(f"Background sync: hero_meta failed: {e}", exc_info=True)
+
+                    try:
+                        await sync_hero_matchups(session, settings)
+                    except Exception as e:
+                        logger.error(f"Background sync: hero_matchups failed: {e}", exc_info=True)
+
+                    try:
+                        # Real ally-synergy data (Stratz only — no-ops if
+                        # no token configured, see sync_hero_synergy's
+                        # docstring).
+                        await sync_hero_synergy(session, settings)
+                    except Exception as e:
+                        logger.error(f"Background sync: hero_synergy failed: {e}", exc_info=True)
+
+                    # Dota2ProTracker/Stratz: real per-position (Carry/
+                    # Mid/Offlane/Soft Support/Hard Support) hero win
+                    # rates — data OpenDota's bulk endpoints don't have
+                    # at all. Heavier than the syncs above, so runs on
+                    # its own longer interval instead of every cycle.
+                    interval_hours = settings.protracker_interval_hours or 6
+                    due = (
+                        last_protracker_sync is None
+                        or datetime.utcnow() - last_protracker_sync >= timedelta(hours=interval_hours)
+                    )
+                    if settings.protracker_enabled and due:
+                        try:
+                            await sync_hero_position_meta(session, settings)
+                        except Exception as e:
+                            logger.error(f"Background sync: hero_position_meta failed: {e}", exc_info=True)
+                        last_protracker_sync = datetime.utcnow()
 
             session.close()
 
