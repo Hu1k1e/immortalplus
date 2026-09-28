@@ -139,6 +139,41 @@ async def background_sync_loop():
 
 
 
+async def run_history_backfill_once():
+    """
+    One-shot full match-history backfill (see services/sync.py's
+    sync_full_match_history docstring for why this exists — the regular
+    background_sync_loop only ever fetches the newest N matches forward
+    from whatever's already stored, never a fresh account's older
+    history). Runs once at startup for whichever player is linked and
+    hasn't been backfilled yet (Player.history_backfilled_at is None),
+    then exits — the flag it sets prevents this from re-running every
+    restart. A multi-thousand-game account can take a couple minutes
+    (paced, see _BACKFILL_MAX_PAGES/sleep in sync.py), so this runs as
+    its own background task rather than blocking startup or the regular
+    sync loop.
+    """
+    from sqlmodel import select
+    from database import SessionLocal
+    from models import Player, UserSettings
+    from services.sync import sync_full_match_history
+
+    await asyncio.sleep(15)  # let the app finish starting first
+
+    session = SessionLocal()
+    try:
+        player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+        settings = session.exec(select(UserSettings).limit(1)).first()
+        if player and not player.history_backfilled_at:
+            logger.info(f"Starting one-time full match-history backfill for player {player.account_id}")
+            try:
+                await sync_full_match_history(session, player, settings)
+            except Exception as e:
+                logger.error(f"History backfill failed: {e}", exc_info=True)
+    finally:
+        session.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown."""
@@ -151,6 +186,11 @@ async def lifespan(app: FastAPI):
     # Start background sync (match history, progress snapshots, meta)
     sync_task = asyncio.create_task(background_sync_loop())
 
+    # One-time full-history backfill (see run_history_backfill_once) —
+    # separate task from the regular sync loop so it doesn't block or
+    # get blocked by that loop's own 30-min cycle.
+    backfill_task = asyncio.create_task(run_history_backfill_once())
+
     # Start dedicated auto-parse worker (replay downloading + local parsing + OD requests)
     from services.auto_parse import auto_parse_worker
     parse_task = asyncio.create_task(auto_parse_worker())
@@ -159,6 +199,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     sync_task.cancel()
+    backfill_task.cancel()
     parse_task.cancel()
     logger.info("Immortal+ Backend shutting down")
 

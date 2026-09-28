@@ -39,10 +39,57 @@ logger = logging.getLogger(__name__)
 meta_sync_lock = asyncio.Lock()
 
 
+def _match_row_from_dict(m: dict, player_id: int) -> Match:
+    """Builds an unsaved Match ORM row from one OpenDota- or Stratz-shaped
+    match dict (both services/opendota.py and services/stratz.py normalize
+    to this same field set). Shared by sync_player_matches (incremental,
+    newest-forward) and sync_full_match_history (backfill, all history) so
+    a stored match looks identical regardless of which path fetched it."""
+    player_slot = m.get("player_slot", 0)
+    radiant_win = m.get("radiant_win")
+    is_radiant = player_slot < 128
+    result = None
+    if radiant_win is not None:
+        result = "win" if (is_radiant == radiant_win) else "loss"
+
+    return Match(
+        match_id=m["match_id"],
+        player_id=player_id,
+        hero_id=m.get("hero_id", 0),
+        result=result,
+        game_mode=m.get("game_mode"),
+        lobby_type=m.get("lobby_type"),
+        duration=m.get("duration"),
+        kills=m.get("kills"),
+        deaths=m.get("deaths"),
+        assists=m.get("assists"),
+        gpm=m.get("gold_per_min"),
+        xpm=m.get("xp_per_min"),
+        hero_damage=m.get("hero_damage"),
+        tower_damage=m.get("tower_damage"),
+        hero_healing=m.get("hero_healing"),
+        last_hits=m.get("last_hits"),
+        denies=m.get("denies"),
+        level=m.get("level"),
+        lane=m.get("lane"),
+        lane_role=m.get("lane_role"),
+        position=m.get("position"),
+        party_size=m.get("party_size"),
+        player_slot=player_slot,
+        radiant_win=radiant_win,
+        avg_rank_tier=m.get("average_rank"),
+        played_at=datetime.utcfromtimestamp(m["start_time"]) if m.get("start_time") else None,
+    )
+
+
 async def sync_player_matches(session: Session, player: Player, settings: UserSettings):
     """
     Fetch new matches from OpenDota and store them in the database.
-    Only fetches matches newer than the last synced match.
+    Only fetches matches newer than the last synced match — this is the
+    regular per-cycle incremental sync, NOT a full history fetch (see
+    sync_full_match_history for that; a freshly-linked account only gets
+    its most recent 50 games from this path, since it filters to
+    match_id > whatever's already stored rather than paging backward).
     """
     if not player.account_id:
         logger.warning(f"Player {player.steam_id} has no account_id — skipping sync")
@@ -99,43 +146,7 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
         if existing:
             continue
 
-        # Determine win/loss
-        player_slot = m.get("player_slot", 0)
-        radiant_win = m.get("radiant_win")
-        is_radiant = player_slot < 128
-        result = None
-        if radiant_win is not None:
-            result = "win" if (is_radiant == radiant_win) else "loss"
-
-        match = Match(
-            match_id=mid,
-            player_id=player.id,
-            hero_id=m.get("hero_id", 0),
-            result=result,
-            game_mode=m.get("game_mode"),
-            lobby_type=m.get("lobby_type"),
-            duration=m.get("duration"),
-            kills=m.get("kills"),
-            deaths=m.get("deaths"),
-            assists=m.get("assists"),
-            gpm=m.get("gold_per_min"),
-            xpm=m.get("xp_per_min"),
-            hero_damage=m.get("hero_damage"),
-            tower_damage=m.get("tower_damage"),
-            hero_healing=m.get("hero_healing"),
-            last_hits=m.get("last_hits"),
-            denies=m.get("denies"),
-            level=m.get("level"),
-            lane=m.get("lane"),
-            lane_role=m.get("lane_role"),
-            position=m.get("position"),
-            party_size=m.get("party_size"),
-            player_slot=player_slot,
-            radiant_win=radiant_win,
-            avg_rank_tier=m.get("average_rank"),
-            played_at=datetime.utcfromtimestamp(m["start_time"]) if m.get("start_time") else None,
-        )
-        session.add(match)
+        session.add(_match_row_from_dict(m, player.id))
         new_count += 1
 
     if new_count > 0:
@@ -157,6 +168,102 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
                         logger.error(f"Failed to auto-request parse for {mid}: {e}")
 
     return new_count
+
+
+# Hard cap on how many pages a single full-history backfill will fetch,
+# so one very high-volume account (thousands of games) can't turn a
+# one-time backfill into an unbounded fetch loop against OpenDota/Stratz
+# rate limits. 60 pages x 100 = 6000 matches — generous for even a
+# multi-thousand-game account; a real account exceeding this still gets
+# its most recent 6000 games, not silently nothing.
+_BACKFILL_MAX_PAGES = 60
+_BACKFILL_PAGE_SIZE = 100
+
+
+async def sync_full_match_history(session: Session, player: Player, settings: UserSettings) -> int:
+    """
+    One-time backfill of a player's COMPLETE match history (not just the
+    newest N — see sync_player_matches's docstring for that gap), so
+    "your best" per-position stats reflect the player's real full
+    history rather than however many recent games happened to accumulate
+    since the account was linked. Pages backward through the account's
+    entire history via Stratz (skip/take) when configured, else OpenDota
+    (offset/limit), storing every match not already in the DB, until a
+    page comes back empty (real end of history) or _BACKFILL_MAX_PAGES is
+    hit. Idempotent and safe to call more than once — every match is
+    deduped by match_id the same way the incremental sync is — but is
+    only meant to run once per player (see Player.history_backfilled_at,
+    checked by the caller in main.py).
+    """
+    if not player.account_id:
+        logger.warning(f"Player {player.steam_id} has no account_id — skipping history backfill")
+        return 0
+
+    source = settings.data_source if settings else "both"
+    total_new = 0
+
+    for page in range(_BACKFILL_MAX_PAGES):
+        skip = page * _BACKFILL_PAGE_SIZE
+        matches = None
+
+        if source in ["stratz", "both"]:
+            from services.stratz import get_stratz_client
+            stratz_client = get_stratz_client(settings.stratz_api_token if settings else None)
+            if stratz_client:
+                try:
+                    matches = await stratz_client.get_player_matches(
+                        player.account_id, limit=_BACKFILL_PAGE_SIZE, skip=skip
+                    )
+                except Exception as e:
+                    logger.error(f"History backfill: Stratz page {page} failed for {player.account_id}: {e}")
+                    if source == "stratz":
+                        break
+
+        if not matches and source in ["opendota", "both"]:
+            client = get_opendota_client(settings.opendota_api_key if settings else None)
+            try:
+                matches = await client.get_player_matches(
+                    player.account_id,
+                    limit=_BACKFILL_PAGE_SIZE,
+                    offset=skip,
+                    significant=0,
+                )
+            except Exception as e:
+                logger.error(f"History backfill: OpenDota page {page} failed for {player.account_id}: {e}")
+                break
+
+        if not matches:
+            logger.info(f"History backfill: reached end of history for {player.account_id} at page {page}")
+            break
+
+        page_new = 0
+        for m in matches:
+            mid = m.get("match_id")
+            if not mid:
+                continue
+            existing = session.exec(select(Match).where(Match.match_id == mid)).first()
+            if existing:
+                continue
+            session.add(_match_row_from_dict(m, player.id))
+            page_new += 1
+
+        if page_new:
+            session.commit()
+            total_new += page_new
+
+        # Respect rate limits between pages — same pacing already used
+        # elsewhere in this file (sync_hero_matchups/sync_hero_synergy).
+        await asyncio.sleep(1.0)
+
+        if len(matches) < _BACKFILL_PAGE_SIZE:
+            # Short page — this was the last one, no need to fetch another.
+            logger.info(f"History backfill: reached end of history for {player.account_id} at page {page}")
+            break
+
+    player.history_backfilled_at = datetime.utcnow()
+    session.commit()
+    logger.info(f"History backfill complete for {player.account_id}: {total_new} new matches stored")
+    return total_new
 
 
 async def fetch_match_details(

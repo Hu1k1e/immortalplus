@@ -19,6 +19,14 @@ class Player(SQLModel, table=True):
     mmr_estimate: Optional[int] = None
     profile_url: Optional[str] = None
     last_sync_at: Optional[datetime] = None
+    # Set once a one-time full match-history backfill has completed for
+    # this player (see services/sync.py's sync_full_match_history) — the
+    # regular background sync only ever fetches the newest N matches
+    # forward from whatever was already stored, so a freshly-linked
+    # account's "your best" stats were based on however many recent games
+    # happened to accumulate over time, not the account's real complete
+    # history. None means never backfilled (or backfill in progress).
+    history_backfilled_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

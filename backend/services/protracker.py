@@ -116,15 +116,17 @@ def _to_float(value) -> Optional[float]:
 
 async def sync_hero_position_meta(session, settings) -> int:
     """
-    Fetch + upsert into HeroPositionMeta. Tries Stratz's public API
-    first (services/stratz.py's get_hero_position_stats — same
-    underlying data Dota2ProTracker's own site displays, confirmed via
-    Stratz's own API page listing ProTracker as built on this API, and
-    verified directly against their real schema) since a clean
-    documented API call is more reliable than browser automation against
-    a page that could change layout or bot-detection at any time. Only
-    falls back to the Playwright scrape below if Stratz isn't configured
-    (no API token in settings) or its call fails.
+    Fetch + upsert into HeroPositionMeta. Scrapes Dota2ProTracker's own
+    page FIRST — the literal numbers a user sees when they check
+    dota2protracker.com themselves, which is what this data is compared
+    against and needs to match exactly. Stratz's heroStats.stats query is
+    only a fallback when the scrape fails: it's the same underlying data
+    source architecturally (Stratz's own API page lists ProTracker as
+    built on this API), but not proven to apply the identical time-window/
+    filtering ProTracker's own page uses to produce "this patch" numbers
+    — confirmed as a real, reported mismatch, not assumed. (This was
+    previously the other way around, Stratz-first — flipped after that
+    mismatch was reported directly.)
 
     Returns the number of rows written, or 0 on total failure.
     """
@@ -135,28 +137,27 @@ async def sync_hero_position_meta(session, settings) -> int:
     rows = None
     source = None
 
-    if settings and getattr(settings, "stratz_api_token", None):
+    for attempt in range(3):
+        rows = await fetch_hero_position_meta()
+        if rows:
+            source = "Dota2ProTracker"
+            break
+        if attempt < 2:
+            logger.warning(f"Dota2ProTracker sync attempt {attempt + 1} failed, retrying...")
+            await asyncio.sleep(5)
+
+    if not rows and settings and getattr(settings, "stratz_api_token", None):
         try:
             from services.stratz import get_stratz_client, rank_bracket_to_stratz
             stratz_client = get_stratz_client(settings.stratz_api_token)
             rows = await stratz_client.get_hero_position_stats(rank_bracket_to_stratz(None))
             if rows:
-                source = "Stratz"
+                source = "Stratz (Dota2ProTracker scrape failed)"
         except Exception as e:
-            logger.warning(f"Stratz hero-position sync failed, falling back to Dota2ProTracker scrape: {e}")
+            logger.warning(f"Stratz hero-position fallback also failed: {e}")
 
     if not rows:
-        for attempt in range(3):
-            rows = await fetch_hero_position_meta()
-            if rows:
-                source = "Dota2ProTracker"
-                break
-            if attempt < 2:
-                logger.warning(f"Dota2ProTracker sync attempt {attempt + 1} failed, retrying...")
-                await asyncio.sleep(5)
-
-    if not rows:
-        logger.error("Hero-position meta sync failed: both Stratz and Dota2ProTracker fallback failed")
+        logger.error("Hero-position meta sync failed: both Dota2ProTracker scrape and Stratz fallback failed")
         return 0
 
     now = datetime.utcnow()

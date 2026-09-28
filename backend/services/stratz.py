@@ -55,12 +55,15 @@ class StratzClient:
         # Configure client without HTTP/2 to prevent framing errors
         self.client = httpx.AsyncClient(headers=self.headers, http2=False)
 
-    async def get_player_matches(self, account_id: int, limit: int = 50) -> List[Dict[str, Any]]:
-        """Fetch recent matches for a player using Stratz GraphQL."""
+    async def get_player_matches(self, account_id: int, limit: int = 50, skip: int = 0) -> List[Dict[str, Any]]:
+        """Fetch matches for a player using Stratz GraphQL. skip enables
+        paging back through a player's FULL history (see
+        services/sync.py's sync_full_match_history), not just their most
+        recent `limit` games."""
         query = """
-        query($accountId: Long!, $limit: Int) {
+        query($accountId: Long!, $limit: Int, $skip: Int) {
           player(steamAccountId: $accountId) {
-            matches(request: {take: $limit}) {
+            matches(request: {take: $limit, skip: $skip}) {
               id
               durationSeconds
               didRadiantWin
@@ -90,7 +93,8 @@ class StratzClient:
         """
         variables = {
             "accountId": account_id,
-            "limit": limit
+            "limit": limit,
+            "skip": skip,
         }
 
         try:
@@ -334,14 +338,26 @@ class StratzClient:
         heroId arg this originally used: the sibling heroStats.stats
         query had the exact same symptom (HTTP 200, no GraphQL error,
         silently zero rows) and was confirmed fixed by switching from an
-        omitted/singular hero filter to explicit heroIds — same fix
-        applied here on that same evidence, still pending live
-        confirmation this one behaves the same way.
+        omitted/singular hero filter to explicit heroIds. That fix alone
+        did NOT fix this query (confirmed: still 0 rows for every hero
+        in real production logs after deploying it).
+
+        Root-caused from Stratz's own real C# GraphQL query-builder
+        source (TheAmazingLooser/STRATZ_Models, HeroStatsQueryQueryBuilder.
+        WithMatchUp) rather than guessed again: matchUp's real signature
+        is matchUp(heroId, heroIds, week, bracketBasicIds, orderBy,
+        matchLimit, skip, take) — it takes pagination args (skip/take)
+        that this query never set. Stratz's OTHER working queries in this
+        file all pass an explicit take (get_player_matches's
+        `matches(request: {take: $limit})`), consistent with take
+        defaulting to 0 (not "unlimited") when omitted — which would
+        explain exactly zero rows, every hero, every time, with no
+        GraphQL error. take is now passed explicitly.
         """
         query = """
-        query($heroIds: [Short], $bracketBasicIds: [RankBracketBasicEnum]) {
+        query($heroIds: [Short], $bracketBasicIds: [RankBracketBasicEnum], $take: Int) {
           heroStats {
-            matchUp(heroIds: $heroIds, bracketBasicIds: $bracketBasicIds) {
+            matchUp(heroIds: $heroIds, bracketBasicIds: $bracketBasicIds, take: $take) {
               heroId
               with {
                 heroId2
@@ -359,7 +375,7 @@ class StratzClient:
           }
         }
         """
-        variables = {"heroIds": [hero_id], "bracketBasicIds": [bracket_basic]}
+        variables = {"heroIds": [hero_id], "bracketBasicIds": [bracket_basic], "take": 50}
         try:
             response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": variables})
             if response.status_code != 200:

@@ -11,12 +11,25 @@ interface GsiState {
   phase: string | null;
 }
 
+interface MatchupBreakdownEntry {
+  hero_id: number;
+  hero_name: string;
+  value: number;
+}
+
 interface RoleSuggestion {
   hero_id: number;
   hero_name: string;
   score: number;
   reason?: string;
   reasons?: string[];
+  // Full per-enemy/per-ally breakdown behind this hero's matchup/synergy
+  // component (every currently-picked hero this suggestion has real data
+  // for, not just the 1-2 that make it into `reasons`) — only populated
+  // on the "combined" list (see draft_engine.py), rendered as a hover
+  // tooltip instead of static text.
+  matchup_breakdown?: MatchupBreakdownEntry[];
+  synergy_breakdown?: MatchupBreakdownEntry[];
 }
 
 interface RoleBlock {
@@ -323,7 +336,12 @@ export default function DraftHelper() {
         {items.map((s) => {
           const hero = HEROES[s.hero_id];
           if (!hero) return null;
-          const reasonText = s.reason || (s.reasons && s.reasons[0]) || '';
+          // Every currently-picked enemy/ally this hero has real data
+          // for — combined into one tooltip rather than the old
+          // always-visible, truncated-to-one "Good against X" text, and
+          // it grows automatically as more enemies/allies get picked
+          // since it's recomputed by the backend on every /suggest call.
+          const breakdown = [...(s.matchup_breakdown || []), ...(s.synergy_breakdown || [])];
           return (
             <div key={s.hero_id} className="position-row">
               <img src={getHeroIcon(s.hero_id)} alt={hero.name} className="position-row-icon" />
@@ -331,7 +349,18 @@ export default function DraftHelper() {
               <span className={`position-row-score ${s.score >= 55 ? 'good' : s.score <= 45 ? 'bad' : ''}`}>
                 {s.score >= 50 ? '+' : ''}{(s.score - 50).toFixed(1)}
               </span>
-              {reasonText && <span className="position-row-reason" title={reasonText}>{reasonText}</span>}
+              {breakdown.length > 0 && (
+                <div className="position-row-tooltip">
+                  {breakdown.map((b, idx) => (
+                    <div className="position-row-tooltip-item" key={`${b.hero_id}-${idx}`}>
+                      <img src={getHeroIcon(b.hero_id)} alt={b.hero_name} />
+                      <span className={b.value >= 0 ? 'good' : 'bad'}>
+                        {b.value >= 0 ? '+' : ''}{b.value.toFixed(1)}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}

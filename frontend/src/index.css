@@ -585,9 +585,9 @@ button {
 }
 
 .position-row {
+  position: relative;
   display: grid;
   grid-template-columns: 22px 1fr auto;
-  grid-template-rows: auto auto;
   align-items: center;
   gap: 0 0.35rem;
   padding: 0.3rem 0.4rem;
@@ -618,14 +618,53 @@ button {
 }
 .position-row-score.good { color: var(--radiant-green); }
 .position-row-score.bad { color: var(--dire-red); }
-.position-row-reason {
-  grid-column: 2 / 4;
-  font-size: 0.6rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+
+/* Hover tooltip showing the full per-enemy/per-ally breakdown behind a
+   suggestion's score — replaces the old always-visible, truncated-to-one
+   "Good against X" text. CSS-only (no JS state) so it stays cheap across
+   long scrollable suggestion lists. */
+.position-row-tooltip {
+  position: absolute;
+  z-index: 20;
+  left: 0.4rem;
+  top: 100%;
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  max-width: 220px;
+  padding: 0.4rem;
+  background: var(--bg-surface-elevated, #1c1f2b);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
 }
+.position-row:hover .position-row-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+.position-row-tooltip-item {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.position-row-tooltip-item img {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+.position-row-tooltip-item span {
+  font-size: 0.62rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+.position-row-tooltip-item span.good { color: var(--radiant-green); }
+.position-row-tooltip-item span.bad { color: var(--dire-red); }
 
 .draft-hero-chip.banned img {
   filter: grayscale(0.7) brightness(0.6);

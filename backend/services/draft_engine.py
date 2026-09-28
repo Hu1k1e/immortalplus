@@ -102,38 +102,45 @@ def compute_personal_position_stats(matches: list) -> dict[int, dict[int, dict]]
     return stats
 
 
-def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int, list[dict]]) -> tuple[float, list[str]]:
+def _matchup_score(hero_id: int, enemy_picks: list[int], hero_matchups: dict[int, list[dict]]) -> tuple[float, list[str], list[dict]]:
     """Average advantage vs EVERY currently-picked enemy hero this app
     has matchup data for (previously stopped at the first match found,
     which meant a suggestion only ever cited one enemy hero even with a
-    full 5-hero enemy draft). Returns a 0-100-normalized score and up to
-    2 human-readable reasons for the strongest/weakest matchups found."""
+    full 5-hero enemy draft). Returns a 0-100-normalized score, up to 2
+    human-readable reasons for the strongest/weakest matchups found, and
+    a full per-enemy breakdown (every currently-picked enemy this hero
+    has matchup data for, not just the top 2) — the frontend renders
+    that breakdown as a hover tooltip (hero icon + colored advantage)
+    instead of cramming it into always-visible text."""
     if not enemy_picks:
-        return 50.0, []
+        return 50.0, [], []
 
     matchup_data = hero_matchups.get(hero_id, [])
     by_enemy = {m.get("hero_id"): m.get("advantage", 0) or 0 for m in matchup_data}
 
     advantages = []
     reasons = []
+    breakdown = []
     for enemy_id in enemy_picks:
         if enemy_id in by_enemy:
             adv = by_enemy[enemy_id]
             advantages.append(adv)
+            breakdown.append({"hero_id": enemy_id, "hero_name": get_hero_name(enemy_id), "value": round(adv, 1)})
             if abs(adv) > 1.0:
                 verb = "Good against" if adv > 0 else "Weak against"
                 reasons.append(f"{verb} {get_hero_name(enemy_id)} ({adv:+.1f}%)")
 
     if not advantages:
-        return 50.0, []
+        return 50.0, [], []
 
     avg_advantage = sum(advantages) / len(advantages)
     score = 50 + avg_advantage * 5
     reasons.sort(key=lambda r: abs(float(r.rsplit("(", 1)[1].rstrip("%)").replace("+", ""))), reverse=True)
-    return max(0.0, min(100.0, score)), reasons[:2]
+    breakdown.sort(key=lambda b: abs(b["value"]), reverse=True)
+    return max(0.0, min(100.0, score)), reasons[:2], breakdown
 
 
-def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, list[dict]]) -> tuple[float, list[str]]:
+def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, list[dict]]) -> tuple[float, list[str], list[dict]]:
     """
     Average REAL synergy vs every currently-picked ally hero, from
     Stratz's heroStats.matchUp[].with data (see services/sync.py's
@@ -153,27 +160,30 @@ def _synergy_score(hero_id: int, ally_picks: list[int], hero_synergy: dict[int, 
     magnitude (e.g. a 0-1 fraction, or a raw percentage already).
     """
     if not ally_picks:
-        return 50.0, []
+        return 50.0, [], []
 
     synergy_data = hero_synergy.get(hero_id, [])
     by_ally = {s.get("hero_id"): s.get("synergy", 0) or 0 for s in synergy_data}
 
     values = []
     reasons = []
+    breakdown = []
     for ally_id in ally_picks:
         if ally_id in by_ally:
             val = by_ally[ally_id]
             values.append(val)
+            breakdown.append({"hero_id": ally_id, "hero_name": get_hero_name(ally_id), "value": round(val, 1)})
             if abs(val) > 1.0:
                 verb = "Strong pairing with" if val > 0 else "Weak pairing with"
                 reasons.append(f"{verb} {get_hero_name(ally_id)} ({val:+.1f})")
 
     if not values:
-        return 50.0, []
+        return 50.0, [], []
 
     avg_synergy = sum(values) / len(values)
     score = 50 + avg_synergy * 5
-    return max(0.0, min(100.0, score)), reasons[:2]
+    breakdown.sort(key=lambda b: abs(b["value"]), reverse=True)
+    return max(0.0, min(100.0, score)), reasons[:2], breakdown
 
 
 def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_rank: dict[int, dict]) -> tuple[float, str | None]:
@@ -295,8 +305,8 @@ def calculate_role_based_suggestions(
             else:
                 personal_component = 50.0
 
-            matchup_component, matchup_reasons = _matchup_score(hero_id, enemy_picks, hero_matchups)
-            synergy_component, synergy_reasons = _synergy_score(hero_id, ally_picks, hero_synergy)
+            matchup_component, matchup_reasons, matchup_breakdown = _matchup_score(hero_id, enemy_picks, hero_matchups)
+            synergy_component, synergy_reasons, synergy_breakdown = _synergy_score(hero_id, ally_picks, hero_synergy)
 
             score = (
                 meta_component * 0.35 +
@@ -316,6 +326,15 @@ def calculate_role_based_suggestions(
                 "hero_name": get_hero_name(hero_id),
                 "score": round(score, 1),
                 "reasons": reasons[:4],
+                # Full per-hero breakdown (every currently-picked enemy/ally
+                # this hero has real data for, not just the top-2 that make
+                # the "reasons" text) — the frontend renders this as a
+                # hover tooltip rather than static subtext, and it updates
+                # automatically as more heroes get picked since it's
+                # recomputed from the current ally_picks/enemy_picks on
+                # every /suggest call.
+                "matchup_breakdown": matchup_breakdown,
+                "synergy_breakdown": synergy_breakdown,
             })
         combined.sort(key=lambda x: x["score"], reverse=True)
         combined = combined[:combined_limit]
