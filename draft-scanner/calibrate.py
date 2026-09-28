@@ -21,7 +21,7 @@ import time
 import cv2
 import numpy as np
 
-from regions import PICK_SLOTS, BAN_SLOTS, to_pixels
+from regions import PICK_SLOTS, BAN_LOG_REGION, to_pixels
 from window_capture import capture_dota_window, capture_primary_monitor
 
 
@@ -41,10 +41,13 @@ def draw_grid(img: np.ndarray) -> np.ndarray:
 def draw_regions_preview(img: np.ndarray) -> np.ndarray:
     out = img.copy()
     h, w = out.shape[:2]
-    for side, slots in {**PICK_SLOTS, **{f"ban_{k}": v for k, v in BAN_SLOTS.items()}}.items():
+    for slots in PICK_SLOTS.values():
         for region in slots:
             x, y, rw, rh = to_pixels(region, w, h)
             cv2.rectangle(out, (x, y), (x + rw, y + rh), (0, 0, 255), 2)
+
+    x, y, rw, rh = to_pixels(BAN_LOG_REGION, w, h)
+    cv2.rectangle(out, (x, y), (x + rw, y + rh), (255, 255, 0), 2)
     return out
 
 

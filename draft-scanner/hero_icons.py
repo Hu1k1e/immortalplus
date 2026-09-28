@@ -48,3 +48,13 @@ def fetch_hero_icons() -> dict[int, np.ndarray]:
 
     logger.info(f"Loaded {len(icons)}/{len(heroes)} hero reference icons")
     return icons
+
+
+def fetch_hero_names() -> dict[int, str]:
+    """{hero_id: localized_name} — used by ban_ocr.py to fuzzy-match
+    OCR'd ban-log text against real hero names, since the ban log has no
+    icons to template-match against (see regions.py's BAN_LOG_REGION
+    docstring)."""
+    resp = requests.get(f"{BACKEND_URL}/api/meta/hero-list", timeout=15)
+    resp.raise_for_status()
+    return {hero["hero_id"]: hero["name"] for hero in resp.json()}

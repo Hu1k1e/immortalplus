@@ -30,3 +30,5 @@ draft-scanner/.icon_cache/
 draft-scanner/calibration_raw.png
 draft-scanner/calibration_grid.png
 draft-scanner/regions_preview.png
+draft-scanner/_crop_*.png
+draft-scanner/_verify_*.png
