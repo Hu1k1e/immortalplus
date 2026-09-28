@@ -27,3 +27,6 @@ dist/
 instructions.md
 project_specs.md
 draft-scanner/.icon_cache/
+draft-scanner/calibration_raw.png
+draft-scanner/calibration_grid.png
+draft-scanner/regions_preview.png

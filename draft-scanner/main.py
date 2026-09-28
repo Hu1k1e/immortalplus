@@ -15,25 +15,16 @@ See regions.py for the current calibration status before relying on this.
 import logging
 import time
 
-import cv2
-import mss
-import numpy as np
 import requests
 
 from config import BACKEND_URL, PHASE_POLL_INTERVAL_S, CAPTURE_INTERVAL_S
 from hero_icons import fetch_hero_icons
 from matcher import identify_hero
 from regions import PICK_SLOTS, BAN_SLOTS, to_pixels
+from window_capture import capture_dota_window
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("draft-scanner")
-
-
-def capture_screen() -> np.ndarray:
-    with mss.mss() as sct:
-        monitor = sct.monitors[1]
-        shot = np.array(sct.grab(monitor))
-        return cv2.cvtColor(shot, cv2.COLOR_BGRA2BGR)
 
 
 def is_draft_active() -> bool:
@@ -47,8 +38,11 @@ def is_draft_active() -> bool:
         return False
 
 
-def scan_once(hero_icons: dict[int, np.ndarray]) -> dict:
-    screen = capture_screen()
+def scan_once(hero_icons: dict) -> dict | None:
+    screen = capture_dota_window()
+    if screen is None:
+        logger.warning("Dota 2 window not found — skipping this scan (is the game minimized or closed?)")
+        return None
     h, w = screen.shape[:2]
 
     def scan_slots(slots):
@@ -98,7 +92,7 @@ def main():
 
         if active:
             result = scan_once(hero_icons)
-            if result != last_result:
+            if result is not None and result != last_result:
                 logger.info(f"Draft state changed: {result}")
                 report_to_backend(result)
                 last_result = result
