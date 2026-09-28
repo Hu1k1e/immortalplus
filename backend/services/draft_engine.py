@@ -220,24 +220,49 @@ MIN_META_MATCHES = 20
 
 def _rank_adjusted_meta(hero_id: int, position_stats: dict | None, hero_meta_at_rank: dict[int, dict]) -> tuple[float, str | None]:
     """
-    Blends Dota2ProTracker's position-specific (but high-MMR/pro-only)
-    winrate with OpenDota's HeroMeta winrate at the player's OWN rank
-    bracket (position-agnostic, but rank-specific) when both are
-    available. 60/40 weight toward the position-specific number, since
-    it's the more relevant signal for "should I pick this at THIS
-    position" — HeroMeta only adjusts it toward how the hero performs at
-    the player's actual rank generally.
+    Blends Dota2ProTracker's own position-specific rating with OpenDota's
+    HeroMeta winrate at the player's OWN rank bracket (position-agnostic,
+    but rank-specific) when both are available. 60/40 weight toward the
+    position-specific number, since it's the more relevant signal for
+    "should I pick this at THIS position" — HeroMeta only adjusts it
+    toward how the hero performs at the player's actual rank generally.
+
+    Prefers ProTracker's own d2pt_rating (their site's real "Best This
+    Patch" ranking column — confirmed directly against their live /meta
+    page, which sorts by this exact number, 0-100, S/A/B/C/D/E-tiered)
+    over recomputing a rank from bare winrate ourselves: it's their
+    actual composite signal (accounts for more than winrate alone —
+    contest rate, lane advantage, etc., per their own site), already on
+    the same 0-100 scale our own score uses, and it's the literal number
+    a user cross-checking against dota2protracker.com's own "Best This
+    Patch" list would be comparing against. Falls back to a bare winrate*
+    100 (the previous approach) only for the hero/position combos
+    ProTracker doesn't compute a rating for (mainly very-low-sample ones,
+    which MIN_META_MATCHES mostly already excludes upstream, but the
+    rating can be null even with a moderate sample for some off-meta
+    combos).
     """
     has_enough_matches = position_stats and (position_stats.get("matches") or 0) >= MIN_META_MATCHES
+    d2pt_rating = position_stats.get("d2pt_rating") if has_enough_matches else None
     position_winrate = position_stats["winrate"] if has_enough_matches and position_stats.get("winrate") is not None else None
     rank_meta = hero_meta_at_rank.get(hero_id)
     rank_winrate = rank_meta["winrate"] if rank_meta and rank_meta.get("winrate") else None
 
-    if position_winrate is not None and rank_winrate is not None:
-        blended = position_winrate * 0.6 + rank_winrate * 0.4
-        return blended * 100, f"{position_winrate*100:.1f}% WR this patch, {rank_winrate*100:.1f}% WR at your rank"
-    if position_winrate is not None:
-        return position_winrate * 100, f"{position_winrate*100:.1f}% WR this patch ({position_stats.get('matches', 0)} matches)"
+    if d2pt_rating is not None:
+        position_score = d2pt_rating
+        position_label = f"D2PT rating {d2pt_rating:.0f}/100 this patch"
+    elif position_winrate is not None:
+        position_score = position_winrate * 100
+        position_label = f"{position_winrate*100:.1f}% WR this patch ({position_stats.get('matches', 0)} matches)"
+    else:
+        position_score = None
+        position_label = None
+
+    if position_score is not None and rank_winrate is not None:
+        blended = position_score * 0.6 + rank_winrate * 100 * 0.4
+        return blended, f"{position_label}, {rank_winrate*100:.1f}% WR at your rank"
+    if position_score is not None:
+        return position_score, position_label
     if rank_winrate is not None:
         return rank_winrate * 100, f"{rank_winrate*100:.1f}% WR at your rank"
     return 50.0, None
