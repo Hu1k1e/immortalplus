@@ -252,6 +252,7 @@ _STALE_AFTER_HOURS = {
     "hero_matchups": 1.0,
     "hero_position_meta": 14.0,  # syncs every protracker_interval_hours (default 6h)
     "hero_synergy": 1.0,
+    "hero_position_detail": 14.0,  # same protracker_interval_hours cadence as hero_position_meta
 }
 
 
