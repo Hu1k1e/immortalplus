@@ -58,6 +58,22 @@ class SettingsUpdate(BaseModel):
     cache_ttl_hours: Optional[int] = None
 
 
+def _mask_secret(value: Optional[str]) -> dict:
+    """
+    Never echo a real secret back over the wire, even to this app's own
+    frontend — a GET endpoint returning live API keys/tokens in plaintext
+    with no auth was confirmed as a real, serious finding (anyone who
+    can reach the endpoint gets working credentials). Only whether a
+    value is configured, plus a short non-reversible-looking preview so
+    the user can confirm which key is saved, is ever returned; the real
+    value only ever travels one direction, in a PUT the user initiates.
+    """
+    if not value:
+        return {"is_set": False, "preview": None}
+    tail = value[-4:] if len(value) >= 4 else value
+    return {"is_set": True, "preview": f"••••{tail}"}
+
+
 @router.get("")
 async def get_settings(session: Session = Depends(get_session)):
     """Get current settings."""
@@ -74,10 +90,10 @@ async def get_settings(session: Session = Depends(get_session)):
     return {
         "id": settings.id,
         "steam_account_id": player.account_id if player else None,
-        "steam_api_key": settings.steam_api_key or "",
-        "opendota_api_key": settings.opendota_api_key or "",
-        "stratz_api_token": settings.stratz_api_token or "",
-        "openai_api_key": settings.openai_api_key or "",
+        "steam_api_key": _mask_secret(settings.steam_api_key),
+        "opendota_api_key": _mask_secret(settings.opendota_api_key),
+        "stratz_api_token": _mask_secret(settings.stratz_api_token),
+        "openai_api_key": _mask_secret(settings.openai_api_key),
         "openai_api_base": settings.openai_api_base or "",
         "openai_model": settings.openai_model or "",
         "theme": settings.theme,

@@ -320,21 +320,17 @@ async def data_health(session: Session = Depends(get_session)):
     }
 
 
+_backfill_status: dict = {"state": "idle", "pages": [], "started_at": None, "finished_at": None, "result": None}
+
+
 @router.post("/backfill-history")
 async def trigger_backfill_history(session: Session = Depends(get_session)):
     """
-    Manual re-trigger for the full match-history backfill (see services/
-    sync.py's sync_full_match_history). Added after finding a real bug in
-    it: an already-stored match (from the plain incremental sync, which
-    never has position data when sourced from OpenDota's bulk match-list
-    endpoint) was being skipped forever once a row existed, even after
-    the backfill itself started fetching real position data from Stratz —
-    so completing the backfill once wasn't enough to fix "your best" for
-    an account with a lot of pre-existing history. Resets the completed/
-    resume-page flags and reruns it as a background task (same pattern as
-    /refresh-meta) so the now-fixed upgrade-existing-rows logic actually
-    gets applied; check progress via GET /data-health's match_history
-    block rather than polling this endpoint.
+    Manual re-trigger for the full match-history backfill. Check progress
+    via GET /backfill-history/status, which carries real per-page source/
+    position diagnostics (deliberately not written to the general app
+    log — too much unrelated traffic to pick it out of; TEMPORARY, remove
+    both endpoints once the "Your Best" undercount is root-caused).
     """
     from database import SessionLocal
     from services.sync import sync_full_match_history
@@ -344,23 +340,46 @@ async def trigger_backfill_history(session: Session = Depends(get_session)):
     if not player:
         raise HTTPException(status_code=404, detail="No player profile found")
 
+    if _backfill_status["state"] == "running":
+        return {"status": "already_running"}
+
     player.history_backfilled_at = None
     player.history_backfill_page = 0
     session.commit()
+
+    _backfill_status["state"] = "running"
+    _backfill_status["pages"] = []
+    _backfill_status["started_at"] = datetime.utcnow().isoformat()
+    _backfill_status["finished_at"] = None
+    _backfill_status["result"] = None
 
     async def _run():
         bg_session = SessionLocal()
         try:
             bg_player = bg_session.exec(select(Player).where(Player.id == player.id)).first()
             bg_settings = bg_session.exec(select(UserSettings).limit(1)).first()
-            await sync_full_match_history(bg_session, bg_player, bg_settings)
+            total_new = await sync_full_match_history(
+                bg_session, bg_player, bg_settings, progress=_backfill_status["pages"]
+            )
+            _backfill_status["result"] = {"total_new": total_new}
         except Exception as e:
             logger.error(f"Manual history backfill failed: {e}", exc_info=True)
+            _backfill_status["result"] = {"error": str(e)}
         finally:
             bg_session.close()
+            _backfill_status["state"] = "done"
+            _backfill_status["finished_at"] = datetime.utcnow().isoformat()
 
     asyncio.create_task(_run())
     return {"status": "started"}
+
+
+@router.get("/backfill-history/status")
+async def backfill_history_status():
+    """TEMPORARY — see _backfill_status's comment. Real per-page source
+    (stratz/opendota) and position-data detail for the current or most
+    recent manual backfill run."""
+    return _backfill_status
 
 
 @router.get("/state")

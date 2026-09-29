@@ -180,7 +180,9 @@ _BACKFILL_MAX_PAGES = 60
 _BACKFILL_PAGE_SIZE = 100
 
 
-async def sync_full_match_history(session: Session, player: Player, settings: UserSettings) -> int:
+async def sync_full_match_history(
+    session: Session, player: Player, settings: UserSettings, progress: list | None = None
+) -> int:
     """
     One-time backfill of a player's COMPLETE match history (not just the
     newest N — see sync_player_matches's docstring for that gap), so
@@ -200,6 +202,16 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
     an active account, and this app got redeployed several times in
     quick succession while this was being tested, which would otherwise
     have restarted it from scratch every time and never let it finish.
+
+    progress, if passed, gets one dict per page appended to it (page,
+    source, matches, with_position, upgraded) — diagnostic detail on
+    which source actually produced each page's data and how much of it
+    had real position, added after "your best" still undercounted a
+    hero even once the backfill reported complete. Deliberately NOT
+    logged line-by-line to the general app log (too noisy to pick out
+    of everything else running concurrently) - the caller (routers/
+    draft.py's /backfill-history) exposes this list directly via its own
+    status endpoint instead.
     """
     if not player.account_id:
         logger.warning(f"Player {player.steam_id} has no account_id — skipping history backfill")
@@ -215,6 +227,11 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
     for page in range(start_page, _BACKFILL_MAX_PAGES):
         skip = page * _BACKFILL_PAGE_SIZE
         matches = None
+        # Which source actually produced this page's data — previously
+        # invisible, which is exactly the gap that made "why does Your
+        # Best still undercount after a full backfill" unanswerable
+        # without guessing. Logged per page below.
+        page_source = None
 
         if source in ["stratz", "both"]:
             from services.stratz import get_stratz_client
@@ -224,6 +241,8 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
                     matches = await stratz_client.get_player_matches(
                         player.account_id, limit=_BACKFILL_PAGE_SIZE, skip=skip
                     )
+                    if matches:
+                        page_source = "stratz"
                 except Exception as e:
                     logger.error(f"History backfill: Stratz page {page} failed for {player.account_id}: {e}")
                     if source == "stratz":
@@ -238,6 +257,8 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
                     offset=skip,
                     significant=0,
                 )
+                if matches:
+                    page_source = "opendota"
             except Exception as e:
                 logger.error(f"History backfill: OpenDota page {page} failed for {player.account_id}: {e}")
                 break
@@ -246,14 +267,20 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
             logger.info(f"History backfill: reached end of history for {player.account_id} at page {page}")
             break
 
+        with_position = sum(1 for m in matches if m.get("position") is not None)
+
         page_new = 0
         page_upgraded = 0
+        page_already_existed = 0
+        page_already_had_position = 0
+        page_existing_still_null = 0
         for m in matches:
             mid = m.get("match_id")
             if not mid:
                 continue
             existing = session.exec(select(Match).where(Match.match_id == mid)).first()
             if existing:
+                page_already_existed += 1
                 # Real, confirmed bug this fixes: a match synced long ago
                 # by the plain incremental loop (OpenDota's bulk match-list
                 # endpoint — confirmed via a direct real call to it — never
@@ -267,15 +294,31 @@ async def sync_full_match_history(session: Session, player: Player, settings: Us
                 # played far more (e.g. 3 shown vs. 25 real Windranger
                 # games). If this fetch has real position data the stored
                 # row doesn't, upgrade it in place instead of skipping.
-                if existing.position is None and m.get("position") is not None:
+                if existing.position is not None:
+                    page_already_had_position += 1
+                elif m.get("position") is not None:
                     existing.position = m["position"]
                     page_upgraded += 1
+                else:
+                    page_existing_still_null += 1
                 continue
             session.add(_match_row_from_dict(m, player.id))
             page_new += 1
 
         total_new += page_new
         total_upgraded += page_upgraded
+        if progress is not None:
+            progress.append({
+                "page": page,
+                "source": page_source,
+                "matches": len(matches),
+                "with_position": with_position,
+                "already_existed": page_already_existed,
+                "already_had_position": page_already_had_position,
+                "upgraded": page_upgraded,
+                "still_null": page_existing_still_null,
+                "new": page_new,
+            })
         # Persisted after every page (not just at the very end) so a
         # redeploy mid-backfill resumes here next time instead of
         # re-fetching pages already stored — see this function's

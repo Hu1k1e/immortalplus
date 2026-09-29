@@ -1,8 +1,27 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 
+interface SecretFieldState {
+  isSet: boolean;
+  preview: string | null;
+}
+
+const EMPTY_SECRET: SecretFieldState = { isSet: false, preview: null };
+
 export default function Settings() {
   const [steamAccountId, setSteamAccountId] = useState('');
+  // Secret fields work differently from every other setting here: the
+  // backend now never echoes a real key/token back (see routers/
+  // settings.py's _mask_secret — a GET returning live credentials in
+  // plaintext with no auth was a real, confirmed security finding).
+  // `*Saved` holds only whether a value is configured + a short preview
+  // for confirmation; the plain `steamApiKey` etc. state is what the
+  // user is TYPING as a replacement and starts empty on every load, not
+  // pre-filled with the real value (which this page never receives).
+  const [steamApiKeySaved, setSteamApiKeySaved] = useState<SecretFieldState>(EMPTY_SECRET);
+  const [opendotaApiKeySaved, setOpendotaApiKeySaved] = useState<SecretFieldState>(EMPTY_SECRET);
+  const [stratzApiTokenSaved, setStratzApiTokenSaved] = useState<SecretFieldState>(EMPTY_SECRET);
+  const [openaiApiKeySaved, setOpenaiApiKeySaved] = useState<SecretFieldState>(EMPTY_SECRET);
   const [steamApiKey, setSteamApiKey] = useState('');
   const [opendotaApiKey, setOpendotaApiKey] = useState('');
   const [stratzApiToken, setStratzApiToken] = useState('');
@@ -17,10 +36,10 @@ export default function Settings() {
   useEffect(() => {
     api.get('/settings').then((res) => {
       setSteamAccountId(res.data.steam_account_id ? res.data.steam_account_id.toString() : '');
-      setSteamApiKey(res.data.steam_api_key || '');
-      setOpendotaApiKey(res.data.opendota_api_key || '');
-      setStratzApiToken(res.data.stratz_api_token || '');
-      setOpenaiApiKey(res.data.openai_api_key || '');
+      setSteamApiKeySaved(res.data.steam_api_key || EMPTY_SECRET);
+      setOpendotaApiKeySaved(res.data.opendota_api_key || EMPTY_SECRET);
+      setStratzApiTokenSaved(res.data.stratz_api_token || EMPTY_SECRET);
+      setOpenaiApiKeySaved(res.data.openai_api_key || EMPTY_SECRET);
       setOpenaiApiBase(res.data.openai_api_base || '');
       setOpenaiModel(res.data.openai_model || '');
       setDataSource(res.data.data_source || 'both');
@@ -36,22 +55,51 @@ export default function Settings() {
     setSaving(true);
     setMessage('');
     try {
-      await api.put('/settings', {
+      const payload: Record<string, unknown> = {
         steam_account_id: steamAccountId ? parseInt(steamAccountId, 10) : null,
-        steam_api_key: steamApiKey,
-        opendota_api_key: opendotaApiKey,
-        stratz_api_token: stratzApiToken,
-        openai_api_key: openaiApiKey,
         openai_api_base: openaiApiBase,
         openai_model: openaiModel,
         data_source: dataSource,
-      });
+      };
+      // Secrets: only sent if the user actually typed a replacement —
+      // an untouched (empty) field must never overwrite the saved value
+      // with blank, since this page no longer has the real value to
+      // fall back to. Explicit "Clear" buttons handle real removal.
+      if (steamApiKey) payload.steam_api_key = steamApiKey;
+      if (opendotaApiKey) payload.opendota_api_key = opendotaApiKey;
+      if (stratzApiToken) payload.stratz_api_token = stratzApiToken;
+      if (openaiApiKey) payload.openai_api_key = openaiApiKey;
+
+      await api.put('/settings', payload);
+      const res = await api.get('/settings');
+      setSteamApiKeySaved(res.data.steam_api_key || EMPTY_SECRET);
+      setOpendotaApiKeySaved(res.data.opendota_api_key || EMPTY_SECRET);
+      setStratzApiTokenSaved(res.data.stratz_api_token || EMPTY_SECRET);
+      setOpenaiApiKeySaved(res.data.openai_api_key || EMPTY_SECRET);
+      setSteamApiKey('');
+      setOpendotaApiKey('');
+      setStratzApiToken('');
+      setOpenaiApiKey('');
       setMessage('Settings saved successfully!');
     } catch (err) {
       console.error(err);
       setMessage('Failed to save settings.');
     } finally {
       setSaving(false);
+      setTimeout(() => setMessage(''), 3000);
+    }
+  };
+
+  const clearSecret = async (field: string, resetSaved: (s: SecretFieldState) => void) => {
+    if (!confirm('Remove this saved key/token?')) return;
+    try {
+      await api.put('/settings', { [field]: '' });
+      resetSaved(EMPTY_SECRET);
+      setMessage('Cleared.');
+    } catch (err) {
+      console.error(err);
+      setMessage('Failed to clear.');
+    } finally {
       setTimeout(() => setMessage(''), 3000);
     }
   };
@@ -70,6 +118,40 @@ export default function Settings() {
       alert('Failed to generate GSI config.');
     }
   };
+
+  const inputStyle = { padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' };
+
+  const renderSecretField = (
+    label: string,
+    value: string,
+    setValue: (v: string) => void,
+    saved: SecretFieldState,
+    settingsField: string,
+    setSaved: (s: SecretFieldState) => void,
+  ) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      {label}
+      <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <input
+          type="password"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={saved.isSet ? `Saved (${saved.preview}) — enter a new value to replace` : 'Enter key...'}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        {saved.isSet && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => clearSecret(settingsField, setSaved)}
+            title="Remove this saved key/token"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </label>
+  );
 
   if (loading) return <div style={{ padding: '2rem' }}>Loading settings...</div>;
 
@@ -94,36 +176,9 @@ export default function Settings() {
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              Steam API Key (Optional)
-              <input 
-                type="text" 
-                value={steamApiKey}
-                onChange={(e) => setSteamApiKey(e.target.value)}
-                placeholder="Enter key..." 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              OpenDota API Key (Optional)
-              <input 
-                type="text" 
-                value={opendotaApiKey}
-                onChange={(e) => setOpendotaApiKey(e.target.value)}
-                placeholder="Enter key..." 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
-              />
-            </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              Stratz API Token (Optional)
-              <input 
-                type="text" 
-                value={stratzApiToken}
-                onChange={(e) => setStratzApiToken(e.target.value)}
-                placeholder="Enter token..." 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
-              />
-            </label>
+            {renderSecretField('Steam API Key (Optional)', steamApiKey, setSteamApiKey, steamApiKeySaved, 'steam_api_key', setSteamApiKeySaved)}
+            {renderSecretField('OpenDota API Key (Optional)', opendotaApiKey, setOpendotaApiKey, opendotaApiKeySaved, 'opendota_api_key', setOpendotaApiKeySaved)}
+            {renderSecretField('Stratz API Token (Optional)', stratzApiToken, setStratzApiToken, stratzApiTokenSaved, 'stratz_api_token', setStratzApiTokenSaved)}
           </div>
         </div>
 
@@ -153,16 +208,7 @@ export default function Settings() {
                 style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
               />
             </label>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              API Key
-              <input 
-                type="password" 
-                value={openaiApiKey}
-                onChange={(e) => setOpenaiApiKey(e.target.value)}
-                placeholder="sk-..." 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
-              />
-            </label>
+            {renderSecretField('API Key', openaiApiKey, setOpenaiApiKey, openaiApiKeySaved, 'openai_api_key', setOpenaiApiKeySaved)}
           </div>
         </div>
       </div>
