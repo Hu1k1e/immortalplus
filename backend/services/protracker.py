@@ -30,6 +30,7 @@ draft helper), not a general per-rank benchmark — confirmed with the user
 rather than assumed.
 """
 
+import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -547,3 +548,127 @@ async def fetch_hero_overview(hero_localized_name: str, hero_id: int, position: 
         "core_items": build.get("core_items") or [],
         "weekly_rates": weekly_points,
     }
+
+
+def upsert_hero_overview(session, hero_id: int, position: int, fresh: dict):
+    """Writes a `fetch_hero_overview()` result into the `HeroOverview` row
+    for this hero/position (creating it if new). Shared by the on-demand
+    `/meta/hero/{id}/overview` endpoint and `prefetch_hero_overviews`
+    below so the two can never disagree about how a fetch result gets
+    stored -- always exactly one row per (hero_id, position), so calling
+    this repeatedly for the same pair only ever updates it in place and
+    never grows the table further for that pair."""
+    from sqlmodel import select
+    from models import HeroOverview
+
+    existing = session.exec(
+        select(HeroOverview).where(HeroOverview.hero_id == hero_id, HeroOverview.position == position)
+    ).first()
+    target = existing or HeroOverview(hero_id=hero_id, position=position)
+    target.matches = fresh["matches"]
+    target.wins = fresh["wins"]
+    target.win_rate = fresh["win_rate"]
+    target.pick_rate = fresh["pick_rate"]
+    target.lane_advantage = fresh["lane_advantage"]
+    target.d2pt_rating = fresh["d2pt_rating"]
+    target.meta_score = fresh["meta_score"]
+    target.rating_rank = fresh["rating_rank"]
+    target.rating_cohort_size = fresh["rating_cohort_size"]
+    target.role_pick_share = fresh["role_pick_share"]
+    target.all_role_matches = fresh["all_role_matches"]
+    target.starting_items = json.dumps(fresh["starting_items"])
+    target.ability_sequence = json.dumps(fresh["ability_sequence"])
+    target.core_items = json.dumps(fresh["core_items"])
+    target.weekly_rates = json.dumps(fresh["weekly_rates"])
+    target.updated_at = datetime.utcnow()
+    if not existing:
+        session.add(target)
+    session.commit()
+    return target
+
+
+# Same staleness window the on-demand endpoint uses (routers/meta.py's
+# _HERO_OVERVIEW_TTL_HOURS) -- kept as a separate constant rather than a
+# shared import so either can change independently; a mismatch here only
+# ever means one re-fetches slightly more or less eagerly than the other,
+# never a correctness issue.
+_PREFETCH_STALE_HOURS = 12
+# fetch_hero_overview launches a full headless browser per call (unlike
+# the plain API calls sync_hero_meta/sync_hero_matchups make), and
+# HeroOverview's own docstring records that a previous feature in this
+# same family (HeroPositionDetail) got Cloudflare-flagged from sheer
+# request volume -- so this stays deliberately small and runs on the
+# same long protracker_interval_minutes cadence as sync_hero_position_meta
+# (see main.py's background_sync_loop), not every cycle.
+_PREFETCH_BATCH_SIZE = 3
+
+
+async def prefetch_hero_overviews(session) -> int:
+    """Proactively warms `HeroOverview` for whichever real hero/position
+    combos are furthest overdue, so a user opening a hero's detail page
+    usually finds it already cached instead of waiting on a live
+    Dota2ProTracker fetch (the "Loading role data... may take a few
+    seconds" state). Only targets positions a hero is actually played at
+    (HeroPositionMeta rows with real pick data) -- there's no point
+    pre-warming a carry's position-5 page nobody will ever open, and
+    scoping it this way keeps the total combo count small (roughly one
+    to a few positions per hero, not all 5 x 127 heroes).
+
+    Storage stays bounded by that same real-combo count: this only ever
+    upserts the one HeroOverview row per (hero_id, position) that already
+    exists or would exist from a user's own on-demand visit -- it never
+    creates a new *kind* of row, just fills in / refreshes ones that
+    would eventually be created anyway. Returns how many it fetched this
+    call so callers can log it.
+    """
+    from datetime import timedelta
+    from sqlmodel import select
+    from models import HeroPositionMeta, HeroOverview
+    from utils.dota_constants import HEROES
+
+    real_combos = set(
+        session.exec(
+            select(HeroPositionMeta.hero_id, HeroPositionMeta.position)
+            .where(HeroPositionMeta.matches > 0)
+        ).all()
+    )
+    if not real_combos:
+        return 0
+
+    last_updated = {
+        (r[0], r[1]): r[2] for r in session.exec(
+            select(HeroOverview.hero_id, HeroOverview.position, HeroOverview.updated_at)
+        ).all()
+    }
+
+    cutoff = datetime.utcnow() - timedelta(hours=_PREFETCH_STALE_HOURS)
+    stale = [
+        combo for combo in real_combos
+        if last_updated.get(combo) is None or last_updated[combo] < cutoff
+    ]
+    if not stale:
+        return 0
+
+    # Never-fetched combos (None) first, then whichever real timestamp is
+    # furthest in the past -- same "stale-first rotation" convention as
+    # sync_hero_matchups above.
+    stale.sort(key=lambda combo: last_updated.get(combo) or datetime.min)
+
+    fetched = 0
+    for hero_id, position in stale[:_PREFETCH_BATCH_SIZE]:
+        hero_data = HEROES.get(hero_id)
+        if not hero_data:
+            continue
+        try:
+            fresh = await fetch_hero_overview(hero_data["localized_name"], hero_id, position)
+        except Exception as e:
+            logger.error(f"Hero overview prefetch failed for hero {hero_id} position {position}: {e}")
+            continue
+        if not fresh:
+            continue
+        upsert_hero_overview(session, hero_id, position, fresh)
+        fetched += 1
+
+    if fetched:
+        logger.info(f"Pre-fetched {fetched} hero overview(s)")
+    return fetched

@@ -295,7 +295,7 @@ export default function WidgetGrid({ storageKey, registry, defaultInstances, def
           containerPadding={[0, 0]}
           isDraggable={canEdit}
           isResizable={canEdit}
-          draggableHandle=".widget-drag-handle"
+          draggableCancel=".widget-remove-btn, .widget-card-title-link, a, button, input, select, textarea"
           resizeHandles={['se']}
           compactType="vertical"
           preventCollision={false}

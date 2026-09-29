@@ -335,32 +335,10 @@ async def get_hero_overview(
     )
 
     if not is_fresh:
-        from services.protracker import fetch_hero_overview
+        from services.protracker import fetch_hero_overview, upsert_hero_overview
         fresh = await fetch_hero_overview(hero_data["localized_name"], hero_id, position)
         if fresh:
-            now = datetime.utcnow()
-            target = existing or HeroOverview(hero_id=hero_id, position=position)
-            target.matches = fresh["matches"]
-            target.wins = fresh["wins"]
-            target.win_rate = fresh["win_rate"]
-            target.pick_rate = fresh["pick_rate"]
-            target.lane_advantage = fresh["lane_advantage"]
-            target.d2pt_rating = fresh["d2pt_rating"]
-            target.meta_score = fresh["meta_score"]
-            target.rating_rank = fresh["rating_rank"]
-            target.rating_cohort_size = fresh["rating_cohort_size"]
-            target.role_pick_share = fresh["role_pick_share"]
-            target.all_role_matches = fresh["all_role_matches"]
-            target.starting_items = json.dumps(fresh["starting_items"])
-            target.ability_sequence = json.dumps(fresh["ability_sequence"])
-            target.core_items = json.dumps(fresh["core_items"])
-            target.weekly_rates = json.dumps(fresh["weekly_rates"])
-            target.updated_at = now
-            if not existing:
-                session.add(target)
-            session.commit()
-            session.refresh(target)
-            existing = target
+            existing = upsert_hero_overview(session, hero_id, position, fresh)
         elif not existing:
             raise HTTPException(status_code=502, detail="Could not fetch hero overview data right now — try again shortly")
         # else: live fetch failed but stale cached data exists — serve that.

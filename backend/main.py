@@ -31,14 +31,30 @@ async def background_sync_loop():
     from database import SessionLocal
     from models import Player, UserSettings
     from services.sync import (
-        sync_player_matches, create_progress_snapshot,
+        sync_player_matches, create_progress_snapshot, backfill_progress_snapshots,
         sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
     )
-    from services.protracker import sync_hero_position_meta
+    from services.protracker import sync_hero_position_meta, prefetch_hero_overviews
 
     # Wait for app to fully start
     await asyncio.sleep(10)
     logger.info("Background sync loop started")
+
+    # One-time (per missing day) catch-up so Improvement Score History
+    # isn't empty for weeks while the loop below slowly accumulates one
+    # real snapshot a day -- see backfill_progress_snapshots' docstring
+    # for why this is safe to run on every restart (idempotent, bounded).
+    backfill_session = None
+    try:
+        backfill_session = SessionLocal()
+        backfill_player = backfill_session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+        if backfill_player:
+            await backfill_progress_snapshots(backfill_session, backfill_player)
+    except Exception as e:
+        logger.error(f"Progress snapshot backfill failed: {e}", exc_info=True)
+    finally:
+        if backfill_session:
+            backfill_session.close()
 
     # protracker_enabled/protracker_interval_minutes have existed as
     # UserSettings fields since early in this project but were never
@@ -149,6 +165,21 @@ async def background_sync_loop():
                         # services/protracker.py, unused, in case this is
                         # ever worth revisiting (e.g. from a different
                         # egress IP).
+
+                        # Pre-warms HeroDetail's per-position overview
+                        # (win/pick rate, build, ability order) for a
+                        # small batch of the most-overdue real hero/
+                        # position combos, so it's usually already cached
+                        # by the time a user opens that page instead of
+                        # showing "Loading role data... may take a few
+                        # seconds". Paced on this same interval/batch-of-3
+                        # (not every cycle) since each fetch is a full
+                        # headless-browser page load, not a plain API
+                        # call — see prefetch_hero_overviews' docstring.
+                        try:
+                            await prefetch_hero_overviews(session)
+                        except Exception as e:
+                            logger.error(f"Background sync: hero_overview prefetch failed: {e}", exc_info=True)
                         last_protracker_sync = datetime.utcnow()
 
             session.close()

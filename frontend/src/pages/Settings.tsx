@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
+import { useTheme, ACCENT_PRESETS, DEFAULT_ACCENT } from '../lib/theme';
 
 interface SecretFieldState {
   isSet: boolean;
@@ -9,6 +10,7 @@ interface SecretFieldState {
 const EMPTY_SECRET: SecretFieldState = { isSet: false, preview: null };
 
 export default function Settings() {
+  const { theme, setTheme, accent, setAccent } = useTheme();
   const [steamAccountId, setSteamAccountId] = useState('');
   // Secret fields work differently from every other setting here: the
   // backend now never echoes a real key/token back (see routers/
@@ -135,7 +137,7 @@ export default function Settings() {
     }
   };
 
-  const inputStyle = { padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' };
+  const inputStyle = { padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' };
 
   const renderSecretField = (
     label: string,
@@ -178,6 +180,60 @@ export default function Settings() {
         <p className="text-secondary">Configure your coaching experience.</p>
       </header>
 
+      <div className="glass-surface" style={{ padding: '2rem', marginBottom: '2rem' }}>
+        <h3 style={{ marginBottom: '1.5rem' }}>Appearance</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <div style={{ marginBottom: '0.6rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Theme</div>
+            <div style={{ display: 'flex', gap: '0.6rem' }}>
+              {(['dark', 'light'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`btn ${theme === mode ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setTheme(mode)}
+                  style={{ textTransform: 'capitalize' }}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ marginBottom: '0.6rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Accent Color</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+              {ACCENT_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  type="button"
+                  title={preset.name}
+                  onClick={() => setAccent(preset.value)}
+                  style={{
+                    width: '28px', height: '28px', borderRadius: '999px', background: preset.value,
+                    border: accent.toLowerCase() === preset.value.toLowerCase() ? '2px solid var(--text-primary)' : '2px solid transparent',
+                    boxShadow: accent.toLowerCase() === preset.value.toLowerCase() ? '0 0 0 2px var(--bg-base)' : 'none',
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+              <input
+                type="color"
+                value={accent}
+                onChange={(e) => setAccent(e.target.value)}
+                title="Custom accent color"
+                style={{ width: '32px', height: '32px', padding: 0, border: '1px solid var(--border-color)', borderRadius: '6px', background: 'transparent', cursor: 'pointer' }}
+              />
+              {accent.toLowerCase() !== DEFAULT_ACCENT.toLowerCase() && (
+                <button type="button" className="btn btn-secondary" onClick={() => setAccent(DEFAULT_ACCENT)}>
+                  Reset to default
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2rem' }}>
         <div className="glass-surface" style={{ padding: '2rem' }}>
           <h3 style={{ marginBottom: '1.5rem' }}>API & Account Configuration</h3>
@@ -189,7 +245,7 @@ export default function Settings() {
                 value={steamAccountId}
                 onChange={(e) => setSteamAccountId(e.target.value)}
                 placeholder="e.g. 86745912" 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }} 
               />
             </label>
             {renderSecretField('Steam API Key (Optional)', steamApiKey, setSteamApiKey, steamApiKeySaved, 'steam_api_key', setSteamApiKeySaved)}
@@ -211,7 +267,7 @@ export default function Settings() {
                 value={openaiApiBase}
                 onChange={(e) => setOpenaiApiBase(e.target.value)}
                 placeholder="e.g. https://api.freellmapi.com/v1" 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }} 
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
@@ -221,7 +277,7 @@ export default function Settings() {
                 value={openaiModel}
                 onChange={(e) => setOpenaiModel(e.target.value)}
                 placeholder="gpt-4o" 
-                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }} 
+                style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }} 
               />
             </label>
             {renderSecretField('API Key', openaiApiKey, setOpenaiApiKey, openaiApiKeySaved, 'openai_api_key', setOpenaiApiKeySaved)}
@@ -237,7 +293,7 @@ export default function Settings() {
             <select 
               value={dataSource}
               onChange={(e) => setDataSource(e.target.value)}
-              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)' }}
             >
               <option value="both">Both (Prefer Stratz, Fallback OpenDota)</option>
               <option value="stratz">Stratz Only</option>
@@ -251,7 +307,7 @@ export default function Settings() {
               min={5}
               value={protrackerIntervalMinutes}
               onChange={(e) => setProtrackerIntervalMinutes(e.target.value)}
-              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white', maxWidth: '160px' }}
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'var(--bg-input)', color: 'var(--text-primary)', maxWidth: '160px' }}
             />
             <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
               How often the Draft Helper's position data and the Meta tab re-scrape Dota2ProTracker. Default 30 minutes — the same cadence as the rest of the background sync.

@@ -743,8 +743,67 @@ async def analyze_and_store(session: Session, match: Match, player: Player):
     session.commit()
 
 
+def _rolling_snapshot_metrics(matches: list[Match]) -> dict:
+    """Shared rolling-window aggregation used by both the daily snapshot
+    cron and the historical backfill below, so the two can never drift
+    into computing "recent form" differently."""
+    total = len(matches)
+    wins = sum(1 for m in matches if m.result == "win")
+
+    avg_kda = sum(
+        ((m.kills or 0) + (m.assists or 0)) / max(m.deaths or 1, 1) for m in matches
+    ) / max(total, 1)
+
+    avg_gpm = sum(m.gpm or 0 for m in matches) / max(total, 1)
+    avg_xpm = sum(m.xpm or 0 for m in matches) / max(total, 1)
+    avg_deaths = sum(m.deaths or 0 for m in matches) / max(total, 1)
+    avg_hero_damage = sum(m.hero_damage or 0 for m in matches) / max(total, 1)
+    avg_tower_damage = sum(m.tower_damage or 0 for m in matches) / max(total, 1)
+    avg_cs_min = sum(
+        (m.last_hits or 0) / max((m.duration or 1) / 60, 1) for m in matches
+    ) / max(total, 1)
+
+    return dict(
+        matches_played=total,
+        wins=wins,
+        avg_kda=round(avg_kda, 2),
+        avg_gpm=round(avg_gpm, 0),
+        avg_xpm=round(avg_xpm, 0),
+        avg_cs_min=round(avg_cs_min, 1),
+        avg_deaths=round(avg_deaths, 1),
+        avg_hero_damage=round(avg_hero_damage, 0),
+        avg_tower_damage=round(avg_tower_damage, 0),
+    )
+
+
+def _improvement_score(metrics: dict, prev: "ProgressSnapshot | None") -> Optional[float]:
+    """Day-over-day "is this player trending up or down" score: the
+    change in this snapshot's rolling 20-match averages versus the
+    previous recorded snapshot's, blended into one signed number (same
+    spirit as lib/performanceIndicator.ts's per-match score on the
+    frontend, just comparing a player against their own recent past
+    instead of the other 9 players in one game). None -- not 0 -- when
+    there's no prior snapshot to compare against, so the frontend can
+    tell "no trend yet" apart from "flat trend"; ProgressSnapshot.
+    improvement_score was declared on the model from the start but never
+    actually computed anywhere until now, which is the real reason the
+    Improvement Score History widget always read empty."""
+    if not prev or not prev.matches_played:
+        return None
+
+    winrate = (metrics["wins"] / metrics["matches_played"] * 100) if metrics["matches_played"] else 0
+    prev_winrate = (prev.wins / prev.matches_played * 100) if prev.matches_played else 0
+    kda_delta = (metrics["avg_kda"] or 0) - (prev.avg_kda or 0)
+    gpm_delta = (metrics["avg_gpm"] or 0) - (prev.avg_gpm or 0)
+    deaths_delta = (prev.avg_deaths or 0) - (metrics["avg_deaths"] or 0)  # fewer deaths = improvement
+    winrate_delta = winrate - prev_winrate
+
+    score = winrate_delta * 0.4 + kda_delta * 8 + gpm_delta * 0.03 + deaths_delta * 4
+    return round(score, 1)
+
+
 async def create_progress_snapshot(session: Session, player: Player):
-    """Create a daily progress snapshot from recent matches."""
+    """Create today's daily progress snapshot from recent matches."""
     today = date.today().isoformat()
 
     # Check if we already have today's snapshot
@@ -767,41 +826,96 @@ async def create_progress_snapshot(session: Session, player: Player):
     if not recent:
         return
 
-    wins = sum(1 for m in recent if m.result == "win")
-    total = len(recent)
-
-    avg_kda = sum(
-        ((m.kills or 0) + (m.assists or 0)) / max(m.deaths or 1, 1) for m in recent
-    ) / max(total, 1)
-
-    avg_gpm = sum(m.gpm or 0 for m in recent) / max(total, 1)
-    avg_xpm = sum(m.xpm or 0 for m in recent) / max(total, 1)
-    avg_deaths = sum(m.deaths or 0 for m in recent) / max(total, 1)
-    avg_hero_damage = sum(m.hero_damage or 0 for m in recent) / max(total, 1)
-    avg_tower_damage = sum(m.tower_damage or 0 for m in recent) / max(total, 1)
-    avg_cs_min = sum(
-        (m.last_hits or 0) / max((m.duration or 1) / 60, 1) for m in recent
-    ) / max(total, 1)
+    metrics = _rolling_snapshot_metrics(recent)
+    prev = session.exec(
+        select(ProgressSnapshot)
+        .where(ProgressSnapshot.player_id == player.id)
+        .where(ProgressSnapshot.snapshot_date < today)
+        .order_by(ProgressSnapshot.snapshot_date.desc())
+    ).first()
 
     snapshot = ProgressSnapshot(
         player_id=player.id,
         snapshot_date=today,
         period_type="daily",
-        matches_played=total,
-        wins=wins,
-        avg_kda=round(avg_kda, 2),
-        avg_gpm=round(avg_gpm, 0),
-        avg_xpm=round(avg_xpm, 0),
-        avg_cs_min=round(avg_cs_min, 1),
-        avg_deaths=round(avg_deaths, 1),
-        avg_hero_damage=round(avg_hero_damage, 0),
-        avg_tower_damage=round(avg_tower_damage, 0),
         mmr_estimate=player.mmr_estimate,
         rank_tier=player.rank_tier,
+        improvement_score=_improvement_score(metrics, prev),
+        **metrics,
     )
     session.add(snapshot)
     session.commit()
     logger.info(f"Created progress snapshot for player {player.account_id} — {today}")
+
+
+async def backfill_progress_snapshots(session: Session, player: Player, max_days: int = 90):
+    """One-time (per missing day) catch-up so Improvement Score History
+    isn't empty for weeks while the daily cron above slowly accumulates
+    one real point at a time -- computes the same rolling-20 window
+    `create_progress_snapshot` does, but "as of" each past calendar day
+    that actually has a played match, for up to `max_days` most-recent
+    such days. Idempotent and safe to call on every startup: skips any
+    date that already has a row, and inserts nothing at all once the
+    player has no gaps left to fill, so this never grows storage beyond
+    one row per real calendar day the player has ever played on --
+    bounded by history length, not by how often this runs.
+
+    mmr_estimate/rank_tier are deliberately left null on backfilled rows:
+    this app has never recorded a point-in-time MMR before now, so
+    there's no honest historical value to backfill them with (unlike the
+    match-derived rolling stats, which can be recomputed for any past
+    day from the matches themselves) -- the MMR History chart will only
+    ever have real history from the day this shipped forward.
+    """
+    all_matches = session.exec(
+        select(Match)
+        .where(Match.player_id == player.id)
+        .where(Match.played_at.is_not(None))
+        .order_by(Match.played_at.asc())
+    ).all()
+    if not all_matches:
+        return 0
+
+    existing_dates = set(session.exec(
+        select(ProgressSnapshot.snapshot_date).where(ProgressSnapshot.player_id == player.id)
+    ).all())
+
+    distinct_days = sorted({m.played_at.date() for m in all_matches if m.played_at})
+    missing_days = [d for d in distinct_days if d.isoformat() not in existing_dates][-max_days:]
+    if not missing_days:
+        return 0
+
+    created = 0
+    prev: Optional[ProgressSnapshot] = None
+    for day in missing_days:
+        day_str = day.isoformat()
+        as_of = [m for m in all_matches if m.played_at and m.played_at.date() <= day]
+        window = as_of[-20:]
+        if not window:
+            continue
+        metrics = _rolling_snapshot_metrics(window)
+        if prev is None:
+            prev = session.exec(
+                select(ProgressSnapshot)
+                .where(ProgressSnapshot.player_id == player.id)
+                .where(ProgressSnapshot.snapshot_date < day_str)
+                .order_by(ProgressSnapshot.snapshot_date.desc())
+            ).first()
+        snapshot = ProgressSnapshot(
+            player_id=player.id,
+            snapshot_date=day_str,
+            period_type="daily",
+            improvement_score=_improvement_score(metrics, prev),
+            **metrics,
+        )
+        session.add(snapshot)
+        prev = snapshot
+        created += 1
+
+    if created:
+        session.commit()
+        logger.info(f"Backfilled {created} historical progress snapshot(s) for player {player.account_id}")
+    return created
 
 
 async def sync_hero_meta(session: Session, settings: UserSettings) -> int:
