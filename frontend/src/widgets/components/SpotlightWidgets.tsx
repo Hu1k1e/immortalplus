@@ -2,8 +2,9 @@ import type { ComponentType } from 'react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApiData } from '../hooks';
+import { AnimatedBar } from '../AnimatedBar';
 import { useLiveProfile } from '../../hooks/useLiveProfile';
-import { getHeroImage, getHeroRenderImage, getHeroIcon, getItemImage } from '../../lib/dota';
+import { getHeroImage, getHeroRenderImageVariants, getHeroIcon, getItemImage } from '../../lib/dota';
 import { resolveItemIdName } from '../../lib/itemId';
 import { getRankBadge, getRankLabel } from '../../lib/rank';
 import { computePerformanceScore } from '../../lib/performanceIndicator';
@@ -36,23 +37,24 @@ function timeAgo(iso?: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-/** <img> that tries the 3D hero-model render first, falling back to the
- * flat splash-art crop (and finally the small icon) if the render 404s --
- * Valve doesn't expose the render path anywhere in generated constants, so
- * this is the only safe way to use it. */
+/** <img> that tries every known 3D hero-model render source in turn,
+ * falling back to the flat splash-art crop and finally the small icon if
+ * every render host 404s. Wrapped in a fixed-position box + object-fit:
+ * contain so the full body always fits regardless of the widget's current
+ * (resizable) aspect ratio -- height:100%/width:auto on the bare <img>
+ * used to overflow-and-clip to a face closeup on square/short widgets. */
 function HeroRenderImage({ heroId, className }: { heroId: number; className?: string }) {
-  const [src, setSrc] = useState(() => getHeroRenderImage(heroId));
-  const [stage, setStage] = useState(0);
-  useEffect(() => { setSrc(getHeroRenderImage(heroId)); setStage(0); }, [heroId]);
+  const chain = [...getHeroRenderImageVariants(heroId), getHeroImage(heroId), getHeroIcon(heroId)];
+  const [heroKey, setHeroKey] = useState(heroId);
+  const [index, setIndex] = useState(0);
+  if (heroKey !== heroId) { setHeroKey(heroId); setIndex(0); }
+  const src = chain[Math.min(index, chain.length - 1)];
   return (
     <img
       className={className}
       src={src}
       alt=""
-      onError={() => {
-        if (stage === 0) { setStage(1); setSrc(getHeroImage(heroId)); }
-        else if (stage === 1) { setStage(2); setSrc(getHeroIcon(heroId)); }
-      }}
+      onError={() => setIndex((i) => Math.min(i + 1, chain.length - 1))}
     />
   );
 }
@@ -158,9 +160,10 @@ export const LastMatchSpotlightWidget: ComponentType<{ instanceId: string }> = (
           <div className="hero-spotlight-perf">
             <span className={perf.score >= 0 ? 'good' : 'bad'}>{perf.score > 0 ? '+' : ''}{perf.score}</span>
             <div className="hero-spotlight-perf-bar">
-              <div
+              <AnimatedBar
+                pct={Math.min(100, Math.abs(perf.score) * 2)}
                 className={`hero-spotlight-perf-bar-fill ${perf.score >= 0 ? 'good' : 'bad'}`}
-                style={{ width: `${Math.min(100, Math.abs(perf.score) * 2)}%`, marginLeft: perf.score < 0 ? 'auto' : 0 }}
+                style={{ marginLeft: perf.score < 0 ? 'auto' : 0 }}
               />
             </div>
           </div>
@@ -183,25 +186,31 @@ interface TopHero {
   hero_id: number; hero_name: string; matches: number; winrate: number;
 }
 
-/** Big splash card for the player's single most-played hero. */
+/** Big splash card for the player's single most-played hero -- when the
+ * widget is resized taller, a ranked runner-up list (#2-5, each with its
+ * own small model render) appears below it, via a container query rather
+ * than a fetch-time branch, so the extra rows are simply revealed/hidden
+ * as the box grows/shrinks. */
 export const TopHeroSpotlightWidget: ComponentType<{ instanceId: string }> = () => {
   const navigate = useNavigate();
-  const { data, loading } = useApiData<{ heroes: TopHero[] }>('/player/most-played-heroes', { limit: 1 });
-  const hero = data?.heroes?.[0];
+  const { data, loading } = useApiData<{ heroes: TopHero[] }>('/player/most-played-heroes', { limit: 5 });
+  const heroes = data?.heroes ?? [];
+  const hero = heroes[0];
+  const runnersUp = heroes.slice(1, 5);
 
   if (loading) return <div className="spotlight-card spotlight-loading animate-pulse" />;
   if (!hero) return <div className="spotlight-card spotlight-empty"><span>No hero data yet.</span></div>;
 
   return (
-    <div className="spotlight-card hero-spotlight-card" onClick={() => navigate(`/meta/hero/${hero.hero_id}`)} role="button">
-      <div className="hero-spotlight-header">
+    <div className="spotlight-card hero-spotlight-card">
+      <div className="hero-spotlight-header" onClick={() => navigate(`/meta/hero/${hero.hero_id}`)} role="button">
         <div>
           <div className="hero-spotlight-title">Top Hero</div>
           <div className="hero-spotlight-subtitle">{hero.hero_name}</div>
         </div>
         <span className="hero-spotlight-badge">Most Played</span>
       </div>
-      <div className="hero-spotlight-render-box">
+      <div className="hero-spotlight-render-box" onClick={() => navigate(`/meta/hero/${hero.hero_id}`)} role="button">
         <HeroRenderImage heroId={hero.hero_id} className="hero-spotlight-render" />
       </div>
       <div className="hero-spotlight-stat-row hero-spotlight-stat-row-center">
@@ -209,6 +218,22 @@ export const TopHeroSpotlightWidget: ComponentType<{ instanceId: string }> = () 
         <span className="hero-spotlight-dot">•</span>
         <span className={hero.winrate >= 50 ? 'good' : 'bad'}>{hero.winrate}% WR</span>
       </div>
+      {runnersUp.length > 0 && (
+        <div className="hero-spotlight-runnersup">
+          <div className="hero-spotlight-divider" />
+          {runnersUp.map((h, i) => (
+            <div key={h.hero_id} className="hero-runnerup-row" onClick={() => navigate(`/meta/hero/${h.hero_id}`)} role="button">
+              <span className="hero-runnerup-rank">#{i + 2}</span>
+              <div className="hero-runnerup-render-box">
+                <HeroRenderImage heroId={h.hero_id} className="hero-runnerup-render" />
+              </div>
+              <span className="hero-runnerup-name">{h.hero_name}</span>
+              <span className="hero-runnerup-matches">{h.matches}g</span>
+              <span className={`hero-runnerup-winrate ${h.winrate >= 50 ? 'good' : 'bad'}`}>{h.winrate}%</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };

@@ -30,6 +30,9 @@ export interface WidgetDefinition {
   category: WidgetCategory;
   defaultSize: WidgetSize;
   icon?: LucideIcon;
+  /** Makes the widget's title bar a link to this in-app route (disabled
+   * while editing so it doesn't fight drag-to-move). */
+  titleLink?: string;
   Component: ComponentType<{ instanceId: string }>;
   /** Render without the standard title-bar chrome (widget draws its own header). */
   chromeless?: boolean;

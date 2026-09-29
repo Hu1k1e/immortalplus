@@ -139,6 +139,50 @@ export const ActionItemsStatWidget: ComponentType<{ instanceId: string }> = () =
   );
 };
 
+/** Combined, colorful quadrant widget -- Win Rate, Avg GPM, Avg Deaths, and
+ * Performance Score in one card, each quadrant with its own accent tint
+ * instead of the single-metric tiles' uniform gold. */
+export const OverviewPulseWidget: ComponentType<{ instanceId: string }> = () => {
+  const { data, loading } = useProgressSummary();
+  const wrChange = data?.winrate_change ?? 0;
+  const gpmChange = data?.gpm_change ?? 0;
+  const deathsChange = data?.deaths_change ?? 0;
+
+  const cells = [
+    {
+      key: 'winrate', tint: 'green', icon: <TrendingUp size={16} />, label: 'Win Rate',
+      value: `${data?.recent_winrate ?? 0}%`, trend: `${wrChange > 0 ? '+' : ''}${wrChange}%`, cls: trendClass(wrChange),
+    },
+    {
+      key: 'gpm', tint: 'blue', icon: <Activity size={16} />, label: 'Avg GPM',
+      value: `${data?.recent_gpm ?? 0}`, trend: `${gpmChange > 0 ? '+' : ''}${gpmChange}`, cls: trendClass(gpmChange),
+    },
+    {
+      key: 'deaths', tint: 'red', icon: <Skull size={16} />, label: 'Avg Deaths',
+      value: `${data?.recent_deaths ?? 0}`, trend: `${deathsChange > 0 ? '+' : ''}${deathsChange}`, cls: trendClass(deathsChange, true),
+    },
+    {
+      key: 'performance', tint: 'purple', icon: <Gauge size={16} />, label: 'Performance',
+      value: `${data?.avg_performance_score ?? 0}`, trend: null, cls: 'neutral',
+    },
+  ];
+
+  return (
+    <div className={`overview-pulse ${loading ? 'animate-pulse' : ''}`}>
+      {cells.map((c) => (
+        <div key={c.key} className={`overview-pulse-cell tint-${c.tint}`}>
+          <div className="overview-pulse-cell-header">
+            {c.icon}
+            <span>{c.label}</span>
+          </div>
+          <div className="overview-pulse-cell-value">{loading ? '—' : c.value}</div>
+          {c.trend && <div className={`overview-pulse-cell-trend ${c.cls}`}>{c.trend}</div>}
+        </div>
+      ))}
+    </div>
+  );
+};
+
 interface PlayerSummary { matches: number; wins: number; losses: number; winrate: number; }
 
 export const TotalMatchesStatWidget: ComponentType<{ instanceId: string }> = () => {

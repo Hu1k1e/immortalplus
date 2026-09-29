@@ -3,6 +3,7 @@ import itemsJson from './constants/items.json';
 import abilitiesJson from './constants/abilities.json';
 
 const CDN_BASE = 'https://cdn.cloudflare.steamstatic.com';
+const STRATZ_CDN_BASE = 'https://cdn.stratz.com';
 
 // Make them accessible as records
 export const HEROES: Record<string, any> = heroesJson;
@@ -33,19 +34,34 @@ export function getHeroImage(heroIdOrName: string | number): string {
 }
 
 /**
- * Get the full-body, transparent-background 3D hero model render (the
- * "hero select" render, not the wide splash-art crop `getHeroImage`
- * returns) — used for the "beautiful hero" spotlight widgets. Valve's CDN
- * doesn't expose this path via heroes.json/dotaconstants, so it's built
- * from the hero's internal short name; callers should set an `onError`
- * fallback to `getHeroImage()` in case a given hero's render isn't
- * available at this path.
+ * Get the full-body, transparent-background 3D hero model render (not the
+ * wide splash-art crop `getHeroImage` returns) — used for the "beautiful
+ * hero" spotlight widgets. Confirmed working (2026-09-29, real example:
+ * cdn.stratz.com/images/dota2/heroes/luna_model.png): Stratz mirrors these
+ * off the hero's canonical internal name (same `npc_dota_hero_X` name
+ * every Dota data source keys off, resolved here the same way
+ * `getHeroImage`/`getHeroIcon` already do — not a guessed slug of the
+ * display name, so known internal-name quirks like Nature's Prophet
+ * being "furion" or Shadow Fiend being "nevermore" already resolve
+ * correctly). `getHeroRenderImageVariants()` lists this plus a couple of
+ * alternate hosts/paths to try in order, in case a specific hero (e.g. a
+ * very recently released one) isn't mirrored at the primary path yet —
+ * callers should chain `onError` through these before falling back to
+ * `getHeroImage()`/`getHeroIcon()`.
  */
 export function getHeroRenderImage(heroIdOrName: string | number): string {
-  if (!heroIdOrName) return '';
+  return getHeroRenderImageVariants(heroIdOrName)[0] ?? '';
+}
+
+export function getHeroRenderImageVariants(heroIdOrName: string | number): string[] {
+  if (!heroIdOrName) return [];
 
   const nameStr = heroInternalName(heroIdOrName);
-  return `${CDN_BASE}/apps/dota2/images/dota_react/heroes/renders/${nameStr}.png`;
+  if (!nameStr) return [];
+  return [
+    `${STRATZ_CDN_BASE}/images/dota2/heroes/${nameStr}_model.png`,
+    `${CDN_BASE}/apps/dota2/images/dota_react/heroes/renders/${nameStr}.png`,
+  ];
 }
 
 function heroInternalName(heroIdOrName: string | number): string {

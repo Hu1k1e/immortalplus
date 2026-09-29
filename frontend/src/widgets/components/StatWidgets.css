@@ -5,9 +5,117 @@
   justify-content: center;
   gap: 0.4rem;
   padding: 1.4rem 1.5rem;
+  container-type: inline-size;
+  container-name: statwidget;
 }
 
 .widget-card-chromeless:not(.is-editing):hover {
   border-color: var(--border-highlight);
   box-shadow: var(--shadow-gold);
+}
+
+/* Resize-adaptive: smaller box -> compact icon-first layout, no trend
+   text; bigger box -> larger figures with room for the trend/description
+   line. */
+@container widget (max-height: 110px) {
+  .stat-widget { padding: 0.6rem 0.75rem; gap: 0.15rem; }
+  .stat-value { font-size: 1.15rem; }
+  .stat-header { margin-bottom: 0; }
+  .stat-trend, .stat-desc, .stat-label { display: none; }
+}
+@container statwidget (max-width: 150px) {
+  .stat-widget { padding: 0.6rem 0.75rem; gap: 0.15rem; }
+  .stat-value { font-size: 1.15rem; }
+  .stat-header { margin-bottom: 0; }
+  .stat-trend, .stat-desc, .stat-label { display: none; }
+}
+@container statwidget (min-width: 150px) and (max-width: 220px) {
+  .stat-value { font-size: 1.7rem; }
+  .stat-desc { display: none; }
+}
+@container widget (min-width: 340px) and (min-height: 160px) {
+  .stat-value { font-size: 3rem; }
+  .stat-label { font-size: 0.95rem; }
+}
+
+/* ── Combined colorful overview widget (Win Rate / GPM / Deaths / Perf) ── */
+
+.overview-pulse {
+  height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--border-color);
+}
+
+.overview-pulse-cell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.3rem;
+  padding: 1rem 1.25rem;
+  background: var(--bg-surface);
+  position: relative;
+  overflow: hidden;
+}
+.overview-pulse-cell::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.14;
+  pointer-events: none;
+}
+.overview-pulse-cell.tint-green::before { background: radial-gradient(circle at 15% 15%, var(--radiant-green), transparent 70%); }
+.overview-pulse-cell.tint-blue::before { background: radial-gradient(circle at 15% 15%, #3b82f6, transparent 70%); }
+.overview-pulse-cell.tint-red::before { background: radial-gradient(circle at 15% 15%, var(--dire-red), transparent 70%); }
+.overview-pulse-cell.tint-purple::before { background: radial-gradient(circle at 15% 15%, #8b5cf6, transparent 70%); }
+
+.overview-pulse-cell-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+.tint-green .overview-pulse-cell-header { color: var(--radiant-green); }
+.tint-blue .overview-pulse-cell-header { color: #60a5fa; }
+.tint-red .overview-pulse-cell-header { color: #f5978f; }
+.tint-purple .overview-pulse-cell-header { color: #b79dfa; }
+
+.overview-pulse-cell-value {
+  position: relative;
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+}
+.overview-pulse-cell-trend {
+  position: relative;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.overview-pulse-cell-trend.positive { color: var(--radiant-green); }
+.overview-pulse-cell-trend.negative { color: var(--dire-red); }
+.overview-pulse-cell-trend.neutral { color: var(--text-muted); }
+
+@container widget (max-width: 260px) {
+  .overview-pulse-cell { padding: 0.5rem 0.65rem; gap: 0.1rem; }
+  .overview-pulse-cell-header span { display: none; }
+  .overview-pulse-cell-value { font-size: 1.1rem; }
+  .overview-pulse-cell-trend { display: none; }
+}
+@container widget (max-height: 150px) {
+  .overview-pulse-cell { padding: 0.5rem 0.65rem; gap: 0.1rem; }
+  .overview-pulse-cell-header span { display: none; }
+  .overview-pulse-cell-value { font-size: 1.1rem; }
+  .overview-pulse-cell-trend { display: none; }
+}
+@container widget (min-width: 420px) and (min-height: 260px) {
+  .overview-pulse-cell-value { font-size: 2.4rem; }
+  .overview-pulse-cell-header { font-size: 0.8rem; }
 }

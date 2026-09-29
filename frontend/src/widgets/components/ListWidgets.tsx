@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Circle } from 'lucide-react';
 import { useApiData, timeAgo, formatDuration } from '../hooks';
+import { AnimatedBar } from '../AnimatedBar';
 import { getHeroImage, HEROES } from '../../lib/dota';
 import api from '../../lib/api';
 import { TrendsRing, POSITION_COLORS, type HeroSeg, type PosSeg } from '../../components/TrendsRing';
@@ -61,7 +62,7 @@ export const MostPlayedHeroesWidget: ComponentType<{ instanceId: string }> = () 
           <img className="widget-list-hero-icon" src={h.hero_icon} alt="" />
           <div className="widget-list-main">
             <div className="widget-list-title">{h.hero_name}</div>
-            <div className="widget-hero-bar-wrap"><div className="widget-hero-bar" style={{ width: `${Math.min(100, (h.matches / maxMatches) * 100)}%` }} /></div>
+            <div className="widget-hero-bar-wrap"><AnimatedBar pct={(h.matches / maxMatches) * 100} className="widget-hero-bar" /></div>
           </div>
           <span className={`widget-list-winrate ${h.winrate >= 50 ? 'good' : 'bad'}`}>{h.winrate}%</span>
           <span className="widget-list-time">{h.matches}g</span>
@@ -134,16 +135,37 @@ export const TrendsRingWidget: ComponentType<{ instanceId: string }> = () => {
 
 interface MetaHero { hero_id: number; hero_name: string; hero_icon: string; matches: number; winrate: number; tier: string; }
 
+const META_POSITION_TABS = [
+  { value: 0, label: 'All' },
+  { value: 1, label: 'Carry' },
+  { value: 2, label: 'Mid' },
+  { value: 3, label: 'Off' },
+  { value: 4, label: 'Soft' },
+  { value: 5, label: 'Hard' },
+];
+
 export const MetaTopHeroesWidget: ComponentType<{ instanceId: string }> = () => {
   const navigate = useNavigate();
-  const { data, loading } = useApiData<{ top_heroes: MetaHero[] }>('/meta/protracker', { position: 0 });
+  const [position, setPosition] = useState(0);
+  const { data, loading } = useApiData<{ top_heroes: MetaHero[] }>('/meta/protracker', { position });
   const heroes = (data?.top_heroes ?? []).slice(0, 6);
 
-  if (loading) return <div className="widget-chart-empty animate-pulse">Loading…</div>;
-  if (!heroes.length) return <div className="widget-chart-empty">Meta data not synced yet.</div>;
-
   return (
-    <div className="widget-list">
+    <div className="widget-list widget-meta-heroes">
+      <div className="widget-meta-position-tabs">
+        {META_POSITION_TABS.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            className={`widget-meta-position-tab ${position === t.value ? 'active' : ''}`}
+            onClick={() => setPosition(t.value)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {loading && <div className="widget-chart-empty animate-pulse">Loading…</div>}
+      {!loading && !heroes.length && <div className="widget-chart-empty">Meta data not synced yet.</div>}
       {heroes.map((h) => (
         <div key={h.hero_id} className="widget-list-row widget-hero-row" onClick={() => navigate(`/meta/hero/${h.hero_id}`)}>
           <img className="widget-list-hero-icon" src={h.hero_icon} alt="" />

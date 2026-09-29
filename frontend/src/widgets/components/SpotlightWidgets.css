@@ -76,11 +76,12 @@
 }
 
 .hero-spotlight-render {
-  max-width: 100%;
-  max-height: 100%;
+  position: absolute;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  width: auto;
   object-fit: contain;
+  object-position: center;
   filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55));
 }
 
@@ -208,6 +209,78 @@
   color: var(--text-muted);
   text-transform: uppercase;
   flex-shrink: 0;
+}
+
+/* ── Top Hero runner-up list (#2-5), only shown when the widget has room ── */
+
+.hero-spotlight-runnersup {
+  display: none;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+@container widget (min-height: 420px) {
+  .hero-spotlight-runnersup { display: flex; }
+}
+
+.hero-runnerup-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+.hero-runnerup-row:hover { background: var(--bg-surface-elevated); }
+
+.hero-runnerup-rank {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: monospace;
+  width: 1.6em;
+  flex-shrink: 0;
+}
+.hero-runnerup-render-box {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, rgba(226, 183, 66, 0.1), transparent 70%);
+}
+.hero-runnerup-render {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+.hero-runnerup-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero-runnerup-matches {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.hero-runnerup-winrate {
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-family: monospace;
+  flex-shrink: 0;
+  min-width: 2.6em;
+  text-align: right;
 }
 
 .hero-spotlight-stats .good,

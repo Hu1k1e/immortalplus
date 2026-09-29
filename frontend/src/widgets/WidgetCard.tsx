@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { GripVertical, X } from 'lucide-react';
 import './WidgetCard.css';
 
@@ -9,10 +10,17 @@ interface WidgetCardProps {
   chromeless?: boolean;
   onRemove?: () => void;
   headerExtra?: ReactNode;
+  /** When set, the title becomes a link to this route (e.g. Recent
+   * Matches -> /matches) -- disabled while editing so it doesn't fight
+   * drag-to-move. */
+  titleHref?: string;
   children: ReactNode;
 }
 
-export default function WidgetCard({ title, icon, editing, chromeless, onRemove, headerExtra, children }: WidgetCardProps) {
+export default function WidgetCard({ title, icon, editing, chromeless, onRemove, headerExtra, titleHref, children }: WidgetCardProps) {
+  const titleEl = titleHref && !editing
+    ? <Link to={titleHref} className="widget-card-title widget-card-title-link">{title}</Link>
+    : <span className="widget-card-title">{title}</span>;
   if (chromeless) {
     return (
       <div className={`widget-card widget-card-chromeless glass-surface ${editing ? 'is-editing' : ''}`}>
@@ -42,7 +50,7 @@ export default function WidgetCard({ title, icon, editing, chromeless, onRemove,
           </span>
         )}
         {icon}
-        <span className="widget-card-title">{title}</span>
+        {titleEl}
         {headerExtra && <span className="widget-card-header-extra">{headerExtra}</span>}
         {editing && onRemove && (
           <button type="button" className="widget-remove-btn" onClick={onRemove} title="Remove widget">

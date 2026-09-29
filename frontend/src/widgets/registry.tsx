@@ -3,6 +3,7 @@ import type { WidgetDefinition, WidgetInstance, GridLayoutItem, WidgetSize } fro
 import {
   WinRateStatWidget, KdaStatWidget, GpmStatWidget, DeathsStatWidget,
   PerformanceScoreStatWidget, MmrStatWidget, ActionItemsStatWidget, TotalMatchesStatWidget,
+  OverviewPulseWidget,
 } from './components/StatWidgets';
 import {
   WinRateTrendWidget, KdaTrendWidget, GpmTrendWidget, XpmTrendWidget, DeathsTrendWidget,
@@ -27,6 +28,7 @@ const COACH: WidgetSize = { w: 4, h: 6, minW: 3, minH: 5 };
 
 export const WIDGET_REGISTRY: WidgetDefinition[] = [
   // ── Overview stats ──────────────────────────────────────────────
+  { id: 'stat-overview-pulse', title: 'Overview Pulse', description: 'Win Rate, Avg GPM, Avg Deaths, and Performance Score together in one colorful quadrant card.', category: 'overview', defaultSize: { w: 6, h: 8, minW: 4, minH: 5 }, icon: Gauge, chromeless: true, singleton: true, Component: OverviewPulseWidget },
   { id: 'stat-winrate', title: 'Win Rate (Last 20)', description: 'Recent win rate with change vs. the prior 20 games.', category: 'overview', defaultSize: STAT, icon: TrendingUp, chromeless: true, singleton: true, Component: WinRateStatWidget },
   { id: 'stat-kda', title: 'Avg KDA', description: 'Rolling average KDA over your last 20 matches.', category: 'overview', defaultSize: STAT, icon: Crosshair, chromeless: true, singleton: true, Component: KdaStatWidget },
   { id: 'stat-gpm', title: 'Avg GPM', description: 'Rolling average gold-per-minute over your last 20 matches.', category: 'overview', defaultSize: STAT, icon: Activity, chromeless: true, singleton: true, Component: GpmStatWidget },
@@ -48,7 +50,7 @@ export const WIDGET_REGISTRY: WidgetDefinition[] = [
   { id: 'trend-improvement-score', title: 'Improvement Score History', description: "The app's composite improvement score over time.", category: 'trends', defaultSize: CHART, icon: TrendingUp, singleton: true, Component: ImprovementScoreWidget },
 
   // ── Matches & columns ────────────────────────────────────────────
-  { id: 'list-recent-matches', title: 'Recent Matches', description: 'A scrollable column of your most recent matches with result and KDA.', category: 'matches', defaultSize: LIST, icon: History, singleton: true, Component: RecentMatchesWidget },
+  { id: 'list-recent-matches', title: 'Recent Matches', description: 'A scrollable column of your most recent matches with result and KDA. Click the title to open full Match History.', category: 'matches', defaultSize: LIST, icon: History, titleLink: '/matches', singleton: true, Component: RecentMatchesWidget },
   { id: 'list-action-items', title: 'Open Action Items', description: 'Column of open coaching action items -- click to mark complete.', category: 'matches', defaultSize: CHART, icon: ListTree, singleton: true, Component: ActionItemsWidget },
   { id: 'matches-lane-record', title: 'Lane Record & Queue Mix', description: 'Safe/off lane win-loss record plus party queue and unranked %.', category: 'matches', defaultSize: MINI, icon: Users2, singleton: true, Component: LaneRecordWidget },
 
@@ -100,7 +102,7 @@ function packLayout(ids: string[]): GridLayoutItem[] {
 }
 
 const DEFAULT_DASHBOARD_WIDGET_IDS = [
-  'stat-winrate', 'stat-kda', 'stat-gpm', 'stat-action-items',
+  'stat-overview-pulse', 'stat-kda', 'stat-action-items',
   'spotlight-last-match', 'spotlight-player-identity', 'spotlight-top-hero',
   'trend-winrate', 'trend-kda', 'trend-gpm',
   'list-recent-matches', 'heroes-trends-ring', 'list-most-played-heroes',

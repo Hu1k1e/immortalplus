@@ -5,6 +5,23 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--radius-md);
+  /* Establishes a size query context so every widget's own CSS can react
+     to how big THIS widget currently is (drag/resize in edit mode), not
+     the viewport -- "bigger widget = bigger text/more detail, smaller
+     widget = icons + compact text" per the resize spec. */
+  container-type: size;
+  container-name: widget;
+}
+
+/* Shared title-bar scaling -- individual widgets layer their own
+   @container rules for their body content on top of this. */
+@container widget (max-width: 260px) {
+  .widget-card-header { padding: 0.6rem 0.75rem; gap: 0.4rem; }
+  .widget-card-title { font-size: 0.78rem; }
+  .widget-card-icon { width: 14px; height: 14px; }
+}
+@container widget (min-width: 520px) {
+  .widget-card-title { font-size: 1.02rem; }
 }
 
 .widget-card.is-editing {
@@ -32,6 +49,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.widget-card-title-link:hover {
+  color: var(--accent-gold-hover);
+  text-decoration: underline;
 }
 
 .widget-card-header-extra {
