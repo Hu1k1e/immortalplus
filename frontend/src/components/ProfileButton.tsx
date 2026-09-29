@@ -1,20 +1,12 @@
-import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import api from '../lib/api';
+import { useLiveProfile } from '../hooks/useLiveProfile';
 import { getRankBadge } from '../lib/rank';
 import './ProfileButton.css';
 
 export default function ProfileButton() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [profile, setProfile] = useState<any>(null);
-
-  useEffect(() => {
-    api.get('/player/profile').then((res) => {
-      const d = res.data;
-      setProfile(d && typeof d === 'object' && typeof d.persona_name !== 'undefined' ? d : null);
-    }).catch(() => setProfile(null));
-  }, []);
+  const profile = useLiveProfile();
 
   if (!profile) return null;
 

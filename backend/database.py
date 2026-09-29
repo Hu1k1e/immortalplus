@@ -93,3 +93,43 @@ def auto_migrate():
                 print(f"[migrate] Added column {table_name}.{col_name} ({col_type})")
 
         conn.commit()
+
+    _normalize_stratz_enum_columns()
+
+
+def _normalize_stratz_enum_columns():
+    """
+    One-time data fixup (idempotent — safe to run on every startup) for
+    matches.game_mode/lobby_type rows that were stored as Stratz's raw
+    GraphQL enum NAME strings ("TURBO", "RANKED", ...) instead of Valve's
+    integer codes — confirmed live (2026-09-29) affecting roughly half of
+    a 5,289-match history, which broke every game_mode/lobby_type filter
+    and display in the app for that half (see services/stratz.py's
+    _STRATZ_GAME_MODE_TO_INT/_STRATZ_LOBBY_TYPE_TO_INT docstring for how
+    this was found and why). New syncs are already normalized at the
+    source (same maps); this converts whatever was already written before
+    that fix landed. Only touches rows whose column value is one of these
+    known enum-name strings — never touches rows that are already
+    integers (or null), and matching `!= 0` on rowcount lets this stay
+    quiet on every run after the first real one.
+    """
+    from sqlalchemy import text
+    from services.stratz import _STRATZ_GAME_MODE_TO_INT, _STRATZ_LOBBY_TYPE_TO_INT
+
+    with engine.connect() as conn:
+        total = 0
+        for str_val, int_val in _STRATZ_GAME_MODE_TO_INT.items():
+            result = conn.execute(
+                text("UPDATE matches SET game_mode = :int_val WHERE game_mode = :str_val"),
+                {"int_val": int_val, "str_val": str_val},
+            )
+            total += result.rowcount or 0
+        for str_val, int_val in _STRATZ_LOBBY_TYPE_TO_INT.items():
+            result = conn.execute(
+                text("UPDATE matches SET lobby_type = :int_val WHERE lobby_type = :str_val"),
+                {"int_val": int_val, "str_val": str_val},
+            )
+            total += result.rowcount or 0
+        conn.commit()
+        if total:
+            print(f"[migrate] Normalized {total} matches.game_mode/lobby_type Stratz enum-string values to ints")

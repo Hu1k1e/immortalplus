@@ -164,7 +164,18 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                 # app's own 0-5 position convention index-for-index.
                 tabs = page.locator('button[role="tab"]')
 
-                for position in range(6):
+                # "All Roles" (position 0) is the page's own default
+                # active tab on a cold load — confirmed live (2026-09-29)
+                # that clicking an already-active tab fires no new
+                # request at all (the underlying position value doesn't
+                # change, so the page's reactive fetch never re-runs),
+                # which is exactly what produced a 20s "waiting for
+                # response" timeout when position 0 was clicked first.
+                # Visiting it LAST instead guarantees every click is a
+                # genuine state change (something else -> All Roles).
+                click_order = [1, 2, 3, 4, 5, 0]
+
+                for position in click_order:
                     raw = None
                     for attempt in range(2):
                         try:

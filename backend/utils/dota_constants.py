@@ -74,15 +74,19 @@ GAME_MODES = {
     23: "Turbo",
 }
 
-# Lobby types
+# Lobby types (Valve's real enum — 7 is the only actual "Ranked" value;
+# 5/6 were previously mislabeled here as "Ranked"/"1v1 Mid", which fed a
+# real bug in the Profile page's Unranked % stat, see services/stratz.py's
+# _STRATZ_LOBBY_TYPE_TO_INT for the source of truth this was corrected against)
 LOBBY_TYPES = {
     0: "Normal",
     1: "Practice",
     2: "Tournament",
     4: "Co-op Bot",
-    5: "Ranked",
-    6: "1v1 Mid",
+    5: "Team Match",
+    6: "Solo Queue",
     7: "Ranked",
+    8: "1v1 Mid",
     9: "Battle Cup",
 }
 

@@ -34,6 +34,48 @@ def _parse_stratz_position(position: Optional[str]) -> Optional[int]:
         return None
 
 
+# Stratz's GraphQL schema returns gameMode/lobbyType as enum NAME strings
+# (e.g. "TURBO", "ALL_PICK_RANKED") rather than Valve's raw integer codes
+# that OpenDota's REST API returns and that this app's Match.game_mode/
+# lobby_type columns (and utils/dota_constants.GAME_MODES/LOBBY_TYPES) are
+# built around — confirmed live (2026-09-29) that this had been going
+# straight into the DB unconverted, producing a mixed int/string column
+# where every game_mode/lobby_type filter and display in the app only
+# ever matched the OpenDota-sourced half of the rows. Mapped from Valve's
+# published game_mode/lobby_type enums (same ones OpenDota's own
+# dotaconstants ships); only the values actually confirmed live plus the
+# other well-established ones are included — an unrecognized enum name is
+# left as-is (logged once) rather than guessed at.
+_STRATZ_GAME_MODE_TO_INT = {
+    "NONE": 0, "ALL_PICK": 1, "CAPTAINS_MODE": 2, "RANDOM_DRAFT": 3,
+    "SINGLE_DRAFT": 4, "ALL_RANDOM": 5, "INTRO": 6, "DIRETIDE": 7,
+    "REVERSE_CAPTAINS_MODE": 8, "THE_GREEVILING": 9, "TUTORIAL": 10,
+    "MID_ONLY": 11, "LEAST_PLAYED": 12, "NEW_PLAYER_POOL": 13,
+    "COMPENDIUM_MATCHMAKING": 14, "CUSTOM": 15, "CAPTAINS_DRAFT": 16,
+    "BALANCED_DRAFT": 17, "ABILITY_DRAFT": 18, "EVENT": 19,
+    "ALL_RANDOM_DEATH_MATCH": 20, "SOLO_MID": 21, "ALL_PICK_RANKED": 22,
+    "TURBO": 23, "MUTATION": 24, "COACHES_CHALLENGE": 25,
+}
+_STRATZ_LOBBY_TYPE_TO_INT = {
+    "UNRANKED": 0, "PRACTICE": 1, "TOURNAMENT": 2, "TUTORIAL": 3,
+    "COOP_BOT": 4, "TEAM_MATCH": 5, "SOLO_QUEUE": 6, "RANKED": 7,
+    "ONE_VS_ONE_MID": 8, "BATTLE_CUP": 9,
+}
+
+
+def _normalize_stratz_enum(value, mapping: dict, label: str):
+    """int/None passes through unchanged; a recognized enum-name string is
+    converted; an unrecognized string is logged once and left as-is
+    (better than silently mis-bucketing it, and doesn't crash the sync)."""
+    if value is None or isinstance(value, int):
+        return value
+    mapped = mapping.get(value)
+    if mapped is None:
+        logger.warning(f"Unrecognized Stratz {label} enum value: {value!r}")
+        return value
+    return mapped
+
+
 class StratzClient:
     def __init__(self, api_token: str):
         self.api_token = api_token
@@ -118,8 +160,8 @@ class StratzClient:
                     "radiant_win": m.get("didRadiantWin"),
                     "player_slot": 0 if p.get("isRadiant") else 128, # Approximation
                     "duration": m.get("durationSeconds"),
-                    "game_mode": m.get("gameMode"),
-                    "lobby_type": m.get("lobbyType"),
+                    "game_mode": _normalize_stratz_enum(m.get("gameMode"), _STRATZ_GAME_MODE_TO_INT, "gameMode"),
+                    "lobby_type": _normalize_stratz_enum(m.get("lobbyType"), _STRATZ_LOBBY_TYPE_TO_INT, "lobbyType"),
                     "start_time": m.get("startDateTime"),
                     "kills": p.get("kills"),
                     "deaths": p.get("deaths"),
@@ -264,8 +306,8 @@ class StratzClient:
                 "match_id": match_data.get("id"),
                 "duration": match_data.get("durationSeconds"),
                 "radiant_win": match_data.get("didRadiantWin"),
-                "game_mode": match_data.get("gameMode"),
-                "lobby_type": match_data.get("lobbyType"),
+                "game_mode": _normalize_stratz_enum(match_data.get("gameMode"), _STRATZ_GAME_MODE_TO_INT, "gameMode"),
+                "lobby_type": _normalize_stratz_enum(match_data.get("lobbyType"), _STRATZ_LOBBY_TYPE_TO_INT, "lobbyType"),
                 "start_time": match_data.get("startDateTime"),
                 "version": 21, # indicate parsed
                 # Requested in the query above but was previously dropped here —

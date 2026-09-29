@@ -396,9 +396,12 @@ async def get_player_trends(
     off_wins = sum(1 for m in recent if m.lane_role == 3 and m.result == "win")
     off_losses = sum(1 for m in recent if m.lane_role == 3 and m.result == "loss")
 
-    # lobby_type 5 and 7 are both "Ranked" (see LOBBY_TYPES) — everything
-    # else (Normal, Practice, Battle Cup, etc.) counts as unranked here.
-    unranked_pct = round(sum(1 for m in recent if m.lobby_type not in (5, 7)) / total * 100, 1) if total else 0
+    # lobby_type 7 is Ranked (Valve's real enum — 5 is "Team Match", a
+    # legacy custom-lobby type, not actual ranked matchmaking, despite
+    # LOBBY_TYPES' display label; see services/stratz.py's
+    # _STRATZ_LOBBY_TYPE_TO_INT for the source of truth). Everything else
+    # (Normal, Practice, Battle Cup, etc.) counts as unranked here.
+    unranked_pct = round(sum(1 for m in recent if m.lobby_type != 7) / total * 100, 1) if total else 0
 
     def _winrate(lst) -> Optional[float]:
         t = len(lst)

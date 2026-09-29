@@ -5,6 +5,7 @@ import api from '../lib/api';
 import { HEROES, getHeroImage } from '../lib/dota';
 import { getRankBadge, getRankLabel } from '../lib/rank';
 import PositionIcon from '../components/PositionIcon';
+import { useLiveProfile } from '../hooks/useLiveProfile';
 import './Profile.css';
 
 // Muted, desaturated tones (matched to the reference design) rather than
@@ -250,7 +251,7 @@ function TrendsRing({
 
 export default function Profile() {
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<any>(null);
+  const profile = useLiveProfile();
   const [filterOptions, setFilterOptions] = useState<any>({ game_modes: [], lobby_types: [], positions: [] });
   const [heroList, setHeroList] = useState<any[]>([]);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -261,10 +262,6 @@ export default function Profile() {
   const [topHeroes, setTopHeroes] = useState<any>(null);
 
   useEffect(() => {
-    api.get('/player/profile').then((r) => {
-      const d = r.data;
-      if (d && typeof d === 'object' && typeof d.persona_name !== 'undefined') setProfile(d);
-    }).catch(() => {});
     api.get('/player/filter-options').then((r) => {
       const d = r.data;
       if (d && typeof d === 'object' && Array.isArray(d.positions)) setFilterOptions(d);
