@@ -15,6 +15,7 @@ from database import get_session
 from models import Player, UserSettings, Match
 from services.opendota import get_opendota_client
 from services.player_identity import resolve_persona_avatar
+from services.steam import SteamClient
 from utils.dota_constants import (
     GAME_MODES, LOBBY_TYPES, POSITIONS,
     get_hero_name, get_hero_icon_url, get_hero_image_url,
@@ -282,6 +283,30 @@ async def refresh_player_data(session: Session = Depends(get_session)):
         raise HTTPException(status_code=502, detail=str(e))
 
     return {"status": "refreshed", "persona_name": player.persona_name}
+
+
+@router.get("/steam-match-data-status")
+async def get_steam_match_data_status(session: Session = Depends(get_session)):
+    """
+    Live check for whether the linked account's "Expose Public Match
+    Data" Dota 2 client setting is actually on — powers the status shown
+    next to the explainer on the Settings page, rather than just telling
+    the user to enable it and hoping. Does a real GetMatchHistory call
+    (see services/sync.py's sync_new_matches_from_steam, which the fast-
+    path poll loop uses the same way) for just 1 match; Steam's `status`
+    field in the response distinguishes "not public" from "no key
+    configured" from "worked".
+    """
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    settings = session.exec(select(UserSettings).limit(1)).first()
+
+    if not settings or not settings.steam_api_key:
+        return {"status": "no_api_key", "public": False}
+    if not player or not player.account_id:
+        return {"status": "no_player", "public": False}
+
+    history = await SteamClient(settings.steam_api_key).get_match_history(player.account_id, matches_requested=1)
+    return {"status": "ok" if history is not None else "not_public", "public": history is not None}
 
 
 @router.get("/filter-options")

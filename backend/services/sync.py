@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, date
+from typing import Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ from services.opendota import get_opendota_client
 from services.analysis_engine import analyze_match
 from services.local_parser import parse_match_locally
 from services.position_parser import parse_hero_positions
-from services.steam import resolve_cluster_salt
+from services.steam import resolve_cluster_salt, SteamClient
 from services.replay_compute import apply_computed_fields
 from models import MatchAnalysis
 
@@ -167,6 +168,106 @@ async def sync_player_matches(session: Session, player: Player, settings: UserSe
                     except Exception as e:
                         logger.error(f"Failed to auto-request parse for {mid}: {e}")
 
+    return new_count
+
+
+def _steam_match_to_dict(details: dict, player_data: dict) -> dict:
+    """Normalizes one Steam GetMatchDetails response (+ the requesting
+    player's entry within its `players` array) to the same shape
+    _match_row_from_dict expects. Steam's own match-details endpoint
+    already carries full per-player stats (kills/deaths/gpm/items/etc —
+    confirmed against its real response shape, the same one
+    resolve_cluster_salt already reads cluster/replay_salt from), so a
+    match discovered this way doesn't need to wait on OpenDota/Stratz for
+    its basic stats at all. Not present here (Steam's raw API doesn't
+    compute them): lane/lane_role/position, party_size, average_rank —
+    left null, same as this app already handles for other sources missing
+    them; deep fields (gold_t, purchase_log, all_players, etc.) arrive
+    later via the existing auto-parse pipeline, same as any other match.
+    """
+    return {
+        "match_id": details.get("match_id"),
+        "hero_id": player_data.get("hero_id", 0),
+        "player_slot": player_data.get("player_slot", 0),
+        "radiant_win": details.get("radiant_win"),
+        "game_mode": details.get("game_mode"),
+        "lobby_type": details.get("lobby_type"),
+        "duration": details.get("duration"),
+        "kills": player_data.get("kills"),
+        "deaths": player_data.get("deaths"),
+        "assists": player_data.get("assists"),
+        "gold_per_min": player_data.get("gold_per_min"),
+        "xp_per_min": player_data.get("xp_per_min"),
+        "hero_damage": player_data.get("hero_damage"),
+        "tower_damage": player_data.get("tower_damage"),
+        "hero_healing": player_data.get("hero_healing"),
+        "last_hits": player_data.get("last_hits"),
+        "denies": player_data.get("denies"),
+        "level": player_data.get("level"),
+        "start_time": details.get("start_time"),
+    }
+
+
+async def sync_new_matches_from_steam(session: Session, player: Player, settings: UserSettings) -> Optional[int]:
+    """
+    Fast-path new-match discovery straight from Steam's own
+    GetMatchHistory + GetMatchDetails — Valve's authoritative source, not
+    a re-index of it, so a just-finished match can show up within
+    whatever interval this is polled at (see main.py's
+    steam_match_poll_loop) instead of waiting on OpenDota/Stratz to
+    notice it. Requires the account to have "Expose Public Match Data"
+    enabled in the Dota 2 client (unrelated to Steam profile privacy —
+    see Settings page for the explainer shown to the user) and a
+    steam_api_key configured.
+
+    Returns the count of newly-stored matches, 0 if checked but nothing
+    new, or None if the check couldn't be performed at all (no key, no
+    account_id, or the account doesn't have public match data exposed) —
+    the None/0 distinction lets the caller decide whether to still fall
+    back to the regular OpenDota/Stratz sync this cycle.
+    """
+    if not player.account_id or not settings or not settings.steam_api_key:
+        return None
+
+    steam_client = SteamClient(settings.steam_api_key)
+    history = await steam_client.get_match_history(player.account_id, matches_requested=25)
+    if history is None:
+        return None
+
+    stmt = (
+        select(Match)
+        .where(Match.player_id == player.id)
+        .order_by(Match.match_id.desc())
+        .limit(1)
+    )
+    latest = session.exec(stmt).first()
+    last_match_id = latest.match_id if latest else 0
+
+    new_ids = sorted({m["match_id"] for m in history if m.get("match_id", 0) > last_match_id})
+    if not new_ids:
+        return 0
+
+    new_count = 0
+    for match_id in new_ids:
+        if session.exec(select(Match).where(Match.match_id == match_id)).first():
+            continue
+        try:
+            details = await steam_client.get_match_details(match_id)
+        except Exception as e:
+            logger.warning(f"Steam fast-path: GetMatchDetails failed for {match_id}: {e}")
+            continue
+        if not details:
+            continue
+        player_data = next((p for p in details.get("players", []) if p.get("account_id") == player.account_id), None)
+        if not player_data:
+            continue
+        session.add(_match_row_from_dict(_steam_match_to_dict(details, player_data), player.id))
+        new_count += 1
+
+    if new_count:
+        player.last_sync_at = datetime.utcnow()
+        session.commit()
+        logger.info(f"Steam fast-path: synced {new_count} new match(es) for player {player.account_id}")
     return new_count
 
 

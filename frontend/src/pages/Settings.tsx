@@ -30,6 +30,8 @@ export default function Settings() {
   const [openaiModel, setOpenaiModel] = useState('');
   const [dataSource, setDataSource] = useState('both');
   const [protrackerIntervalMinutes, setProtrackerIntervalMinutes] = useState('30');
+  const [steamMatchDataStatus, setSteamMatchDataStatus] = useState<{ status: string; public: boolean } | null>(null);
+  const [checkingSteamMatchData, setCheckingSteamMatchData] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -51,7 +53,18 @@ export default function Settings() {
       setMessage('Failed to load settings.');
       setLoading(false);
     });
+    checkSteamMatchData();
   }, []);
+
+  const checkSteamMatchData = () => {
+    setCheckingSteamMatchData(true);
+    api.get('/player/steam-match-data-status').then((res) => {
+      const d = res.data;
+      if (d && typeof d === 'object' && typeof d.public === 'boolean') setSteamMatchDataStatus(d);
+    }).catch(() => {}).finally(() => {
+      setCheckingSteamMatchData(false);
+    });
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -244,6 +257,30 @@ export default function Settings() {
               How often the Draft Helper's position data and the Meta tab re-scrape Dota2ProTracker. Default 30 minutes — the same cadence as the rest of the background sync.
             </span>
           </label>
+
+          <div style={{ padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.15)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.5rem' }}>
+              <strong>Instant Match Sync (Steam Match History)</strong>
+              {steamMatchDataStatus && (
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: 700, padding: '0.15rem 0.55rem', borderRadius: '999px',
+                  color: steamMatchDataStatus.public ? '#3ddc84' : '#e2b742',
+                  background: steamMatchDataStatus.public ? 'rgba(61,220,132,0.12)' : 'rgba(226,183,66,0.12)',
+                }}>
+                  {steamMatchDataStatus.public ? 'Enabled' : steamMatchDataStatus.status === 'no_api_key' ? 'No Steam API Key' : 'Not Enabled'}
+                </span>
+              )}
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+              With "Expose Public Match Data" turned on in your Dota 2 client, Immortal+ polls Steam directly every ~90 seconds and a finished match can show up here within a minute or two — instead of waiting on the regular sync. This is a per-account Dota setting, separate from your Steam profile privacy.
+            </p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>
+              To turn it on: in the Dota 2 client, open <strong>Settings</strong> (gear icon) → <strong>Options</strong> tab → scroll to <strong>Advanced Options</strong> → check <strong>"Expose Public Match Data"</strong>.
+            </p>
+            <button type="button" className="btn btn-secondary" onClick={checkSteamMatchData} disabled={checkingSteamMatchData}>
+              {checkingSteamMatchData ? 'Checking…' : 'Check Status'}
+            </button>
+          </div>
         </div>
       </div>
 

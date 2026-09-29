@@ -150,6 +150,51 @@ async def background_sync_loop():
 
 
 
+async def steam_match_poll_loop():
+    """
+    Fast-path new-match discovery — polls Steam's own GetMatchHistory
+    directly (see services/sync.py's sync_new_matches_from_steam) at a
+    much tighter interval than the general background_sync_loop's ~30
+    minutes, since it's Valve's own authoritative source rather than a
+    third-party re-index of it: a just-finished match can show up here
+    within about a minute instead of waiting on OpenDota/Stratz to notice
+    it. Deliberately a separate, lightweight loop rather than folded into
+    background_sync_loop's single 30-minute timer — the whole point is
+    polling far more often than that loop runs — but it feeds the exact
+    same Match table and downstream pipeline (auto-parse, analysis, etc.)
+    as every other sync path, so a match found this way is otherwise
+    indistinguishable from one OpenDota/Stratz found first.
+
+    Requires the linked account to have "Expose Public Match Data"
+    enabled in the Dota 2 client (see the Settings page's explainer) and
+    a steam_api_key configured; silently does nothing (no error spam) for
+    an account that doesn't have this on, same as any other genuinely-
+    optional data source in this app.
+    """
+    from sqlmodel import select
+    from database import SessionLocal
+    from models import Player, UserSettings
+    from services.sync import sync_new_matches_from_steam
+
+    await asyncio.sleep(20)  # let the app finish starting first
+    logger.info("Steam match fast-path poll loop started")
+
+    while True:
+        try:
+            session = SessionLocal()
+            try:
+                player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+                settings = session.exec(select(UserSettings).limit(1)).first()
+                if player and settings:
+                    await sync_new_matches_from_steam(session, player, settings)
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error(f"Steam match fast-path poll failed: {e}", exc_info=True)
+
+        await asyncio.sleep(90)
+
+
 async def run_history_backfill_once():
     """
     One-shot full match-history backfill (see services/sync.py's
@@ -264,6 +309,10 @@ async def lifespan(app: FastAPI):
     # refresh_player_identity_once's docstring.
     identity_task = asyncio.create_task(refresh_player_identity_once())
 
+    # Fast-path new-match discovery via Steam's own GetMatchHistory — see
+    # steam_match_poll_loop's docstring.
+    steam_poll_task = asyncio.create_task(steam_match_poll_loop())
+
     # Start dedicated auto-parse worker (replay downloading + local parsing + OD requests)
     from services.auto_parse import auto_parse_worker
     parse_task = asyncio.create_task(auto_parse_worker())
@@ -274,6 +323,7 @@ async def lifespan(app: FastAPI):
     sync_task.cancel()
     backfill_task.cancel()
     identity_task.cancel()
+    steam_poll_task.cancel()
     parse_task.cancel()
     logger.info("Immortal+ Backend shutting down")
 

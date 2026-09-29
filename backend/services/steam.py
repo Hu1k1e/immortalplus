@@ -44,6 +44,49 @@ class SteamClient:
                 logger.error(f"Error fetching from Steam API: {e}")
                 return None
 
+    async def get_match_history(self, account_id: int, matches_requested: int = 25) -> Optional[list]:
+        """
+        This player's own recent match IDs, straight from Steam
+        (IDOTA2Match_570/GetMatchHistory) — only returns results if the
+        account has "Expose Public Match Data" enabled in the Dota 2
+        client (a per-account opt-in, unrelated to Steam profile privacy).
+        Used as a fast-path new-match detector: this call is cheap and
+        doesn't depend on OpenDota/Stratz having noticed the match yet, so
+        polling it frequently (see main.py's steam_match_poll_loop) can
+        surface a just-finished match within a minute or two instead of
+        waiting for the ~30-minute general sync cycle. Only basic fields
+        are returned here (match_id, start_time, lobby_type, per-player
+        hero_id) — NOT full stats, which still come from the existing
+        OpenDota/Stratz enrichment pipeline once a new match_id is found.
+
+        Returns the raw `result.matches` list, or None on failure/if the
+        account doesn't have public match data exposed (status != 1).
+        """
+        if not self.api_key:
+            return None
+
+        url = f"{self.base_url}/GetMatchHistory/v1/"
+        params = {"key": self.api_key, "account_id": account_id, "matches_requested": matches_requested}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params)
+                if response.status_code != 200:
+                    logger.error(f"Steam API GetMatchHistory returned {response.status_code}: {response.text}")
+                    return None
+                result = response.json().get("result", {})
+                if result.get("status") != 1:
+                    # status 15 = private match data (most common non-error
+                    # case — the account simply hasn't enabled the setting),
+                    # logged at info rather than error since it's expected
+                    # for any account that hasn't opted in.
+                    logger.info(f"Steam GetMatchHistory for {account_id}: status={result.get('status')} ({result.get('statusDetail', 'no detail')})")
+                    return None
+                return result.get("matches", [])
+            except Exception as e:
+                logger.error(f"Error fetching match history from Steam API: {e}")
+                return None
+
     async def get_player_summary(self, steam_id_64: str) -> Optional[Dict[str, Any]]:
         """
         Persona name / avatar / profile URL straight from the Steam Web API

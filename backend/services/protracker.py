@@ -162,28 +162,39 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                 # same elements, at every width). Pinning a common desktop
                 # size makes the layout — and therefore which elements
                 # `button[role="tab"]` actually matches — deterministic.
+                # Navigating straight to a non-default `?position=` primes
+                # the page's internal state to that position WITHOUT firing
+                # its data fetch (confirmed live, 2026-09-29 — the same
+                # navigation that never triggers a stats request on its
+                # own). Diagnostic logging added after two failed fix
+                # attempts (2026-09-29) proved the tab elements and clicks
+                # themselves were never the problem — even the exact right
+                # button, clicked correctly, produced no request. Retracing
+                # the ONE session that verified this end-to-end, the first
+                # real click there was never actually from a truly cold,
+                # nothing-primed state either — it followed a prior
+                # `?position=pos+1` navigation. So the cold "just loaded,
+                # nothing clicked yet" state appears to eat exactly one
+                # click. Priming it with this navigation (to "Carry",
+                # mirroring that session) and starting the click sequence
+                # on a DIFFERENT tab avoids ever clicking from that state.
                 page = await browser.new_page(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
-                await page.goto(PROTRACKER_META_PAGE_URL, wait_until="load", timeout=30000)
+                await page.goto(f"{PROTRACKER_META_PAGE_URL}?position=pos+1", wait_until="load", timeout=30000)
                 await _asyncio.sleep(5)  # let the page settle/hydrate before the first click
 
                 # Looked up by accessible NAME, not index — confirmed live
                 # (2026-09-29) exact text: "All Roles", "Carry", "Mid",
                 # "Offlane", "Support", "Hard Support". Robust against any
                 # other role="tab" element elsewhere on the page shifting
-                # what a plain .nth(i) would hit (a real, live-observed
-                # failure mode: every position timed out waiting for a
-                # response in one run, which a pure index-based lookup
-                # can't distinguish from "clicked the wrong element").
+                # what a plain .nth(i) would hit.
                 tab_names = ["All Roles", "Carry", "Mid", "Offlane", "Support", "Hard Support"]
 
-                # "All Roles" (position 0) is the page's own default
-                # active tab on a cold load — confirmed live (2026-09-29)
-                # that clicking an already-active tab fires no new
-                # request at all (the underlying position value doesn't
-                # change, so the page's reactive fetch never re-runs).
-                # Visiting it LAST guarantees every click is a genuine
-                # state change (something else -> All Roles).
-                click_order = [1, 2, 3, 4, 5, 0]
+                # Primed state above is "Carry" (position 1) without its
+                # fetch having fired, so the click sequence starts at Mid
+                # and visits Carry LAST — every click is then a genuine
+                # transition away from whatever the previous one left
+                # active, exactly matching the one proven-working sequence.
+                click_order = [2, 3, 4, 5, 0, 1]
 
                 for position in click_order:
                     tab = page.get_by_role("tab", name=tab_names[position], exact=True)
