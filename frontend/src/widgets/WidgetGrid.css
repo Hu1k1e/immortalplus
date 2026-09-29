@@ -131,3 +131,16 @@
   font-size: 0.85rem;
   text-align: center;
 }
+
+.widget-error-fallback {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--dire-red);
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 1rem;
+}

@@ -37,13 +37,13 @@ export const WIDGET_REGISTRY: WidgetDefinition[] = [
   { id: 'stat-total-matches', title: 'Total Matches', description: 'All-time synced match count with overall win/loss record.', category: 'overview', defaultSize: STAT, icon: ListChecks, chromeless: true, singleton: true, Component: TotalMatchesStatWidget },
 
   // ── Trend graphs ─────────────────────────────────────────────────
-  { id: 'trend-winrate', title: 'Rolling Win Rate (%)', description: 'Line graph of your rolling win rate over recent matches.', category: 'trends', defaultSize: CHART, icon: TrendingUp, singleton: true, Component: WinRateTrendWidget },
-  { id: 'trend-kda', title: 'Rolling KDA', description: 'Line graph of your rolling KDA over recent matches.', category: 'trends', defaultSize: CHART, icon: Crosshair, singleton: true, Component: KdaTrendWidget },
-  { id: 'trend-gpm', title: 'Rolling GPM', description: 'Line graph of your rolling gold-per-minute over recent matches.', category: 'trends', defaultSize: CHART, icon: Activity, singleton: true, Component: GpmTrendWidget },
-  { id: 'trend-xpm', title: 'Rolling XPM', description: 'Line graph of your rolling experience-per-minute.', category: 'trends', defaultSize: CHART, icon: Zap, singleton: true, Component: XpmTrendWidget },
-  { id: 'trend-deaths', title: 'Rolling Deaths', description: 'Line graph of your rolling deaths per game.', category: 'trends', defaultSize: CHART, icon: TrendingDown, singleton: true, Component: DeathsTrendWidget },
-  { id: 'trend-hero-damage', title: 'Rolling Hero Damage', description: 'Line graph of your rolling hero damage per game.', category: 'trends', defaultSize: CHART, icon: Flame, singleton: true, Component: HeroDamageTrendWidget },
-  { id: 'trend-tower-damage', title: 'Rolling Tower Damage', description: 'Line graph of your rolling tower/objective damage per game.', category: 'trends', defaultSize: CHART, icon: Landmark, singleton: true, Component: TowerDamageTrendWidget },
+  { id: 'trend-winrate', title: 'Win Rate (%)', description: 'Line graph of your rolling win rate over recent matches.', category: 'trends', defaultSize: CHART, icon: TrendingUp, singleton: true, Component: WinRateTrendWidget },
+  { id: 'trend-kda', title: 'KDA', description: 'Line graph of your rolling KDA over recent matches.', category: 'trends', defaultSize: CHART, icon: Crosshair, singleton: true, Component: KdaTrendWidget },
+  { id: 'trend-gpm', title: 'GPM', description: 'Line graph of your rolling gold-per-minute over recent matches.', category: 'trends', defaultSize: CHART, icon: Activity, singleton: true, Component: GpmTrendWidget },
+  { id: 'trend-xpm', title: 'XPM', description: 'Line graph of your rolling experience-per-minute.', category: 'trends', defaultSize: CHART, icon: Zap, singleton: true, Component: XpmTrendWidget },
+  { id: 'trend-deaths', title: 'Deaths', description: 'Line graph of your rolling deaths per game.', category: 'trends', defaultSize: CHART, icon: TrendingDown, singleton: true, Component: DeathsTrendWidget },
+  { id: 'trend-hero-damage', title: 'Hero Damage', description: 'Line graph of your rolling hero damage per game.', category: 'trends', defaultSize: CHART, icon: Flame, singleton: true, Component: HeroDamageTrendWidget },
+  { id: 'trend-tower-damage', title: 'Tower Damage', description: 'Line graph of your rolling tower/objective damage per game.', category: 'trends', defaultSize: CHART, icon: Landmark, singleton: true, Component: TowerDamageTrendWidget },
   { id: 'trend-mmr-history', title: 'MMR History', description: 'Estimated MMR over time from daily progress snapshots.', category: 'trends', defaultSize: CHART, icon: BarChart3, singleton: true, Component: MmrHistoryWidget },
   { id: 'trend-improvement-score', title: 'Improvement Score History', description: "The app's composite improvement score over time.", category: 'trends', defaultSize: CHART, icon: TrendingUp, singleton: true, Component: ImprovementScoreWidget },
 
@@ -60,9 +60,9 @@ export const WIDGET_REGISTRY: WidgetDefinition[] = [
   { id: 'meta-top-heroes', title: 'Meta Top Heroes', description: 'Top-tier heroes right now from the Dota2ProTracker meta hub.', category: 'meta', defaultSize: CHART, icon: TrendingUp, singleton: true, Component: MetaTopHeroesWidget },
 
   // ── Spotlight cards ──────────────────────────────────────────────
-  { id: 'spotlight-last-match', title: 'Last Match', description: 'A large splash-art card for your most recent match, result and KDA.', category: 'spotlight', defaultSize: { ...SPOTLIGHT, w: 5 }, chromeless: true, singleton: true, Component: LastMatchSpotlightWidget },
-  { id: 'spotlight-top-hero', title: 'Top Hero Spotlight', description: 'A large splash-art card for your single most-played hero.', category: 'spotlight', defaultSize: SPOTLIGHT, chromeless: true, singleton: true, Component: TopHeroSpotlightWidget },
-  { id: 'spotlight-player-identity', title: 'Player Identity', description: 'Your avatar, persona name, and current rank medal.', category: 'spotlight', defaultSize: { ...SPOTLIGHT, w: 3 }, icon: IdCard, chromeless: true, singleton: true, Component: PlayerIdentityWidget },
+  { id: 'spotlight-last-match', title: 'Last Match', description: 'A 3D hero model card for your most recent match: result, KDA, performance, items, and the full lineup.', category: 'spotlight', defaultSize: { ...SPOTLIGHT, w: 5, h: 16, minH: 13 }, chromeless: true, singleton: true, Component: LastMatchSpotlightWidget },
+  { id: 'spotlight-top-hero', title: 'Top Hero Spotlight', description: 'A 3D hero model card for your single most-played hero.', category: 'spotlight', defaultSize: { ...SPOTLIGHT, h: 11, minH: 8 }, chromeless: true, singleton: true, Component: TopHeroSpotlightWidget },
+  { id: 'spotlight-player-identity', title: 'Player Identity', description: 'Avatar, rank medal, last-10 win/loss record, and recent-games strip.', category: 'spotlight', defaultSize: { ...SPOTLIGHT, w: 3, h: 16, minH: 12 }, icon: IdCard, chromeless: true, singleton: true, Component: PlayerIdentityWidget },
 
   // ── Personal AI Coach (future) ────────────────────────────────────
   { id: 'coach-ai-insights', title: 'AI Insights Digest', description: 'Rolling digest of what the AI Coach has noticed across recent matches.', category: 'coach', defaultSize: COACH, singleton: true, Component: AiInsightsWidget },

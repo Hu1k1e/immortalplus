@@ -33,6 +33,37 @@ export function getHeroImage(heroIdOrName: string | number): string {
 }
 
 /**
+ * Get the full-body, transparent-background 3D hero model render (the
+ * "hero select" render, not the wide splash-art crop `getHeroImage`
+ * returns) — used for the "beautiful hero" spotlight widgets. Valve's CDN
+ * doesn't expose this path via heroes.json/dotaconstants, so it's built
+ * from the hero's internal short name; callers should set an `onError`
+ * fallback to `getHeroImage()` in case a given hero's render isn't
+ * available at this path.
+ */
+export function getHeroRenderImage(heroIdOrName: string | number): string {
+  if (!heroIdOrName) return '';
+
+  const nameStr = heroInternalName(heroIdOrName);
+  return `${CDN_BASE}/apps/dota2/images/dota_react/heroes/renders/${nameStr}.png`;
+}
+
+function heroInternalName(heroIdOrName: string | number): string {
+  if (HEROES[heroIdOrName]) {
+    return String(HEROES[heroIdOrName].name).replace('npc_dota_hero_', '');
+  }
+
+  const nameStr = String(heroIdOrName).replace('npc_dota_hero_', '');
+  for (const key in HEROES) {
+    if (HEROES[key].name.replace('npc_dota_hero_', '') === nameStr) {
+      return nameStr;
+    }
+  }
+
+  return nameStr;
+}
+
+/**
  * Get the small square hero "icon" crop (headshot, not the wide splash-art
  * crop `getHeroImage` returns) — used for map markers and small badges,
  * same asset heroes.json already stores under the `icon` field.

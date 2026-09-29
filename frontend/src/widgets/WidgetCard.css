@@ -54,6 +54,16 @@
   padding: 0;
 }
 
+/* Edit mode: widgets stop being clickable content (no accidental
+   navigation while trying to drag/resize) -- only the header's drag
+   handle and remove button, and the resize handle (both outside this
+   element), stay interactive. */
+.widget-card.is-editing .widget-card-body {
+  pointer-events: none;
+  overflow: hidden;
+  user-select: none;
+}
+
 .widget-card-chromeless {
   position: relative;
 }

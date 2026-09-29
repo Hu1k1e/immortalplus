@@ -5,6 +5,7 @@ import type { Layout as RGLLayout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import WidgetCard from './WidgetCard';
 import AddWidgetPanel from './AddWidgetPanel';
+import { WidgetErrorBoundary } from './WidgetErrorBoundary';
 import type { WidgetDefinition, WidgetInstance, GridLayoutItem } from './types';
 import './WidgetGrid.css';
 
@@ -16,6 +17,22 @@ const MARGIN: [number, number] = [16, 16];
 
 function uid(): string {
   return `w_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** Value equality on the fields that matter for rendering (position/size),
+ * ignoring incidental object-identity churn. Used to bail out of
+ * `setLayout` when nothing actually changed -- react-grid-layout re-fires
+ * `onLayoutChange` on effectively every render once anything about the
+ * `layout` prop's *reference* changes, so without this bail-out a state
+ * update here triggers a re-render that produces a new `layout` prop
+ * reference, which triggers another `onLayoutChange` call, forever. */
+function layoutsEqual(a: GridLayoutItem[], b: GridLayoutItem[]): boolean {
+  if (a.length !== b.length) return false;
+  const byId = new Map(b.map((item) => [item.i, item]));
+  return a.every((item) => {
+    const other = byId.get(item.i);
+    return !!other && other.x === item.x && other.y === item.y && other.w === item.w && other.h === item.h;
+  });
 }
 
 interface WidgetGridProps {
@@ -60,42 +77,64 @@ export default function WidgetGrid({ storageKey, registry, defaultInstances, def
     try { localStorage.setItem(layoutKey, JSON.stringify(layout)); } catch { /* best-effort persistence */ }
   }, [layout, layoutKey]);
 
-  // Newly-added widget instances (from Add Widget, or a fresh install with
-  // no saved layout yet) get appended below the current bottom-most row.
-  const ensureLayoutForWidgets = useCallback((insts: WidgetInstance[], lay: GridLayoutItem[]): GridLayoutItem[] => {
-    const existing = new Set(lay.map((l) => l.i));
-    const missing = insts.filter((w) => !existing.has(w.instanceId));
-    if (!missing.length) return lay;
-    let nextY = lay.reduce((max, l) => Math.max(max, l.y + l.h), 0);
-    const added: GridLayoutItem[] = missing.map((w) => {
-      const def = registryMap.get(w.widgetId);
-      const size = def?.defaultSize ?? { w: 4, h: 6 };
-      const item: GridLayoutItem = {
-        i: w.instanceId, x: 0, y: nextY, w: size.w, h: size.h,
-        minW: size.minW, minH: size.minH, maxW: size.maxW, maxH: size.maxH,
-      };
-      nextY += size.h;
-      return item;
-    });
-    return [...lay, ...added];
-  }, [registryMap]);
-
+  // One-time reconciliation for widget instances (loaded from localStorage,
+  // possibly from an older app version) that don't have a matching layout
+  // entry. Deliberately NOT a recurring effect keyed on `widgets` -- every
+  // other place that adds a widget (addWidget, resetToDefault) updates
+  // `widgets` and `layout` together in the same handler, so a reactive
+  // effect here would just be a second writer racing react-grid-layout's
+  // own onLayoutChange-driven updates over the exact same state, which
+  // previously produced an infinite render loop (the two disagreeing about
+  // a new item's position, each "correcting" the other forever).
   useEffect(() => {
-    setLayout((prev) => ensureLayoutForWidgets(widgets, prev));
-  }, [widgets, ensureLayoutForWidgets]);
+    setLayout((prev) => {
+      const existing = new Set(prev.map((l) => l.i));
+      const missing = widgets.filter((w) => !existing.has(w.instanceId));
+      if (!missing.length) return prev;
+      let nextY = prev.reduce((max, l) => Math.max(max, l.y + l.h), 0);
+      const added: GridLayoutItem[] = missing.map((w) => {
+        const def = registryMap.get(w.widgetId);
+        const size = def?.defaultSize ?? { w: 4, h: 6 };
+        const item: GridLayoutItem = {
+          i: w.instanceId, x: 0, y: nextY, w: size.w, h: size.h,
+          minW: size.minW, minH: size.minH, maxW: size.maxW, maxH: size.maxH,
+        };
+        nextY += size.h;
+        return item;
+      });
+      return [...prev, ...added];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLayoutChange = useCallback((newLayout: RGLLayout) => {
-    setLayout((prev) => newLayout.map((l) => {
-      const old = prev.find((p) => p.i === l.i);
-      return { i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: old?.minW, minH: old?.minH, maxW: old?.maxW, maxH: old?.maxH };
-    }));
+    setLayout((prev) => {
+      const merged = newLayout.map((l) => {
+        const old = prev.find((p) => p.i === l.i);
+        return { i: l.i, x: l.x, y: l.y, w: l.w, h: l.h, minW: old?.minW, minH: old?.minH, maxW: old?.maxW, maxH: old?.maxH };
+      });
+      return layoutsEqual(merged, prev) ? prev : merged;
+    });
   }, []);
 
   const addWidget = (widgetId: string) => {
     const def = registryMap.get(widgetId);
     if (!def) return;
     if (def.singleton && widgets.some((w) => w.widgetId === widgetId)) return;
-    setWidgets((prev) => [...prev, { instanceId: uid(), widgetId }]);
+    const instanceId = uid();
+    setWidgets((prev) => [...prev, { instanceId, widgetId }]);
+    // Placed in the same handler as the widgets-state update above (not a
+    // reactive effect keyed on `widgets`) so react-grid-layout only ever
+    // sees one authoritative position for the new item -- see the mount
+    // effect above for why a second writer here caused an infinite loop.
+    setLayout((prev) => {
+      const size = def.defaultSize;
+      const nextY = prev.reduce((max, l) => Math.max(max, l.y + l.h), 0);
+      return [...prev, {
+        i: instanceId, x: 0, y: nextY, w: size.w, h: size.h,
+        minW: size.minW, minH: size.minH, maxW: size.maxW, maxH: size.maxH,
+      }];
+    });
   };
 
   const removeWidget = (instanceId: string) => {
@@ -110,12 +149,12 @@ export default function WidgetGrid({ storageKey, registry, defaultInstances, def
   };
 
   const layoutById = useMemo(() => new Map(layout.map((l) => [l.i, l])), [layout]);
-  const rglLayout: RGLLayout = widgets.map((w) => {
+  const rglLayout: RGLLayout = useMemo(() => widgets.map((w) => {
     const l = layoutById.get(w.instanceId);
     if (l) return l;
     const def = registryMap.get(w.widgetId);
     return { i: w.instanceId, x: 0, y: 0, w: def?.defaultSize.w ?? 4, h: def?.defaultSize.h ?? 6 };
-  });
+  }), [widgets, layoutById, registryMap]);
 
   return (
     <div className="widget-grid-page">
@@ -172,7 +211,9 @@ export default function WidgetGrid({ storageKey, registry, defaultInstances, def
                   chromeless={def.chromeless}
                   onRemove={() => removeWidget(w.instanceId)}
                 >
-                  <Component instanceId={w.instanceId} />
+                  <WidgetErrorBoundary widgetTitle={def.title}>
+                    <Component instanceId={w.instanceId} />
+                  </WidgetErrorBoundary>
                 </WidgetCard>
               </div>
             );
