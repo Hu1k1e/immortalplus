@@ -204,14 +204,14 @@ async def sync_full_match_history(
     have restarted it from scratch every time and never let it finish.
 
     progress, if passed, gets one dict per page appended to it (page,
-    source, matches, with_position, upgraded) — diagnostic detail on
-    which source actually produced each page's data and how much of it
-    had real position, added after "your best" still undercounted a
-    hero even once the backfill reported complete. Deliberately NOT
-    logged line-by-line to the general app log (too noisy to pick out
-    of everything else running concurrently) - the caller (routers/
-    draft.py's /backfill-history) exposes this list directly via its own
-    status endpoint instead.
+    source, matches, with_position, upgraded, ...) — real per-page
+    diagnostic detail (which source actually produced the page's data,
+    how much of it had real position) used to root-cause a real "your
+    best" undercount report. That turned out to be a display cap (top-6
+    "Your Best" summary), not a sync bug — 84.8% of matches already had
+    real position data before any of this diagnostic tooling existed.
+    Kept as an optional param (cheap, no-op unless a caller opts in)
+    rather than ripped out, in case per-page detail is useful again.
     """
     if not player.account_id:
         logger.warning(f"Player {player.steam_id} has no account_id — skipping history backfill")

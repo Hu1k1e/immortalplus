@@ -320,17 +320,14 @@ async def data_health(session: Session = Depends(get_session)):
     }
 
 
-_backfill_status: dict = {"state": "idle", "pages": [], "started_at": None, "finished_at": None, "result": None}
-
-
 @router.post("/backfill-history")
 async def trigger_backfill_history(session: Session = Depends(get_session)):
     """
-    Manual re-trigger for the full match-history backfill. Check progress
-    via GET /backfill-history/status, which carries real per-page source/
-    position diagnostics (deliberately not written to the general app
-    log — too much unrelated traffic to pick it out of; TEMPORARY, remove
-    both endpoints once the "Your Best" undercount is root-caused).
+    Manual re-trigger for the full match-history backfill (see services/
+    sync.py's sync_full_match_history) — e.g. to pick up position data
+    for matches Stratz has since finished processing. Runs as a
+    background task; check completeness via GET /data-health's
+    match_history block.
     """
     from database import SessionLocal
     from services.sync import sync_full_match_history
@@ -340,89 +337,23 @@ async def trigger_backfill_history(session: Session = Depends(get_session)):
     if not player:
         raise HTTPException(status_code=404, detail="No player profile found")
 
-    if _backfill_status["state"] == "running":
-        return {"status": "already_running"}
-
     player.history_backfilled_at = None
     player.history_backfill_page = 0
     session.commit()
-
-    _backfill_status["state"] = "running"
-    _backfill_status["pages"] = []
-    _backfill_status["started_at"] = datetime.utcnow().isoformat()
-    _backfill_status["finished_at"] = None
-    _backfill_status["result"] = None
 
     async def _run():
         bg_session = SessionLocal()
         try:
             bg_player = bg_session.exec(select(Player).where(Player.id == player.id)).first()
             bg_settings = bg_session.exec(select(UserSettings).limit(1)).first()
-            total_new = await sync_full_match_history(
-                bg_session, bg_player, bg_settings, progress=_backfill_status["pages"]
-            )
-            _backfill_status["result"] = {"total_new": total_new}
+            await sync_full_match_history(bg_session, bg_player, bg_settings)
         except Exception as e:
             logger.error(f"Manual history backfill failed: {e}", exc_info=True)
-            _backfill_status["result"] = {"error": str(e)}
         finally:
             bg_session.close()
-            _backfill_status["state"] = "done"
-            _backfill_status["finished_at"] = datetime.utcnow().isoformat()
 
     asyncio.create_task(_run())
     return {"status": "started"}
-
-
-@router.get("/backfill-history/status")
-async def backfill_history_status():
-    """TEMPORARY — see _backfill_status's comment. Real per-page source
-    (stratz/opendota) and position-data detail for the current or most
-    recent manual backfill run."""
-    return _backfill_status
-
-
-@router.get("/debug-hero-positions/{hero_id}")
-async def debug_hero_positions(hero_id: int, session: Session = Depends(get_session)):
-    """
-    TEMPORARY — real per-position raw counts for one hero straight from
-    the local Match table, bypassing MIN_PERSONAL_GAMES so a count below
-    that floor (silently excluded from /suggest's your_best) is still
-    visible. Added after the backfill diagnostics showed 84.8% of ALL
-    matches have real position data (so the backfill itself isn't the
-    remaining gap), yet Windranger still only ever showed up under Carry
-    — need to see its real raw distribution to know if that's genuinely
-    where most of this account's Windranger games were played, or if
-    something is wrong with how those specific rows are stored.
-    """
-    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
-    if not player:
-        raise HTTPException(status_code=404, detail="No player profile found")
-
-    matches = session.exec(
-        select(Match).where(Match.player_id == player.id).where(Match.hero_id == hero_id)
-    ).all()
-
-    from collections import Counter
-    from services.draft_engine import estimate_position
-
-    real_position_counts = Counter(m.position for m in matches)
-    estimated_position_counts = Counter(
-        m.position or estimate_position(m.lane_role, m.gpm) for m in matches
-    )
-    wins = sum(1 for m in matches if m.result == "win")
-
-    return {
-        "hero_id": hero_id,
-        "total_matches": len(matches),
-        "wins": wins,
-        "real_position_counts": dict(real_position_counts),
-        "estimated_position_counts (what /suggest actually uses)": dict(estimated_position_counts),
-        "sample_rows": [
-            {"match_id": m.match_id, "position": m.position, "lane_role": m.lane_role, "gpm": m.gpm, "result": m.result}
-            for m in matches[:10]
-        ],
-    }
 
 
 @router.get("/state")
