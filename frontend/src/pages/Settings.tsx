@@ -29,6 +29,7 @@ export default function Settings() {
   const [openaiApiBase, setOpenaiApiBase] = useState('');
   const [openaiModel, setOpenaiModel] = useState('');
   const [dataSource, setDataSource] = useState('both');
+  const [protrackerIntervalMinutes, setProtrackerIntervalMinutes] = useState('30');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -43,6 +44,7 @@ export default function Settings() {
       setOpenaiApiBase(res.data.openai_api_base || '');
       setOpenaiModel(res.data.openai_model || '');
       setDataSource(res.data.data_source || 'both');
+      setProtrackerIntervalMinutes(String(res.data.protracker_interval_minutes ?? 30));
       setLoading(false);
     }).catch((err) => {
       console.error(err);
@@ -60,6 +62,7 @@ export default function Settings() {
         openai_api_base: openaiApiBase,
         openai_model: openaiModel,
         data_source: dataSource,
+        protracker_interval_minutes: protrackerIntervalMinutes ? parseInt(protrackerIntervalMinutes, 10) : 30,
       };
       // Secrets: only sent if the user actually typed a replacement —
       // an untouched (empty) field must never overwrite the saved value
@@ -227,6 +230,19 @@ export default function Settings() {
               <option value="stratz">Stratz Only</option>
               <option value="opendota">OpenDota Only</option>
             </select>
+          </label>
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            Meta Data Refresh Interval (minutes)
+            <input
+              type="number"
+              min={5}
+              value={protrackerIntervalMinutes}
+              onChange={(e) => setProtrackerIntervalMinutes(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '4px', border: '1px solid var(--border-color)', background: 'rgba(0,0,0,0.2)', color: 'white', maxWidth: '160px' }}
+            />
+            <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              How often the Draft Helper's position data and the Meta tab re-scrape Dota2ProTracker. Default 30 minutes — the same cadence as the rest of the background sync.
+            </span>
           </label>
         </div>
       </div>

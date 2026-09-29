@@ -223,24 +223,14 @@ export default function DraftHelper() {
     }
   }, []);
 
-  const refreshMeta = async () => {
-    // A full resync (hero_matchups alone rate-limits to 30 heroes at
-    // 1.5s apart, synergy similarly) genuinely takes over a minute —
-    // confirmed directly from production logs, where the sync was
-    // working the whole time but the button showed "failed" because it
-    // was waiting on one HTTP request for the entire thing. The backend
-    // now runs this as a background task; poll its status instead of
-    // waiting on the POST response.
-    setRefreshStatus('loading');
-    try {
-      await api.post('/draft/refresh-meta');
-    } catch (err) {
-      console.error(err);
-      setRefreshStatus('error');
-      setTimeout(() => setRefreshStatus('idle'), 4000);
-      return;
-    }
-
+  // Extracted so both a fresh click and a mount-time "is a refresh already
+  // running" check (see the useEffect below) can drive the same polling
+  // loop — previously refreshStatus was plain local component state that
+  // always started back at 'idle' on mount, so navigating away from this
+  // page and back (or just reloading) while a refresh was genuinely still
+  // running on the backend made the button look ready to click again
+  // instead of reflecting the real in-progress state.
+  const pollRefreshStatus = useCallback(() => {
     const poll = async () => {
       try {
         const res = await api.get('/draft/refresh-meta/status');
@@ -258,6 +248,26 @@ export default function DraftHelper() {
       setTimeout(poll, 3000);
     };
     setTimeout(poll, 3000);
+  }, [fetchDataHealth]);
+
+  const refreshMeta = async () => {
+    // A full resync (hero_matchups alone rate-limits to 30 heroes at
+    // 1.5s apart, synergy similarly) genuinely takes over a minute —
+    // confirmed directly from production logs, where the sync was
+    // working the whole time but the button showed "failed" because it
+    // was waiting on one HTTP request for the entire thing. The backend
+    // now runs this as a background task; poll its status instead of
+    // waiting on the POST response.
+    setRefreshStatus('loading');
+    try {
+      await api.post('/draft/refresh-meta');
+    } catch (err) {
+      console.error(err);
+      setRefreshStatus('error');
+      setTimeout(() => setRefreshStatus('idle'), 4000);
+      return;
+    }
+    pollRefreshStatus();
   };
 
   useEffect(() => {
@@ -284,8 +294,19 @@ export default function DraftHelper() {
     api.get('/draft/state').then(res => applyState(res.data)).catch(console.error);
     fetchDataHealth();
 
+    // Pick up a refresh that's already running on the backend (started
+    // before this mount — another tab, a previous visit to this page, or
+    // the button was clicked and the user navigated away and back)
+    // instead of always showing the button as idle/clickable.
+    api.get('/draft/refresh-meta/status').then((res) => {
+      if (res.data?.state === 'running') {
+        setRefreshStatus('loading');
+        pollRefreshStatus();
+      }
+    }).catch(() => {});
+
     return () => { if (ws.current) ws.current.close(); };
-  }, [applyState, fetchDataHealth]);
+  }, [applyState, fetchDataHealth, pollRefreshStatus]);
 
   const autoAllySlots = useMemo(() => assignPositions(gsiState.ally_picks, positionFit), [gsiState.ally_picks, positionFit]);
   const autoEnemySlots = useMemo(() => assignPositions(gsiState.enemy_picks, positionFit), [gsiState.enemy_picks, positionFit]);

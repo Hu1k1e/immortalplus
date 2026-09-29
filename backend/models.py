@@ -397,7 +397,7 @@ class UserSettings(SQLModel, table=True):
 
     # ProTracker
     protracker_enabled: bool = True
-    protracker_interval_hours: int = 6
+    protracker_interval_minutes: int = 30
 
     # Appearance
     animation_speed: str = "normal"         # reduced, normal, enhanced

@@ -40,7 +40,7 @@ async def background_sync_loop():
     await asyncio.sleep(10)
     logger.info("Background sync loop started")
 
-    # protracker_enabled/protracker_interval_hours have existed as
+    # protracker_enabled/protracker_interval_minutes have existed as
     # UserSettings fields since early in this project but were never
     # actually read anywhere — this is the first real use of them. Runs
     # on its own longer interval (default 6h) rather than every cycle
@@ -112,12 +112,13 @@ async def background_sync_loop():
                     # Dota2ProTracker/Stratz: real per-position (Carry/
                     # Mid/Offlane/Soft Support/Hard Support) hero win
                     # rates — data OpenDota's bulk endpoints don't have
-                    # at all. Heavier than the syncs above, so runs on
-                    # its own longer interval instead of every cycle.
-                    interval_hours = settings.protracker_interval_hours or 6
+                    # at all. Configurable independently of the general
+                    # sync_interval_minutes cadence above (defaults to the
+                    # same 30 minutes) since it's a heavier scrape.
+                    interval_minutes = settings.protracker_interval_minutes or 30
                     due = (
                         last_protracker_sync is None
-                        or datetime.utcnow() - last_protracker_sync >= timedelta(hours=interval_hours)
+                        or datetime.utcnow() - last_protracker_sync >= timedelta(minutes=interval_minutes)
                     )
                     if settings.protracker_enabled and due:
                         try:

@@ -250,9 +250,9 @@ async def refresh_meta_status():
 _STALE_AFTER_HOURS = {
     "hero_meta": 1.0,          # syncs every background cycle (~30 min default)
     "hero_matchups": 1.0,
-    "hero_position_meta": 14.0,  # syncs every protracker_interval_hours (default 6h)
+    "hero_position_meta": 1.0,  # syncs every protracker_interval_minutes (default 30 min, same as above)
     "hero_synergy": 1.0,
-    "hero_position_detail": 14.0,  # same protracker_interval_hours cadence as hero_position_meta
+    "hero_position_detail": 1.0,  # same protracker_interval_minutes cadence as hero_position_meta
 }
 
 

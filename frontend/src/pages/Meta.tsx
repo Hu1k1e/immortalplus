@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import api from '../lib/api';
 
 interface HeroRow {
@@ -112,16 +112,9 @@ export default function Meta() {
 
   useEffect(() => { setMinMatches(matchesBounds.min); }, [matchesBounds.min]);
 
-  const refreshMeta = async () => {
-    setRefreshStatus('loading');
-    try {
-      await api.post('/draft/refresh-meta');
-    } catch (err) {
-      console.error(err);
-      setRefreshStatus('error');
-      setTimeout(() => setRefreshStatus('idle'), 4000);
-      return;
-    }
+  // Extracted so both a fresh click and the mount-time "is a refresh
+  // already running" check above can drive the same polling loop.
+  const pollRefreshStatus = useCallback(() => {
     const poll = async () => {
       try {
         const res = await api.get('/draft/refresh-meta/status');
@@ -137,7 +130,35 @@ export default function Meta() {
       setTimeout(poll, 3000);
     };
     setTimeout(poll, 3000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position]);
+
+  const refreshMeta = async () => {
+    setRefreshStatus('loading');
+    try {
+      await api.post('/draft/refresh-meta');
+    } catch (err) {
+      console.error(err);
+      setRefreshStatus('error');
+      setTimeout(() => setRefreshStatus('idle'), 4000);
+      return;
+    }
+    pollRefreshStatus();
   };
+
+  // Pick up a refresh already running on the backend (started before this
+  // mount — another tab, a previous visit to this page, or the button was
+  // clicked and the user navigated away and back) instead of always
+  // showing the button as idle/clickable.
+  useEffect(() => {
+    api.get('/draft/refresh-meta/status').then((res) => {
+      if (res.data?.state === 'running') {
+        setRefreshStatus('loading');
+        pollRefreshStatus();
+      }
+    }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleTier = (tier: string) => {
     setSelectedTiers(prev => {

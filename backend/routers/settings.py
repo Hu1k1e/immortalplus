@@ -48,7 +48,7 @@ class SettingsUpdate(BaseModel):
     draft_show_meta_tier: Optional[bool] = None
     draft_priority: Optional[str] = None
     protracker_enabled: Optional[bool] = None
-    protracker_interval_hours: Optional[int] = None
+    protracker_interval_minutes: Optional[int] = None
     animation_speed: Optional[str] = None
     sidebar_position: Optional[str] = None
     dashboard_layout: Optional[str] = None
@@ -117,7 +117,7 @@ async def get_settings(session: Session = Depends(get_session)):
         "draft_show_meta_tier": settings.draft_show_meta_tier,
         "draft_priority": settings.draft_priority,
         "protracker_enabled": settings.protracker_enabled,
-        "protracker_interval_hours": settings.protracker_interval_hours,
+        "protracker_interval_minutes": settings.protracker_interval_minutes,
         "animation_speed": settings.animation_speed,
         "sidebar_position": settings.sidebar_position,
         "dashboard_layout": settings.dashboard_layout,

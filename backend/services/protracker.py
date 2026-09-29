@@ -61,7 +61,7 @@ async def fetch_hero_position_meta() -> Optional[list[dict]]:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
-                page = await browser.new_page(user_agent=_REAL_BROWSER_UA)
+                page = await browser.new_page(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
                 # `wait_until="networkidle"` was a real, confirmed source of
                 # failure here (live error 2026-09-29: "Page.goto: Timeout
                 # 30000ms exceeded" waiting for it) — this page has enough
@@ -155,34 +155,47 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
-                page = await browser.new_page(user_agent=_REAL_BROWSER_UA)
+                # Explicit viewport — a headless browser's default viewport
+                # can differ from whatever a manual verification session
+                # used, and this site's tab bar is real responsive UI (not
+                # guaranteed to lay out identically, or even render the
+                # same elements, at every width). Pinning a common desktop
+                # size makes the layout — and therefore which elements
+                # `button[role="tab"]` actually matches — deterministic.
+                page = await browser.new_page(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
                 await page.goto(PROTRACKER_META_PAGE_URL, wait_until="load", timeout=30000)
-                await _asyncio.sleep(2)  # let the page settle before the first click
+                await _asyncio.sleep(5)  # let the page settle/hydrate before the first click
 
-                # Tab order confirmed live: ["All Roles", "Carry", "Mid",
-                # "Offlane", "Support", "Hard Support"] — matches this
-                # app's own 0-5 position convention index-for-index.
-                tabs = page.locator('button[role="tab"]')
+                # Looked up by accessible NAME, not index — confirmed live
+                # (2026-09-29) exact text: "All Roles", "Carry", "Mid",
+                # "Offlane", "Support", "Hard Support". Robust against any
+                # other role="tab" element elsewhere on the page shifting
+                # what a plain .nth(i) would hit (a real, live-observed
+                # failure mode: every position timed out waiting for a
+                # response in one run, which a pure index-based lookup
+                # can't distinguish from "clicked the wrong element").
+                tab_names = ["All Roles", "Carry", "Mid", "Offlane", "Support", "Hard Support"]
 
                 # "All Roles" (position 0) is the page's own default
                 # active tab on a cold load — confirmed live (2026-09-29)
                 # that clicking an already-active tab fires no new
                 # request at all (the underlying position value doesn't
-                # change, so the page's reactive fetch never re-runs),
-                # which is exactly what produced a 20s "waiting for
-                # response" timeout when position 0 was clicked first.
-                # Visiting it LAST instead guarantees every click is a
-                # genuine state change (something else -> All Roles).
+                # change, so the page's reactive fetch never re-runs).
+                # Visiting it LAST guarantees every click is a genuine
+                # state change (something else -> All Roles).
                 click_order = [1, 2, 3, 4, 5, 0]
 
                 for position in click_order:
+                    tab = page.get_by_role("tab", name=tab_names[position], exact=True)
                     raw = None
-                    for attempt in range(2):
+                    last_error = None
+                    for attempt in range(3):
                         try:
+                            await tab.wait_for(state="visible", timeout=10000)
                             async with page.expect_response(
                                 lambda r: "/api/heroes/stats" in r.url and r.status == 200, timeout=20000
                             ) as response_info:
-                                await tabs.nth(position).click(timeout=10000)
+                                await tab.click(timeout=10000)
                             response = await response_info.value
                             # response.json() reads the raw body over CDP and
                             # parses it in Python — far lighter than the
@@ -192,14 +205,20 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                             raw = await response.json()
                             break
                         except Exception as e:
-                            if "403" in str(e) and attempt == 0:
-                                logger.warning(f"Dota2ProTracker detail: position {position} got HTTP 403, backing off 10s and retrying once")
-                                await _asyncio.sleep(10)
+                            last_error = e
+                            backoff = 10 if "403" in str(e) else 5
+                            if attempt < 2:
+                                logger.warning(f"Dota2ProTracker detail: position {position} ({tab_names[position]}) attempt {attempt + 1} failed ({e}), retrying in {backoff}s")
+                                await _asyncio.sleep(backoff)
                                 continue
-                            logger.error(f"Dota2ProTracker detail fetch failed for position {position}: {e}")
-                            break
 
                     if raw is None:
+                        matched_count = await page.locator('button[role="tab"]').count()
+                        matched_texts = await page.locator('button[role="tab"]').all_text_contents()
+                        logger.error(
+                            f"Dota2ProTracker detail fetch failed for position {position} ({tab_names[position]}) "
+                            f"after 3 attempts: {last_error}. Page currently has {matched_count} role=tab elements: {matched_texts}"
+                        )
                         await _asyncio.sleep(4)
                         continue
 
