@@ -144,6 +144,44 @@ class StratzClient:
             logger.error(f"Stratz get_player_matches error: {e}")
             raise
 
+    async def get_player_profile(self, account_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Persona name / avatar straight from Stratz's own cache of the Steam
+        account — a third fallback (after OpenDota and the Steam Web API)
+        for accounts neither of those has real profile data for yet.
+        Stratz's real schema (confirmed against their GraphQL playground):
+        Query.player(steamAccountId) -> PlayerType.steamAccount ->
+        SteamAccountType { name, avatar, profileUri }.
+        Returns None on any failure (never raises) since this is always
+        used as an optional fallback, not a required data source.
+        """
+        query = """
+        query($accountId: Long!) {
+          player(steamAccountId: $accountId) {
+            steamAccount {
+              name
+              avatar
+              profileUri
+            }
+          }
+        }
+        """
+        try:
+            response = await self.client.post(STRATZ_API_URL, json={"query": query, "variables": {"accountId": account_id}})
+            response.raise_for_status()
+            data = response.json()
+            account = data.get("data", {}).get("player", {}).get("steamAccount")
+            if not account or not (account.get("name") or account.get("avatar")):
+                return None
+            return {
+                "personaname": account.get("name"),
+                "avatarfull": account.get("avatar"),
+                "profileurl": account.get("profileUri"),
+            }
+        except Exception as e:
+            logger.info(f"Stratz get_player_profile failed for {account_id}: {e}")
+            return None
+
     async def get_match(self, match_id: int) -> Dict[str, Any]:
         """Fetch deep match data including playback events from Stratz."""
         query = """

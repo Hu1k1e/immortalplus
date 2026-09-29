@@ -249,18 +249,74 @@
   font-weight: 700;
 }
 .profile-donut-wrap {
+  position: relative;
   display: flex;
   justify-content: center;
   padding: 0.5rem 0 0.25rem;
 }
+.profile-ring-segment {
+  cursor: pointer;
+  transition: stroke-opacity 150ms ease;
+}
+.profile-ring-segment:hover {
+  stroke-opacity: 1 !important;
+}
 .profile-ring-hero-icon {
   cursor: pointer;
-  transition: transform 150ms ease;
-  transform-box: fill-box;
-  transform-origin: center;
 }
-.profile-ring-hero-icon:hover {
-  transform: scale(1.18);
+.profile-ring-tooltip {
+  position: absolute;
+  z-index: 30;
+  pointer-events: none;
+  min-width: 150px;
+  padding: 0.6rem 0.75rem;
+  background: linear-gradient(180deg, rgba(30, 35, 43, 0.97), rgba(15, 18, 23, 0.97));
+  border: 1px solid rgba(226, 183, 66, 0.2);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+}
+.profile-ring-tooltip-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 700;
+  font-size: 0.82rem;
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.profile-ring-tooltip-header img {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.profile-ring-tooltip-stats {
+  display: flex;
+  gap: 0.9rem;
+}
+.profile-ring-tooltip-label {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.15rem;
+}
+.profile-ring-tooltip-stats .good { color: var(--radiant-green); font-weight: 700; }
+.profile-ring-tooltip-stats .bad { color: var(--dire-red); font-weight: 700; }
+.profile-ring-tooltip-positions {
+  display: flex;
+  gap: 0.3rem;
+}
+.profile-ring-tooltip-pos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
 }
 .profile-donut-empty {
   text-align: center;

@@ -62,18 +62,23 @@ async def fetch_hero_position_meta() -> Optional[list[dict]]:
             browser = await p.chromium.launch(headless=True)
             try:
                 page = await browser.new_page(user_agent=_REAL_BROWSER_UA)
-                captured = {}
-
-                async def handle_response(response):
-                    if "/api/heroes/list" in response.url and response.status == 200:
-                        try:
-                            captured["data"] = await response.json()
-                        except Exception:
-                            pass
-
-                page.on("response", handle_response)
-                await page.goto(PROTRACKER_META_PAGE_URL, wait_until="networkidle", timeout=30000)
-                heroes = captured.get("data")
+                # `wait_until="networkidle"` was a real, confirmed source of
+                # failure here (live error 2026-09-29: "Page.goto: Timeout
+                # 30000ms exceeded" waiting for it) — this page has enough
+                # of its own ongoing background activity (analytics,
+                # polling) that network traffic can simply never go fully
+                # idle, so the whole goto could time out even after the one
+                # response actually needed had already arrived. Waiting
+                # specifically for that response instead (Playwright's own
+                # documented pattern for this exact flakiness class) is
+                # both faster and far more reliable than waiting for
+                # silence across the entire page.
+                async with page.expect_response(
+                    lambda r: "/api/heroes/list" in r.url and r.status == 200, timeout=30000
+                ) as response_info:
+                    await page.goto(PROTRACKER_META_PAGE_URL, wait_until="domcontentloaded", timeout=30000)
+                response = await response_info.value
+                heroes = await response.json()
             finally:
                 await browser.close()
     except Exception as e:
@@ -144,7 +149,13 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
             browser = await p.chromium.launch(headless=True)
             try:
                 page = await browser.new_page(user_agent=_REAL_BROWSER_UA)
-                await page.goto(PROTRACKER_META_PAGE_URL, wait_until="networkidle", timeout=30000)
+                # "load" (not "networkidle" — see fetch_hero_position_meta's
+                # comment on that same flakiness) is enough here: this
+                # function doesn't need any particular auto-fired request to
+                # complete, just for the page's own JS (including whatever
+                # Cloudflare challenge script runs) to have finished, so our
+                # own fetch() calls below carry a valid session.
+                await page.goto(PROTRACKER_META_PAGE_URL, wait_until="load", timeout=30000)
 
                 for position, query_value in _POSITION_QUERY_VALUES.items():
                     url = (

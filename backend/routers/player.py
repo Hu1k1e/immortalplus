@@ -72,6 +72,49 @@ def _steam_id_to_account_id(steam_id: str) -> int:
     return steam64 - 76561197960265728
 
 
+async def _fill_missing_profile_fields(
+    account_id: int, steamid64: str, persona_name: Optional[str], avatar_url: Optional[str],
+    profile_url: Optional[str], settings: Optional[UserSettings],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Fills in whichever of persona_name/avatar_url/profile_url OpenDota
+    didn't have, trying Stratz first (same GraphQL token already used
+    everywhere else in this app, and it maintains its own Steam account
+    cache independent of OpenDota's) and then the Steam Web API directly
+    (the ultimate source of truth — works even for accounts neither
+    OpenDota nor Stratz has indexed, as long as the account itself isn't
+    fully private). Both are best-effort: any failure just leaves the
+    field as-is rather than raising.
+    """
+    if persona_name and avatar_url:
+        return persona_name, avatar_url, profile_url
+
+    if settings and settings.stratz_api_token:
+        try:
+            from services.stratz import get_stratz_client
+            stratz_client = get_stratz_client(settings.stratz_api_token)
+            if stratz_client:
+                summary = await stratz_client.get_player_profile(account_id)
+                if summary:
+                    persona_name = persona_name or summary.get("personaname")
+                    avatar_url = avatar_url or summary.get("avatarfull")
+                    profile_url = profile_url or summary.get("profileurl")
+        except Exception as e:
+            logger.info(f"Stratz profile fallback failed for {account_id}: {e}")
+
+    if (not persona_name or not avatar_url) and settings and settings.steam_api_key:
+        try:
+            summary = await SteamClient(settings.steam_api_key).get_player_summary(steamid64)
+            if summary:
+                persona_name = persona_name or summary.get("personaname")
+                avatar_url = avatar_url or summary.get("avatarfull")
+                profile_url = profile_url or summary.get("profileurl")
+        except Exception as e:
+            logger.info(f"Steam API profile fallback failed for {steamid64}: {e}")
+
+    return persona_name, avatar_url, profile_url
+
+
 @router.post("/setup")
 async def setup_player(
     steam_id: str,
@@ -116,16 +159,9 @@ async def setup_player(
     profile_url = profile.get("profileurl") or (existing.profile_url if existing else None)
     steamid64 = profile.get("steamid") or sid
 
-    settings_for_steam = settings
-    if (not persona_name or not avatar_url) and settings_for_steam and settings_for_steam.steam_api_key:
-        try:
-            summary = await SteamClient(settings_for_steam.steam_api_key).get_player_summary(steamid64)
-            if summary:
-                persona_name = persona_name or summary.get("personaname")
-                avatar_url = avatar_url or summary.get("avatarfull")
-                profile_url = profile_url or summary.get("profileurl")
-        except Exception as e:
-            logger.info(f"Steam API profile fallback failed for {steamid64}: {e}")
+    persona_name, avatar_url, profile_url = await _fill_missing_profile_fields(
+        account_id, steamid64, persona_name, avatar_url, profile_url, settings,
+    )
 
     if existing:
         existing.persona_name = persona_name
@@ -275,15 +311,9 @@ async def refresh_player_data(session: Session = Depends(get_session)):
         avatar_url = profile.get("avatarfull") or player.avatar_url
         profile_url = profile.get("profileurl") or player.profile_url
 
-        if (not persona_name or not avatar_url) and settings and settings.steam_api_key:
-            try:
-                summary = await SteamClient(settings.steam_api_key).get_player_summary(player.steam_id)
-                if summary:
-                    persona_name = persona_name or summary.get("personaname")
-                    avatar_url = avatar_url or summary.get("avatarfull")
-                    profile_url = profile_url or summary.get("profileurl")
-            except Exception as e:
-                logger.info(f"Steam API profile fallback failed for {player.steam_id}: {e}")
+        persona_name, avatar_url, profile_url = await _fill_missing_profile_fields(
+            player.account_id, player.steam_id, persona_name, avatar_url, profile_url, settings,
+        )
 
         player.persona_name = persona_name
         player.avatar_url = avatar_url
@@ -377,11 +407,16 @@ async def get_player_trends(
     total = len(recent)
 
     position_counts: dict = {}
+    position_wins: dict = {}
     for m in recent:
         if m.position and 1 <= m.position <= 5:
             position_counts[m.position] = position_counts.get(m.position, 0) + 1
+            if m.result == "win":
+                position_wins[m.position] = position_wins.get(m.position, 0) + 1
 
     hero_counts: dict = {}
+    hero_wins: dict = {}
+    hero_positions: dict = {}
     # `recent` is newest-first (ordered by match_id desc), so the first
     # match seen per hero_id during this single pass is that hero's most
     # recent game in the window — used to make the Trends ring's hero
@@ -389,6 +424,11 @@ async def get_player_trends(
     hero_last_match: dict = {}
     for m in recent:
         hero_counts[m.hero_id] = hero_counts.get(m.hero_id, 0) + 1
+        if m.result == "win":
+            hero_wins[m.hero_id] = hero_wins.get(m.hero_id, 0) + 1
+        if m.position and 1 <= m.position <= 5:
+            positions_for_hero = hero_positions.setdefault(m.hero_id, {})
+            positions_for_hero[m.position] = positions_for_hero.get(m.position, 0) + 1
         hero_last_match.setdefault(m.hero_id, m.match_id)
     top_heroes = sorted(hero_counts.items(), key=lambda x: -x[1])[:14]
 
@@ -426,7 +466,11 @@ async def get_player_trends(
         "unranked_pct": unranked_pct,
         "lane_record": {"safe_wins": safe_wins, "safe_losses": safe_losses, "off_wins": off_wins, "off_losses": off_losses},
         "position_breakdown": [
-            {"position": p, "position_name": POSITIONS.get(p), "count": c}
+            {
+                "position": p, "position_name": POSITIONS.get(p), "count": c,
+                "wins": position_wins.get(p, 0),
+                "winrate": round(position_wins.get(p, 0) / c * 100, 1) if c else 0,
+            }
             for p, c in sorted(position_counts.items())
         ],
         "positionless_count": total - sum(position_counts.values()),
@@ -437,7 +481,13 @@ async def get_player_trends(
         "top_heroes": [
             {
                 "hero_id": h, "hero_name": get_hero_name(h), "hero_icon": get_hero_icon_url(h),
-                "count": c, "match_id": hero_last_match.get(h),
+                "count": c, "wins": hero_wins.get(h, 0),
+                "winrate": round(hero_wins.get(h, 0) / c * 100, 1) if c else 0,
+                "match_id": hero_last_match.get(h),
+                "positions": [
+                    {"position": p, "position_name": POSITIONS.get(p), "count": pc}
+                    for p, pc in sorted(hero_positions.get(h, {}).items(), key=lambda x: -x[1])
+                ],
             }
             for h, c in top_heroes
         ],
