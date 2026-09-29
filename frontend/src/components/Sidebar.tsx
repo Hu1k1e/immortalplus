@@ -1,12 +1,13 @@
 
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, History, Crosshair, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, History, Crosshair, TrendingUp, Settings as SettingsIcon } from 'lucide-react';
 import './Sidebar.css';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/matches', label: 'Match History', icon: History },
   { path: '/draft', label: 'Draft Helper', icon: Crosshair },
+  { path: '/meta', label: 'Meta', icon: TrendingUp },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 

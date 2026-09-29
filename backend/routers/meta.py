@@ -3,15 +3,16 @@ Meta overview and hero statistics endpoints.
 """
 
 import logging
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import HeroMeta, HeroMatchup, UserSettings
+from models import HeroMeta, HeroMatchup, HeroPositionDetail, UserSettings
 from services.opendota import get_opendota_client
 from services.sync import sync_hero_meta
-from utils.dota_constants import HEROES, get_hero_name, get_hero_image_url, get_hero_icon_url
+from utils.dota_constants import HEROES, get_hero_name, get_hero_image_url, get_hero_icon_url, POSITIONS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/meta", tags=["meta"])
@@ -139,3 +140,94 @@ async def get_hero_list():
         }
         for hid, data in HEROES.items()
     ]
+
+
+def _winrate(wins: int, matches: int) -> Optional[float]:
+    return round(wins / matches * 100, 1) if matches else None
+
+
+def _tier_for_rank(rank_in_list: int, total: int) -> str:
+    """
+    S/A/B/C/D/E tier from percentile rank within the current position's
+    list — the same bucketing convention already used by GET /heroes
+    above, extended to 6 tiers to match ProTracker's own real tier
+    filter buttons (S/A/B/C/D/E, confirmed live on their /meta page).
+    This is an approximation of their internal tier algorithm (not
+    reverse-engineerable from the API response alone — no literal
+    "tier" field exists on the richer per-position endpoint this data
+    comes from, only on a different, coarser one), not a claimed exact
+    match; disclosed as such rather than presented as their real value.
+    """
+    if total <= 0:
+        return "E"
+    pct = rank_in_list / total
+    if pct < 0.05:
+        return "S"
+    if pct < 0.15:
+        return "A"
+    if pct < 0.40:
+        return "B"
+    if pct < 0.65:
+        return "C"
+    if pct < 0.85:
+        return "D"
+    return "E"
+
+
+@router.get("/protracker")
+async def get_protracker_meta(
+    position: int = Query(1, ge=0, le=5, description="0=All Roles, 1-5=Carry/Mid/Offlane/Soft Support/Hard Support"),
+    session: Session = Depends(get_session),
+):
+    """
+    Real per-hero data behind the Meta page's table — from
+    HeroPositionDetail, synced from Dota2ProTracker's own
+    /api/heroes/stats endpoint (see services/protracker.py's
+    fetch_hero_position_detail for how this was found and what every
+    field really means). Sorted by meta_score (their real displayed
+    0-100 "D2PT Rating") descending, same default sort as their own
+    page. top_heroes is the same list's first 7 entries — matching the
+    "Top Heroes" card row on their page, not a separately-fetched list.
+    """
+    rows = session.exec(
+        select(HeroPositionDetail).where(HeroPositionDetail.position == position)
+    ).all()
+    rows = [r for r in rows if r.meta_score is not None]
+    rows.sort(key=lambda r: r.meta_score, reverse=True)
+
+    total = len(rows)
+    heroes = []
+    for i, r in enumerate(rows):
+        heroes.append({
+            "hero_id": r.hero_id,
+            "hero_name": get_hero_name(r.hero_id),
+            "hero_icon": get_hero_icon_url(r.hero_id),
+            "hero_image": get_hero_image_url(r.hero_id),
+            "matches": r.matches,
+            "winrate": round((r.winrate or 0) * 100, 1),
+            "meta_score": r.meta_score,
+            "tier": _tier_for_rank(i, total),
+            "contest_rate": r.contest_rate,
+            "lane_adv_pct": round((r.lane_adv_pct or 0) * 100, 1) if r.lane_adv_pct is not None else None,
+            "radiant_matches": r.radiant_matches,
+            "radiant_winrate": _winrate(r.radiant_wins, r.radiant_matches),
+            "dire_matches": r.dire_matches,
+            "dire_winrate": _winrate(r.dire_wins, r.dire_matches),
+            "phase_1_matches": r.phase_1_matches,
+            "phase_1_winrate": _winrate(r.phase_1_wins, r.phase_1_matches),
+            "phase_2_matches": r.phase_2_matches,
+            "phase_2_winrate": _winrate(r.phase_2_wins, r.phase_2_matches),
+            "phase_3_matches": r.phase_3_matches,
+            "phase_3_winrate": _winrate(r.phase_3_wins, r.phase_3_matches),
+            "build_matches": r.build_matches,
+            "build_winrate": round((r.build_winrate or 0) * 100, 1) if r.build_winrate is not None else None,
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+        })
+
+    return {
+        "position": position,
+        "position_name": "All Roles" if position == 0 else POSITIONS.get(position),
+        "top_heroes": heroes[:7],
+        "heroes": heroes,
+        "updated_at": heroes[0]["updated_at"] if heroes else None,
+    }

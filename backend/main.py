@@ -34,7 +34,7 @@ async def background_sync_loop():
         sync_player_matches, create_progress_snapshot,
         sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
     )
-    from services.protracker import sync_hero_position_meta
+    from services.protracker import sync_hero_position_meta, sync_hero_position_detail
 
     # Wait for app to fully start
     await asyncio.sleep(10)
@@ -124,6 +124,16 @@ async def background_sync_loop():
                             await sync_hero_position_meta(session, settings)
                         except Exception as e:
                             logger.error(f"Background sync: hero_position_meta failed: {e}", exc_info=True)
+                        # Same interval/gate as hero_position_meta above —
+                        # the Meta page's richer table (lane advantage,
+                        # contest rate, Radiant/Dire and pick-phase splits)
+                        # is scraped from ProTracker at the same cadence
+                        # requested directly ("pulled as the same rate as
+                        # how we do the draft section").
+                        try:
+                            await sync_hero_position_detail(session)
+                        except Exception as e:
+                            logger.error(f"Background sync: hero_position_detail failed: {e}", exc_info=True)
                         last_protracker_sync = datetime.utcnow()
 
             session.close()

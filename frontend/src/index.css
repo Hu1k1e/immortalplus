@@ -881,3 +881,156 @@ button {
   .suggestion-columns { grid-template-columns: 1fr; }
   .position-columns { grid-template-columns: repeat(5, minmax(90px, 1fr)); overflow-x: auto; }
 }
+
+/* ── Meta page (Dota2ProTracker-style hero meta table) ── */
+
+.meta-top-heroes {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+.meta-top-hero-card {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  flex-shrink: 0;
+  min-width: 160px;
+}
+.meta-top-hero-card img {
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.meta-top-hero-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.meta-top-hero-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.meta-top-hero-stats {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.meta-top-hero-rating {
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-family: monospace;
+}
+
+.meta-filters {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.meta-filters h4 { margin-bottom: 0.2rem; }
+.meta-filters-subtitle {
+  font-size: 0.78rem;
+  margin-bottom: 0.9rem;
+}
+.meta-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+}
+.meta-search {
+  flex: 0 1 260px;
+  margin: 0;
+}
+.meta-matches-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  min-width: 220px;
+}
+.meta-matches-filter input[type="range"] {
+  accent-color: var(--accent-gold);
+}
+.meta-tier-filter {
+  display: flex;
+  gap: 0.3rem;
+}
+.meta-tier-chip {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 2px solid;
+  background: transparent;
+  font-weight: 800;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.meta-table-wrap {
+  padding: 0.5rem;
+  overflow-x: auto;
+}
+.meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.meta-table th {
+  text-align: left;
+  padding: 0.5rem 0.7rem;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  background: var(--bg-surface);
+}
+.meta-table th.sortable { cursor: pointer; user-select: none; }
+.meta-table th.sortable:hover { color: var(--accent-gold); }
+.meta-table td {
+  padding: 0.45rem 0.7rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.meta-table tbody tr:hover { background: var(--bg-surface-elevated); }
+.meta-table-hero {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+.meta-table-hero img {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.meta-table-rating {
+  font-family: monospace;
+  font-weight: 700;
+}
+.meta-tier-badge {
+  display: inline-block;
+  min-width: 22px;
+  text-align: center;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  color: #0a0c10;
+  font-weight: 800;
+  font-size: 0.7rem;
+}
+.meta-table td.good { color: var(--radiant-green); }
+.meta-table td.bad { color: var(--dire-red); }
+.meta-table-sub {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}

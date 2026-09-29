@@ -256,6 +256,13 @@ class HeroPositionMeta(SQLModel, table=True):
     rank-specific; see services/protracker.py). This is what
     HeroMeta/HeroMatchup can't give: OpenDota's bulk endpoints don't break
     hero performance down by position at all.
+
+    Deliberately kept minimal (just what the Draft Helper's scoring
+    engine reads) — see HeroPositionDetail for the much richer per-hero
+    breakdown behind the dedicated Meta page's table, from a different
+    real ProTracker endpoint. Kept as two separate tables rather than
+    widening this one, so the already-working draft-suggestion pipeline
+    that reads this table can't be affected by the Meta page's work.
     """
     __tablename__ = "hero_position_meta"
 
@@ -265,6 +272,51 @@ class HeroPositionMeta(SQLModel, table=True):
     matches: int = 0
     winrate: Optional[float] = None
     d2pt_rating: Optional[float] = None
+    updated_at: Optional[datetime] = None
+
+
+class HeroPositionDetail(SQLModel, table=True):
+    """
+    The full per-hero, per-position breakdown behind the Meta page's
+    table — real fields confirmed directly against Dota2ProTracker's own
+    `/api/heroes/stats?position=pos+N&...` endpoint (found by watching
+    the network tab while clicking a real position tab on their live
+    /meta page — this data is NOT in the simpler /api/heroes/list
+    endpoint HeroPositionMeta uses, confirmed by diffing the two
+    responses' real field sets directly). position 0 means "All Roles".
+
+    meta_score is their real displayed 0-100 "D2PT Rating" for this
+    exact view (confirmed matches the number rendered on their page,
+    e.g. a live-checked 62.9 rendering as "63/100") — NOT the same
+    field as this endpoint's own top-level `d2pt_rating` (a much larger
+    internal number, e.g. 3121, on a different scale entirely; not
+    stored here since it isn't what the UI displays).
+    """
+    __tablename__ = "hero_position_detail"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    hero_id: int = Field(index=True)
+    position: int = Field(index=True)  # 0=All, 1-5
+    matches: int = 0
+    wins: int = 0
+    winrate: Optional[float] = None
+    meta_score: Optional[float] = None  # their real displayed 0-100 rating
+    contest_rate: Optional[float] = None  # already a percentage, e.g. 21.3
+    lane_adv_pct: Optional[float] = None  # fraction, e.g. 0.035 = +3.5%
+    rating_rank: Optional[int] = None
+    rating_cohort_size: Optional[int] = None
+    radiant_matches: int = 0
+    radiant_wins: int = 0
+    dire_matches: int = 0
+    dire_wins: int = 0
+    phase_1_matches: int = 0
+    phase_1_wins: int = 0
+    phase_2_matches: int = 0
+    phase_2_wins: int = 0
+    phase_3_matches: int = 0
+    phase_3_wins: int = 0
+    build_matches: int = 0  # detailed_stats.best_build_winrate — most-played build's own sample
+    build_winrate: Optional[float] = None
     updated_at: Optional[datetime] = None
 
 

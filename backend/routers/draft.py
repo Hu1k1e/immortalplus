@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta, HeroSynergy, Match
+from models import Player, UserSettings, HeroMatchup, HeroPositionMeta, HeroMeta, HeroSynergy, HeroPositionDetail, Match
 from services.draft_engine import calculate_role_based_suggestions, compute_personal_position_stats
 from services.protracker import sync_hero_position_meta
 from services.sync import sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock
@@ -193,6 +193,17 @@ async def _run_refresh_meta():
                 logger.error(f"Manual refresh: hero_position_meta sync failed: {e}", exc_info=True)
                 _refresh_status["results"]["hero_position_meta"] = {"status": "error", "message": str(e)}
 
+            # The Meta page's richer table — same manual-refresh button
+            # doubles as its "we can manually pull too" trigger, per
+            # direct request.
+            try:
+                from services.protracker import sync_hero_position_detail
+                count = await sync_hero_position_detail(session)
+                _refresh_status["results"]["hero_position_detail"] = {"status": "ok" if count else "error", "count": count}
+            except Exception as e:
+                logger.error(f"Manual refresh: hero_position_detail sync failed: {e}", exc_info=True)
+                _refresh_status["results"]["hero_position_detail"] = {"status": "error", "message": str(e)}
+
             # Optional — no-ops (0, not an error) if no Stratz token is configured.
             try:
                 count = await sync_hero_synergy(session, settings)
@@ -282,6 +293,7 @@ async def data_health(session: Session = Depends(get_session)):
         source_health(HeroMatchup, "hero_matchups"),
         source_health(HeroPositionMeta, "hero_position_meta"),
         source_health(HeroSynergy, "hero_synergy"),
+        source_health(HeroPositionDetail, "hero_position_detail"),
     ]
     # hero_synergy and the Stratz path for hero_position_meta are both
     # genuinely optional (no token = intentionally inactive, not broken) —
