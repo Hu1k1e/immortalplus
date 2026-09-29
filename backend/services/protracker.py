@@ -110,31 +110,104 @@ async def fetch_hero_position_meta() -> Optional[list[dict]]:
     return rows
 
 
+_TAB_NAMES = ["All Roles", "Carry", "Mid", "Offlane", "Support", "Hard Support"]
+
+
+def _parse_position_detail_rows(raw: list[dict]) -> list[dict]:
+    """Trims one position's raw /api/heroes/stats response down to the
+    fields HeroPositionDetail stores (see fetch_hero_position_detail)."""
+    rows = []
+    for hero in raw:
+        hero_id = hero.get("hero_id")
+        matches = hero.get("matches") or 0
+        if not hero_id or matches <= 0:
+            continue
+        ds = hero.get("detailed_stats") or {}
+        build = ds.get("best_build_winrate") or {}
+        rows.append({
+            "hero_id": hero_id,
+            "matches": matches,
+            "wins": hero.get("wins") or 0,
+            "winrate": (hero.get("wins") or 0) / matches,
+            "meta_score": _to_float(hero.get("meta_score")),
+            "contest_rate": _to_float(hero.get("contest_rate")),
+            "lane_adv_pct": _to_float(ds.get("lane_avg_adv_pct")),
+            "rating_rank": hero.get("rating_rank"),
+            "rating_cohort_size": hero.get("rating_cohort_size"),
+            "radiant_matches": ds.get("radiant_matches") or 0,
+            "radiant_wins": ds.get("radiant_wins") or 0,
+            "dire_matches": ds.get("dire_matches") or 0,
+            "dire_wins": ds.get("dire_wins") or 0,
+            "phase_1_matches": ds.get("phase_1_matches") or 0,
+            "phase_1_wins": ds.get("phase_1_wins") or 0,
+            "phase_2_matches": ds.get("phase_2_matches") or 0,
+            "phase_2_wins": ds.get("phase_2_wins") or 0,
+            "phase_3_matches": ds.get("phase_3_matches") or 0,
+            "phase_3_wins": ds.get("phase_3_wins") or 0,
+            "build_matches": build.get("num_matches") or 0,
+            "build_winrate": _to_float(build.get("win_rate")),
+        })
+    return rows
+
+
+async def _fetch_one_position_detail(browser, position: int) -> Optional[list]:
+    """
+    One position, in its own fresh browser context (own cookie jar, own
+    Cloudflare challenge) — NOT a page reused across positions. Four prior
+    fix attempts (2026-09-29) all reused one page/session for all six tab
+    clicks, and each failed differently (a 20s timeout waiting for a
+    response) for whichever tab ended up in a certain slot of the
+    sequence — including on a SAME-tab retry within that same session,
+    which rules out per-click timing as the cause. That points at
+    something session-level (not per-click, not per-tab) going wrong
+    after the session's first request, which a fresh context per position
+    sidesteps entirely by construction, regardless of the exact mechanism.
+
+    "All Roles" (position 0) is the page's own default active tab on a
+    cold load, so it needs one throwaway click elsewhere first to make
+    clicking back to it a genuine state change (an already-active tab's
+    click fires no request at all).
+    """
+    import asyncio as _asyncio
+
+    context = await browser.new_context(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
+    try:
+        page = await context.new_page()
+        await page.goto(PROTRACKER_META_PAGE_URL, wait_until="load", timeout=30000)
+        await _asyncio.sleep(4)  # let the page settle/hydrate
+
+        if position == 0:
+            other = page.get_by_role("tab", name="Carry", exact=True)
+            try:
+                await other.click(timeout=10000)
+                await _asyncio.sleep(2)
+            except Exception as e:
+                logger.info(f"Dota2ProTracker detail: throwaway pre-click for position 0 raised (non-fatal): {e}")
+
+        tab = page.get_by_role("tab", name=_TAB_NAMES[position], exact=True)
+        await tab.wait_for(state="visible", timeout=10000)
+        async with page.expect_response(
+            lambda r: "/api/heroes/stats" in r.url and r.status == 200, timeout=20000
+        ) as response_info:
+            await tab.click(timeout=10000)
+        response = await response_info.value
+        # response.json() reads the raw body over CDP and parses it in
+        # Python — far lighter than the ~4.6MB-per-position payload going
+        # through page.evaluate()'s live-object serialization (an earlier,
+        # different failure this app hit before this function existed).
+        return await response.json()
+    finally:
+        await context.close()
+
+
 async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
     """
     The full per-hero, per-position breakdown behind Dota2ProTracker's
     Meta page table (see HeroPositionDetail's docstring for what
-    /api/heroes/stats returns and means).
-
-    Drives the page the same way a real visitor does — load once, then
-    click through the six real <button role="tab"> position tabs in turn
-    (their own order: All Roles, Carry, Mid, Offlane, Support, Hard
-    Support), a real pause between each — rather than issuing our own
-    fetch() calls or reloading the page per position. Confirmed live
-    (2026-09-29), in this order, chasing three different failures:
-      1. `page.goto(..., wait_until="networkidle")` could time out even
-         after the data we needed had already arrived — this page never
-         goes fully network-idle.
-      2. Once past that, six back-to-back same-page fetch() calls (even
-         with a trimmed return value) got every request after the first
-         rejected with HTTP 403 — a burst/rate check on the site's side,
-         not a URL/param/payload-size problem (the identical URL succeeds
-         from a real browser tab).
-      3. A fresh full-page navigation straight to `?position=pos+1` does
-         NOT itself trigger the stats request either — only the page's
-         own client-side tab-switch handler does.
-      Clicking each real tab, a few seconds apart, succeeded for all 6
-      positions in one continuous session — this is that.
+    /api/heroes/stats returns and means). See _fetch_one_position_detail
+    for how each position is actually fetched (a fresh browser context
+    per position) and why, after several other approaches each failed
+    differently in production.
 
     Returns {position: [{hero_id, matches, wins, winrate, meta_score,
     contest_rate, lane_adv_pct, rating_rank, rating_cohort_size,
@@ -155,122 +228,33 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
-                # Explicit viewport — a headless browser's default viewport
-                # can differ from whatever a manual verification session
-                # used, and this site's tab bar is real responsive UI (not
-                # guaranteed to lay out identically, or even render the
-                # same elements, at every width). Pinning a common desktop
-                # size makes the layout — and therefore which elements
-                # `button[role="tab"]` actually matches — deterministic.
-                # Navigating straight to a non-default `?position=` primes
-                # the page's internal state to that position WITHOUT firing
-                # its data fetch (confirmed live, 2026-09-29 — the same
-                # navigation that never triggers a stats request on its
-                # own). Diagnostic logging added after two failed fix
-                # attempts (2026-09-29) proved the tab elements and clicks
-                # themselves were never the problem — even the exact right
-                # button, clicked correctly, produced no request. Retracing
-                # the ONE session that verified this end-to-end, the first
-                # real click there was never actually from a truly cold,
-                # nothing-primed state either — it followed a prior
-                # `?position=pos+1` navigation. So the cold "just loaded,
-                # nothing clicked yet" state appears to eat exactly one
-                # click. Priming it with this navigation (to "Carry",
-                # mirroring that session) and starting the click sequence
-                # on a DIFFERENT tab avoids ever clicking from that state.
-                page = await browser.new_page(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
-                await page.goto(f"{PROTRACKER_META_PAGE_URL}?position=pos+1", wait_until="load", timeout=30000)
-                await _asyncio.sleep(5)  # let the page settle/hydrate before the first click
-
-                # Looked up by accessible NAME, not index — confirmed live
-                # (2026-09-29) exact text: "All Roles", "Carry", "Mid",
-                # "Offlane", "Support", "Hard Support". Robust against any
-                # other role="tab" element elsewhere on the page shifting
-                # what a plain .nth(i) would hit.
-                tab_names = ["All Roles", "Carry", "Mid", "Offlane", "Support", "Hard Support"]
-
-                # Primed state above is "Carry" (position 1) without its
-                # fetch having fired, so the click sequence starts at Mid
-                # and visits Carry LAST — every click is then a genuine
-                # transition away from whatever the previous one left
-                # active, exactly matching the one proven-working sequence.
-                click_order = [2, 3, 4, 5, 0, 1]
-
-                for position in click_order:
-                    tab = page.get_by_role("tab", name=tab_names[position], exact=True)
+                for position in range(6):
                     raw = None
                     last_error = None
-                    for attempt in range(3):
+                    for attempt in range(2):
                         try:
-                            await tab.wait_for(state="visible", timeout=10000)
-                            async with page.expect_response(
-                                lambda r: "/api/heroes/stats" in r.url and r.status == 200, timeout=20000
-                            ) as response_info:
-                                await tab.click(timeout=10000)
-                            response = await response_info.value
-                            # response.json() reads the raw body over CDP and
-                            # parses it in Python — far lighter than the
-                            # ~4.6MB-per-position payload going through
-                            # page.evaluate()'s live-object serialization
-                            # (the earlier, different failure noted above).
-                            raw = await response.json()
+                            raw = await _fetch_one_position_detail(browser, position)
                             break
                         except Exception as e:
                             last_error = e
-                            backoff = 10 if "403" in str(e) else 5
-                            if attempt < 2:
-                                logger.warning(f"Dota2ProTracker detail: position {position} ({tab_names[position]}) attempt {attempt + 1} failed ({e}), retrying in {backoff}s")
+                            backoff = 15 if "403" in str(e) else 8
+                            if attempt == 0:
+                                logger.warning(f"Dota2ProTracker detail: position {position} ({_TAB_NAMES[position]}) attempt 1 failed ({e}), retrying with a fresh session in {backoff}s")
                                 await _asyncio.sleep(backoff)
-                                continue
 
                     if raw is None:
-                        matched_count = await page.locator('button[role="tab"]').count()
-                        matched_texts = await page.locator('button[role="tab"]').all_text_contents()
-                        logger.error(
-                            f"Dota2ProTracker detail fetch failed for position {position} ({tab_names[position]}) "
-                            f"after 3 attempts: {last_error}. Page currently has {matched_count} role=tab elements: {matched_texts}"
-                        )
-                        await _asyncio.sleep(4)
+                        logger.error(f"Dota2ProTracker detail fetch failed for position {position} ({_TAB_NAMES[position]}) after 2 fresh-session attempts: {last_error}")
+                        await _asyncio.sleep(3)
                         continue
 
-                    rows = []
-                    for hero in raw:
-                        hero_id = hero.get("hero_id")
-                        matches = hero.get("matches") or 0
-                        if not hero_id or matches <= 0:
-                            continue
-                        ds = hero.get("detailed_stats") or {}
-                        build = ds.get("best_build_winrate") or {}
-                        rows.append({
-                            "hero_id": hero_id,
-                            "matches": matches,
-                            "wins": hero.get("wins") or 0,
-                            "winrate": (hero.get("wins") or 0) / matches,
-                            "meta_score": _to_float(hero.get("meta_score")),
-                            "contest_rate": _to_float(hero.get("contest_rate")),
-                            "lane_adv_pct": _to_float(ds.get("lane_avg_adv_pct")),
-                            "rating_rank": hero.get("rating_rank"),
-                            "rating_cohort_size": hero.get("rating_cohort_size"),
-                            "radiant_matches": ds.get("radiant_matches") or 0,
-                            "radiant_wins": ds.get("radiant_wins") or 0,
-                            "dire_matches": ds.get("dire_matches") or 0,
-                            "dire_wins": ds.get("dire_wins") or 0,
-                            "phase_1_matches": ds.get("phase_1_matches") or 0,
-                            "phase_1_wins": ds.get("phase_1_wins") or 0,
-                            "phase_2_matches": ds.get("phase_2_matches") or 0,
-                            "phase_2_wins": ds.get("phase_2_wins") or 0,
-                            "phase_3_matches": ds.get("phase_3_matches") or 0,
-                            "phase_3_wins": ds.get("phase_3_wins") or 0,
-                            "build_matches": build.get("num_matches") or 0,
-                            "build_winrate": _to_float(build.get("win_rate")),
-                        })
+                    rows = _parse_position_detail_rows(raw)
                     result[position] = rows
                     logger.info(f"Dota2ProTracker detail: fetched {len(rows)} rows for position {position}")
 
-                    # Real human-like pacing between tab clicks — this
-                    # pacing (not the URL/params/payload) is what avoided
-                    # the 403s seen with back-to-back fetch() calls.
-                    await _asyncio.sleep(4)
+                    # Real pacing between positions — each already
+                    # involves its own fresh page load, so this is on top
+                    # of that, not a substitute for it.
+                    await _asyncio.sleep(3)
             finally:
                 await browser.close()
     except Exception as e:
