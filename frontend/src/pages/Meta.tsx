@@ -84,6 +84,28 @@ export default function Meta() {
 
   useEffect(() => { fetchData(position); }, [position]);
 
+  // Auto-refresh on the same cadence as the backend actually re-syncs
+  // this data (protracker_interval_minutes, configured in Settings —
+  // shared with the Draft Helper's position data, since both now read
+  // from the same HeroPositionMeta table) — otherwise this page only
+  // ever shows what it had at initial load until a manual refresh or a
+  // full page reload, even though fresher data exists server-side.
+  const [autoRefreshMinutes, setAutoRefreshMinutes] = useState(30);
+  useEffect(() => {
+    api.get('/settings').then((res) => {
+      const d = res.data;
+      if (d && typeof d === 'object' && typeof d.protracker_interval_minutes === 'number') {
+        setAutoRefreshMinutes(d.protracker_interval_minutes);
+      }
+    }).catch(() => {});
+  }, []);
+  useEffect(() => {
+    const ms = Math.max(1, autoRefreshMinutes) * 60 * 1000;
+    const id = setInterval(() => fetchData(position), ms);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position, autoRefreshMinutes]);
+
   // Real min/max matches across the current list, same idea as
   // ProTracker's own "Matches" range slider — bounds move with whatever
   // position/data is currently loaded rather than a hardcoded range.
@@ -97,16 +119,33 @@ export default function Meta() {
 
   // Extracted so both a fresh click and the mount-time "is a refresh
   // already running" check above can drive the same polling loop.
+  //
+  // This page only cares about the hero_position_meta step of the
+  // combined refresh — the same POST /draft/refresh-meta also syncs
+  // hero_matchups/hero_synergy for the Draft Helper, which involves many
+  // more rate-limited per-hero calls and can keep running for a while
+  // after hero_position_meta is already done. Waiting for the *overall*
+  // state to become "done" made this page's button say "Refreshing…"
+  // long after its own data had actually updated, which is what looked
+  // like a stuck/broken refresh. Resolving as soon as hero_position_meta
+  // shows up in results (regardless of the other steps) fixes that.
   const pollRefreshStatus = useCallback(() => {
     const poll = async () => {
       try {
         const res = await api.get('/draft/refresh-meta/status');
-        if (res.data.state === 'done') {
-          const results = res.data.results || {};
-          const allOk = Object.values(results).every((r: any) => r.status === 'ok');
-          setRefreshStatus(allOk ? 'ok' : 'error');
+        const results = res.data.results || {};
+        const ownStep = results.hero_position_meta;
+        if (ownStep) {
+          setRefreshStatus(ownStep.status === 'ok' ? 'ok' : 'error');
           setTimeout(() => setRefreshStatus('idle'), 4000);
           fetchData(position);
+          return;
+        }
+        if (res.data.state === 'done') {
+          // Finished without ever reporting hero_position_meta (shouldn't
+          // normally happen, but don't spin forever if it does).
+          setRefreshStatus('error');
+          setTimeout(() => setRefreshStatus('idle'), 4000);
           return;
         }
       } catch (err) { console.error(err); }
