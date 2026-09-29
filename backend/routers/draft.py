@@ -382,6 +382,49 @@ async def backfill_history_status():
     return _backfill_status
 
 
+@router.get("/debug-hero-positions/{hero_id}")
+async def debug_hero_positions(hero_id: int, session: Session = Depends(get_session)):
+    """
+    TEMPORARY — real per-position raw counts for one hero straight from
+    the local Match table, bypassing MIN_PERSONAL_GAMES so a count below
+    that floor (silently excluded from /suggest's your_best) is still
+    visible. Added after the backfill diagnostics showed 84.8% of ALL
+    matches have real position data (so the backfill itself isn't the
+    remaining gap), yet Windranger still only ever showed up under Carry
+    — need to see its real raw distribution to know if that's genuinely
+    where most of this account's Windranger games were played, or if
+    something is wrong with how those specific rows are stored.
+    """
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="No player profile found")
+
+    matches = session.exec(
+        select(Match).where(Match.player_id == player.id).where(Match.hero_id == hero_id)
+    ).all()
+
+    from collections import Counter
+    from services.draft_engine import estimate_position
+
+    real_position_counts = Counter(m.position for m in matches)
+    estimated_position_counts = Counter(
+        m.position or estimate_position(m.lane_role, m.gpm) for m in matches
+    )
+    wins = sum(1 for m in matches if m.result == "win")
+
+    return {
+        "hero_id": hero_id,
+        "total_matches": len(matches),
+        "wins": wins,
+        "real_position_counts": dict(real_position_counts),
+        "estimated_position_counts (what /suggest actually uses)": dict(estimated_position_counts),
+        "sample_rows": [
+            {"match_id": m.match_id, "position": m.position, "lane_role": m.lane_role, "gpm": m.gpm, "result": m.result}
+            for m in matches[:10]
+        ],
+    }
+
+
 @router.get("/state")
 async def get_draft_state():
     """Get current GSI draft state."""
