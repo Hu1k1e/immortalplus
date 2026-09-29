@@ -56,6 +56,26 @@ MIN_PERSONAL_GAMES = 3
 # real, established part of the player's pool; scales linearly below it.
 YOUR_BEST_VOLUME_CAP_GAMES = 25
 
+# your_best's comfort-vs-situational weight split now scales with how
+# familiar the player actually is with the hero, rather than being a
+# fixed ratio for every hero regardless of games played — direct
+# request: a well-matched but barely-played hero shouldn't be able to
+# leapfrog a real main just because of one strong matchup, but a truly
+# brutal matchup should still be able to move a hero down even if it's
+# a main. YOUR_BEST_MAX_COMFORT_WEIGHT (a hero played
+# YOUR_BEST_VOLUME_CAP_GAMES+ times — full familiarity) leaves 35% for
+# matchup+synergy combined, comfortably within range of a real extreme
+# matchup/synergy swing (the *5-normalized score components can move a
+# full 50 points off neutral). YOUR_BEST_MIN_COMFORT_WEIGHT (a hero at
+# the MIN_PERSONAL_GAMES floor — barely enough data to trust at all)
+# lets matchup+synergy count for more, since there's little comfort
+# data yet to weigh against them. The 25:15 proportion between matchup
+# and synergy weight (matching combined's own ratio) is preserved at
+# every familiarity level.
+YOUR_BEST_MAX_COMFORT_WEIGHT = 0.65
+YOUR_BEST_MIN_COMFORT_WEIGHT = 0.40
+_MATCHUP_SYNERGY_RATIO = 0.25 / (0.25 + 0.15)  # matchup's share of the non-comfort weight
+
 
 def estimate_position(lane_role: int | None, gpm: int | None) -> int | None:
     """
@@ -348,21 +368,45 @@ def calculate_role_based_suggestions(
                 volume_component = min(personal_stats["games"] / YOUR_BEST_VOLUME_CAP_GAMES, 1.0) * 100
                 personal_component = winrate_component  # used by combined below
                 your_best_personal_blend = winrate_component * 0.6 + volume_component * 0.4
+                # confidence already reflects games played (capped at 20)
+                # — reused directly as the familiarity dial for the
+                # comfort/situational weight split, rather than
+                # introducing a second, separately-tuned scale.
+                comfort_weight = YOUR_BEST_MIN_COMFORT_WEIGHT + confidence * (
+                    YOUR_BEST_MAX_COMFORT_WEIGHT - YOUR_BEST_MIN_COMFORT_WEIGHT
+                )
             else:
                 personal_component = 50.0
                 your_best_personal_blend = None
+                comfort_weight = None
 
             matchup_component, matchup_reasons, matchup_breakdown = _matchup_score(hero_id, enemy_picks, hero_matchups)
             synergy_component, synergy_reasons, synergy_breakdown = _synergy_score(hero_id, ally_picks, hero_synergy)
 
             if has_personal:
+                situational_weight = 1.0 - comfort_weight
+                matchup_weight = situational_weight * _MATCHUP_SYNERGY_RATIO
+                synergy_weight = situational_weight - matchup_weight
+                # The persistent "+X" shown next to the hero (not just in
+                # the hover breakdown) — how many points the CURRENT
+                # draft (this hero's matchup vs your enemies + synergy
+                # with your allies) is actually moving the score, at this
+                # hero's own familiarity-scaled weight. Zero with no picks
+                # yet or no real data for any of them.
+                draft_impact = round(
+                    (matchup_component - 50) * matchup_weight + (synergy_component - 50) * synergy_weight, 1
+                )
                 your_best.append({
                     "hero_id": hero_id,
                     "hero_name": get_hero_name(hero_id),
                     "score": round(
-                        your_best_personal_blend * 0.6 + matchup_component * 0.25 + synergy_component * 0.15, 1
+                        your_best_personal_blend * comfort_weight
+                        + matchup_component * matchup_weight
+                        + synergy_component * synergy_weight,
+                        1,
                     ),
                     "reason": f"{personal_stats['games']} games, {personal_winrate*100:.0f}% WR",
+                    "draft_impact": draft_impact,
                     "matchup_breakdown": matchup_breakdown,
                     "synergy_breakdown": synergy_breakdown,
                 })
@@ -385,6 +429,11 @@ def calculate_role_based_suggestions(
                 "hero_name": get_hero_name(hero_id),
                 "score": round(combined_score, 1),
                 "reasons": reasons[:4],
+                # Persistent "+X" next to the hero (not just the hover
+                # breakdown) — how many points the current draft is
+                # actually moving this score, at combined's fixed
+                # matchup/synergy weights.
+                "draft_impact": round((matchup_component - 50) * 0.25 + (synergy_component - 50) * 0.15, 1),
                 # Full per-hero breakdown (every currently-picked enemy/ally
                 # this hero has real data for, not just the top-2 that make
                 # the "reasons" text) — the frontend renders this as a
@@ -409,6 +458,7 @@ def calculate_role_based_suggestions(
                 "hero_name": get_hero_name(hero_id),
                 "score": round(meta_score * 0.6 + matchup_component * 0.25 + synergy_component * 0.15, 1),
                 "reason": meta_reason,
+                "draft_impact": round((matchup_component - 50) * 0.25 + (synergy_component - 50) * 0.15, 1),
                 "matchup_breakdown": matchup_breakdown,
                 "synergy_breakdown": synergy_breakdown,
             })

@@ -31,6 +31,11 @@ interface RoleSuggestion {
   // tooltip instead of static text.
   matchup_breakdown?: MatchupBreakdownEntry[];
   synergy_breakdown?: MatchupBreakdownEntry[];
+  // How many points the CURRENT draft (matchup vs enemies + synergy
+  // with allies) is moving this hero's score, at its own weight in
+  // whichever list this entry is from — shown as a persistent +/- badge
+  // next to the hero, not just in the hover breakdown.
+  draft_impact?: number;
 }
 
 interface RoleBlock {
@@ -521,6 +526,39 @@ export default function DraftHelper() {
     );
   };
 
+  // Shared by the bottom "Best This Patch"/"Your Best" cards: the same
+  // persistent +/- draft-impact badge and hover breakdown tooltip the
+  // per-position columns already show (see renderScoreList), so the
+  // summary cards don't lose that context just because they use a
+  // different card layout.
+  const renderImpactBadge = (s: RoleSuggestion) => (
+    !!s.draft_impact && (
+      <span
+        className={`suggestion-card-impact ${s.draft_impact >= 0 ? 'good' : 'bad'}`}
+        title="How much the current draft (matchup vs enemies + synergy with allies) is moving this score"
+      >
+        {s.draft_impact >= 0 ? '+' : ''}{s.draft_impact.toFixed(1)}
+      </span>
+    )
+  );
+
+  const renderBreakdownTooltip = (s: RoleSuggestion) => {
+    const breakdown = [...(s.matchup_breakdown || []), ...(s.synergy_breakdown || [])];
+    if (!breakdown.length) return null;
+    return (
+      <div className="position-row-tooltip suggestion-card-tooltip">
+        {breakdown.map((b, idx) => (
+          <div className="position-row-tooltip-item" key={`${b.hero_id}-${idx}`}>
+            <img src={getHeroIcon(b.hero_id)} alt={b.hero_name} />
+            <span className={b.value >= 0 ? 'good' : 'bad'}>
+              {b.value >= 0 ? '+' : ''}{b.value.toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderScoreList = (items: RoleSuggestion[], emptyText: string) => {
     if (!items.length) return <p className="text-muted suggestion-empty">{emptyText}</p>;
     return (
@@ -544,6 +582,14 @@ export default function DraftHelper() {
               >
                 {Math.round(s.score)}
               </span>
+              {!!s.draft_impact && (
+                <span
+                  className={`position-row-impact ${s.draft_impact >= 0 ? 'good' : 'bad'}`}
+                  title="How much the current draft (matchup vs enemies + synergy with allies) is moving this score"
+                >
+                  {s.draft_impact >= 0 ? '+' : ''}{s.draft_impact.toFixed(1)}
+                </span>
+              )}
               {breakdown.length > 0 && (
                 <div className="position-row-tooltip">
                   {breakdown.map((b, idx) => (
@@ -781,10 +827,14 @@ export default function DraftHelper() {
                         <div className="suggestion-card-body">
                           <div className="suggestion-card-top">
                             <span className="suggestion-card-name">{hero.name}</span>
-                            <span className="suggestion-card-score">{s.score.toFixed(0)}</span>
+                            <span className="suggestion-card-score-group">
+                              {renderImpactBadge(s)}
+                              <span className="suggestion-card-score">{s.score.toFixed(0)}</span>
+                            </span>
                           </div>
                           <div className="suggestion-score-bar"><div className="suggestion-score-bar-fill" style={{ width: `${Math.min(100, Math.max(4, s.score))}%` }} /></div>
                         </div>
+                        {renderBreakdownTooltip(s)}
                       </div>
                     );
                   })}
@@ -809,11 +859,15 @@ export default function DraftHelper() {
                         <div className="suggestion-card-body">
                           <div className="suggestion-card-top">
                             <span className="suggestion-card-name">{hero.name}</span>
-                            <span className="suggestion-card-score">{s.score.toFixed(0)}</span>
+                            <span className="suggestion-card-score-group">
+                              {renderImpactBadge(s)}
+                              <span className="suggestion-card-score">{s.score.toFixed(0)}</span>
+                            </span>
                           </div>
                           <div className="suggestion-score-bar"><div className="suggestion-score-bar-fill" style={{ width: `${Math.min(100, Math.max(4, s.score))}%` }} /></div>
                           {s.reason && <span className="suggestion-card-reason">{s.reason}</span>}
                         </div>
+                        {renderBreakdownTooltip(s)}
                       </div>
                     );
                   })}

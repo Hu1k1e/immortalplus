@@ -410,6 +410,7 @@ button {
 }
 
 .suggestion-card {
+  position: relative;
   display: flex;
   gap: 0.7rem;
   align-items: center;
@@ -457,11 +458,37 @@ button {
   text-overflow: ellipsis;
 }
 
+.suggestion-card-score-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
 .suggestion-card-score {
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--accent-gold);
   flex-shrink: 0;
+}
+
+.suggestion-card-impact {
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: monospace;
+  opacity: 0.85;
+}
+.suggestion-card-impact.good { color: var(--radiant-green); }
+.suggestion-card-impact.bad { color: var(--dire-red); }
+
+/* Reuses .position-row-tooltip's look (see that rule) but anchored to
+   the bottom-left of a suggestion card instead of a position-row. */
+.suggestion-card-tooltip.position-row-tooltip {
+  left: 0.5rem;
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 2px;
 }
 
 .suggestion-score-bar {
@@ -712,7 +739,7 @@ button {
 .position-row {
   position: relative;
   display: grid;
-  grid-template-columns: 22px 1fr auto;
+  grid-template-columns: 22px 1fr auto auto;
   align-items: center;
   gap: 0 0.35rem;
   padding: 0.3rem 0.4rem;
@@ -743,6 +770,16 @@ button {
 }
 .position-row-score.good { color: var(--radiant-green); }
 .position-row-score.bad { color: var(--dire-red); }
+.position-row-impact {
+  font-size: 0.58rem;
+  font-weight: 600;
+  font-family: monospace;
+  opacity: 0.85;
+  min-width: 2.6em;
+  text-align: right;
+}
+.position-row-impact.good { color: var(--radiant-green); }
+.position-row-impact.bad { color: var(--dire-red); }
 
 /* Hover tooltip showing the full per-enemy/per-ally breakdown behind a
    suggestion's score — replaces the old always-visible, truncated-to-one
@@ -768,7 +805,8 @@ button {
   pointer-events: none;
   transition: opacity var(--transition-fast);
 }
-.position-row:hover .position-row-tooltip {
+.position-row:hover .position-row-tooltip,
+.suggestion-card:hover .position-row-tooltip {
   opacity: 1;
   visibility: visible;
 }
