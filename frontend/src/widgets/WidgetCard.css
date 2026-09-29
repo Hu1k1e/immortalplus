@@ -1,0 +1,114 @@
+.widget-card {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.widget-card.is-editing {
+  outline: 1px solid transparent;
+}
+
+.widget-card-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.widget-card-icon {
+  color: var(--accent-gold);
+  flex-shrink: 0;
+}
+
+.widget-card-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.widget-card-header-extra {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.widget-card-body {
+  flex: 1;
+  min-height: 0;
+  padding: 1.1rem;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.widget-card-body-chromeless {
+  padding: 0;
+}
+
+.widget-card-chromeless {
+  position: relative;
+}
+
+.widget-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: grab;
+  flex-shrink: 0;
+}
+.widget-drag-handle:active {
+  cursor: grabbing;
+}
+
+.widget-remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.widget-remove-btn:hover {
+  background: rgba(194, 53, 43, 0.2);
+  color: var(--dire-red);
+}
+
+.widget-card-edit-overlay {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  left: 0.5rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.widget-card-edit-overlay .widget-drag-handle,
+.widget-card-edit-overlay .widget-remove-btn {
+  pointer-events: auto;
+  background: rgba(10, 12, 16, 0.65);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem;
+}
+
+/* Scrollable widget bodies shouldn't show a big ugly native scrollbar --
+   reuse the app's slim custom one (see index.css) automatically. */
+.widget-card-body::-webkit-scrollbar {
+  width: 6px;
+}

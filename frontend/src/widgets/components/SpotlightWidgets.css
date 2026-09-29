@@ -1,0 +1,197 @@
+.spotlight-card {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.spotlight-loading {
+  background: var(--bg-surface);
+}
+
+.spotlight-empty {
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  background: var(--bg-surface);
+}
+
+/* ── Hero splash cards (last match / most played) ───────────────────── */
+
+.hero-spotlight {
+  background-size: cover;
+  background-position: center 20%;
+  cursor: pointer;
+  justify-content: flex-end;
+  transition: transform var(--transition-normal);
+}
+.hero-spotlight:hover {
+  transform: scale(1.01);
+}
+
+.hero-spotlight-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 12, 16, 0.15) 0%, rgba(10, 12, 16, 0.35) 45%, rgba(10, 12, 16, 0.92) 100%);
+}
+
+.hero-spotlight-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  padding: 1rem 1.2rem;
+}
+
+.hero-spotlight-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hero-spotlight-result {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  backdrop-filter: blur(4px);
+}
+.hero-spotlight-result.win {
+  background: rgba(81, 164, 69, 0.25);
+  color: #8fe07f;
+  border: 1px solid rgba(81, 164, 69, 0.5);
+}
+.hero-spotlight-result.loss {
+  background: rgba(194, 53, 43, 0.25);
+  color: #f5978f;
+  border: 1px solid rgba(194, 53, 43, 0.5);
+}
+
+.hero-spotlight-badge {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: rgba(226, 183, 66, 0.22);
+  color: var(--accent-gold-hover);
+  border: 1px solid rgba(226, 183, 66, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.hero-spotlight-time {
+  font-size: 0.72rem;
+  color: rgba(240, 243, 248, 0.75);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+.hero-spotlight-name {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.hero-spotlight-stats {
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(240, 243, 248, 0.9);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+}
+.hero-spotlight-dot {
+  opacity: 0.5;
+}
+.hero-spotlight-stats .good { color: #8fe07f; }
+.hero-spotlight-stats .bad { color: #f5978f; }
+
+/* ── Player identity card ────────────────────────────────────────────── */
+
+.identity-spotlight {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.6rem;
+  padding: 1.5rem;
+  background: radial-gradient(circle at 50% 0%, rgba(226, 183, 66, 0.08), transparent 65%);
+}
+
+.identity-spotlight-glow {
+  position: absolute;
+  top: -40%;
+  left: 50%;
+  width: 220px;
+  height: 220px;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(226, 183, 66, 0.12), transparent 70%);
+  pointer-events: none;
+}
+
+.identity-spotlight-avatar {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  border: 2px solid var(--border-highlight);
+  box-shadow: var(--shadow-gold);
+}
+
+.identity-spotlight-name {
+  position: relative;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.identity-spotlight-rank {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+.identity-spotlight-rank img {
+  width: 22px;
+  height: 22px;
+}
+
+/* ── Small metric grids (lane record, party/unranked) ───────────────── */
+
+.mini-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  height: 100%;
+  align-content: center;
+}
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.mini-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+.mini-stat-value {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: monospace;
+}
