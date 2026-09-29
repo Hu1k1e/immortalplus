@@ -51,6 +51,11 @@ ROLE_KEYS = {1: "carry", 2: "mid", 3: "offlane", 4: "soft_support", 5: "hard_sup
 # below this, a small sample could show a misleading 100% or 0% winrate.
 MIN_PERSONAL_GAMES = 3
 
+# Games at which "Your Best"'s volume component maxes out (see below) —
+# a hero played this many times or more gets full credit for being a
+# real, established part of the player's pool; scales linearly below it.
+YOUR_BEST_VOLUME_CAP_GAMES = 25
+
 
 def estimate_position(lane_role: int | None, gpm: int | None) -> int | None:
     """
@@ -301,18 +306,33 @@ def calculate_role_based_suggestions(
         personal_for_role = personal_position_stats.get(position, {})
 
         # ── your_best: player's own history at this position ─────────
+        # Real, reported problem with ranking by bare winrate (games only
+        # as a tiebreaker): a hero played 4-5 times at a lucky 75-80% WR
+        # consistently outranked a hero played 18 times at a real,
+        # sustainable winrate — the opposite of "most played heroes +
+        # win rate, a combination of both" that was actually wanted.
+        # Score is now genuinely both: a confidence-weighted winrate
+        # (shrinks toward neutral 50 for a small sample — the same
+        # technique already used for combined's personal_component, so a
+        # lucky 4-game streak can't look as trustworthy as a real 18-game
+        # sample) blended with an explicit volume component that rewards
+        # games played on its own terms, not just as a tiebreaker.
         your_best = []
         for hero_id, stats in personal_for_role.items():
             if hero_id in unavailable or stats["games"] < MIN_PERSONAL_GAMES:
                 continue
             winrate = stats["wins"] / stats["games"]
+            confidence = min(stats["games"] / 20.0, 1.0)
+            winrate_component = winrate * 100 * confidence + 50 * (1 - confidence)
+            volume_component = min(stats["games"] / YOUR_BEST_VOLUME_CAP_GAMES, 1.0) * 100
+            score = winrate_component * 0.6 + volume_component * 0.4
             your_best.append({
                 "hero_id": hero_id,
                 "hero_name": get_hero_name(hero_id),
-                "score": round(winrate * 100, 1),
+                "score": round(score, 1),
                 "reason": f"{stats['games']} games, {winrate*100:.0f}% WR",
             })
-        your_best.sort(key=lambda x: (x["score"], personal_for_role[x["hero_id"]]["games"]), reverse=True)
+        your_best.sort(key=lambda x: x["score"], reverse=True)
         your_best = your_best[:top_n]
 
         # ── meta_best (draft-reactive) + combined ──────────────────────
