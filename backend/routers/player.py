@@ -14,6 +14,7 @@ from sqlmodel import select
 from database import get_session
 from models import Player, UserSettings, Match
 from services.opendota import get_opendota_client
+from services.steam import SteamClient
 from utils.dota_constants import (
     GAME_MODES, LOBBY_TYPES, POSITIONS,
     get_hero_name, get_hero_icon_url, get_hero_image_url,
@@ -104,26 +105,47 @@ async def setup_player(
     profile = data.get("profile", {})
     rank_tier = data.get("rank_tier")
     mmr = data.get("mmr_estimate", {}).get("estimate")
+    # OpenDota's own /players/{id} response has been observed with a real
+    # "profile" object whose personaname/avatarfull/profileurl keys are
+    # PRESENT but explicitly null (not simply absent) for accounts it
+    # hasn't fully cached yet — `dict.get(key, default)` only falls back
+    # to `default` when the key is missing, not when its value is None,
+    # so this must use `or` to actually catch that case.
+    persona_name = profile.get("personaname") or (existing.persona_name if existing else None)
+    avatar_url = profile.get("avatarfull") or (existing.avatar_url if existing else None)
+    profile_url = profile.get("profileurl") or (existing.profile_url if existing else None)
+    steamid64 = profile.get("steamid") or sid
+
+    settings_for_steam = settings
+    if (not persona_name or not avatar_url) and settings_for_steam and settings_for_steam.steam_api_key:
+        try:
+            summary = await SteamClient(settings_for_steam.steam_api_key).get_player_summary(steamid64)
+            if summary:
+                persona_name = persona_name or summary.get("personaname")
+                avatar_url = avatar_url or summary.get("avatarfull")
+                profile_url = profile_url or summary.get("profileurl")
+        except Exception as e:
+            logger.info(f"Steam API profile fallback failed for {steamid64}: {e}")
 
     if existing:
-        existing.persona_name = profile.get("personaname", existing.persona_name)
-        existing.avatar_url = profile.get("avatarfull", existing.avatar_url)
+        existing.persona_name = persona_name
+        existing.avatar_url = avatar_url
         existing.rank_tier = rank_tier or existing.rank_tier
         existing.mmr_estimate = mmr or existing.mmr_estimate
-        existing.profile_url = profile.get("profileurl", existing.profile_url)
+        existing.profile_url = profile_url
         existing.last_sync_at = datetime.utcnow()
         session.commit()
         session.refresh(existing)
         player = existing
     else:
         player = Player(
-            steam_id=profile.get("steamid", sid),
+            steam_id=steamid64,
             account_id=account_id,
-            persona_name=profile.get("personaname", ""),
-            avatar_url=profile.get("avatarfull", ""),
+            persona_name=persona_name or "",
+            avatar_url=avatar_url or "",
             rank_tier=rank_tier,
             mmr_estimate=mmr,
-            profile_url=profile.get("profileurl", ""),
+            profile_url=profile_url or "",
             last_sync_at=datetime.utcnow(),
         )
         session.add(player)
@@ -249,8 +271,23 @@ async def refresh_player_data(session: Session = Depends(get_session)):
     try:
         data = await client.get_player(player.account_id)
         profile = data.get("profile", {})
-        player.persona_name = profile.get("personaname", player.persona_name)
-        player.avatar_url = profile.get("avatarfull", player.avatar_url)
+        persona_name = profile.get("personaname") or player.persona_name
+        avatar_url = profile.get("avatarfull") or player.avatar_url
+        profile_url = profile.get("profileurl") or player.profile_url
+
+        if (not persona_name or not avatar_url) and settings and settings.steam_api_key:
+            try:
+                summary = await SteamClient(settings.steam_api_key).get_player_summary(player.steam_id)
+                if summary:
+                    persona_name = persona_name or summary.get("personaname")
+                    avatar_url = avatar_url or summary.get("avatarfull")
+                    profile_url = profile_url or summary.get("profileurl")
+            except Exception as e:
+                logger.info(f"Steam API profile fallback failed for {player.steam_id}: {e}")
+
+        player.persona_name = persona_name
+        player.avatar_url = avatar_url
+        player.profile_url = profile_url
         player.rank_tier = data.get("rank_tier") or player.rank_tier
         player.mmr_estimate = data.get("mmr_estimate", {}).get("estimate") or player.mmr_estimate
         player.last_sync_at = datetime.utcnow()
@@ -345,9 +382,29 @@ async def get_player_trends(
             position_counts[m.position] = position_counts.get(m.position, 0) + 1
 
     hero_counts: dict = {}
+    # `recent` is newest-first (ordered by match_id desc), so the first
+    # match seen per hero_id during this single pass is that hero's most
+    # recent game in the window — used to make the Trends ring's hero
+    # icons clickable straight to a real match.
+    hero_last_match: dict = {}
     for m in recent:
         hero_counts[m.hero_id] = hero_counts.get(m.hero_id, 0) + 1
+        hero_last_match.setdefault(m.hero_id, m.match_id)
     top_heroes = sorted(hero_counts.items(), key=lambda x: -x[1])[:14]
+
+    # "Lane Record" — this app's derived stand-in for Stratz's own
+    # (proprietary, undocumented) stat of the same name: win/loss counts
+    # split by Safe Lane vs Off Lane (lane_role 1 / 3 — the two lanes with
+    # a clear contested "won/lost the lane" framing; Mid and Jungle are
+    # excluded as a different shape of matchup).
+    safe_wins = sum(1 for m in recent if m.lane_role == 1 and m.result == "win")
+    safe_losses = sum(1 for m in recent if m.lane_role == 1 and m.result == "loss")
+    off_wins = sum(1 for m in recent if m.lane_role == 3 and m.result == "win")
+    off_losses = sum(1 for m in recent if m.lane_role == 3 and m.result == "loss")
+
+    # lobby_type 5 and 7 are both "Ranked" (see LOBBY_TYPES) — everything
+    # else (Normal, Practice, Battle Cup, etc.) counts as unranked here.
+    unranked_pct = round(sum(1 for m in recent if m.lobby_type not in (5, 7)) / total * 100, 1) if total else 0
 
     def _winrate(lst) -> Optional[float]:
         t = len(lst)
@@ -366,6 +423,8 @@ async def get_player_trends(
         "newer_half_winrate": _winrate(newer_half),
         "older_half_winrate": _winrate(older_half),
         "party_pct": round(sum(1 for m in recent if (m.party_size or 1) > 1) / total * 100, 1) if total else 0,
+        "unranked_pct": unranked_pct,
+        "lane_record": {"safe_wins": safe_wins, "safe_losses": safe_losses, "off_wins": off_wins, "off_losses": off_losses},
         "position_breakdown": [
             {"position": p, "position_name": POSITIONS.get(p), "count": c}
             for p, c in sorted(position_counts.items())
@@ -376,7 +435,10 @@ async def get_player_trends(
             for m in reversed(recent)
         ],
         "top_heroes": [
-            {"hero_id": h, "hero_name": get_hero_name(h), "hero_icon": get_hero_icon_url(h), "count": c}
+            {
+                "hero_id": h, "hero_name": get_hero_name(h), "hero_icon": get_hero_icon_url(h),
+                "count": c, "match_id": hero_last_match.get(h),
+            }
             for h, c in top_heroes
         ],
     }

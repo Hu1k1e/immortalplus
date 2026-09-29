@@ -44,6 +44,33 @@ class SteamClient:
                 logger.error(f"Error fetching from Steam API: {e}")
                 return None
 
+    async def get_player_summary(self, steam_id_64: str) -> Optional[Dict[str, Any]]:
+        """
+        Persona name / avatar / profile URL straight from the Steam Web API
+        (ISteamUser/GetPlayerSummaries) — a fallback for when OpenDota's own
+        /players/{id} response comes back without a cached `profile` block
+        (happens for accounts OpenDota hasn't indexed yet; persona name and
+        avatar are public Steam data even on an otherwise-private profile,
+        unlike match history, so this still works in that case).
+        """
+        if not self.api_key:
+            return None
+
+        url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/"
+        params = {"key": self.api_key, "steamids": steam_id_64}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(url, params=params)
+                if response.status_code != 200:
+                    logger.error(f"Steam API GetPlayerSummaries returned {response.status_code}: {response.text}")
+                    return None
+                players = response.json().get("response", {}).get("players", [])
+                return players[0] if players else None
+            except Exception as e:
+                logger.error(f"Error fetching player summary from Steam API: {e}")
+                return None
+
 
 async def resolve_cluster_salt(
     match,

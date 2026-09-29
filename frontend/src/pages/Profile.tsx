@@ -50,41 +50,105 @@ function formatDuration(seconds?: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function Donut({ breakdown, size = 150 }: { breakdown: { position: number; position_name: string; count: number }[]; size?: number }) {
-  const total = breakdown.reduce((s, b) => s + b.count, 0);
-  const r = size / 2 - 14;
-  const circumference = 2 * Math.PI * r;
-  let offset = 0;
-  const segments = breakdown.map((b) => {
-    const frac = total ? b.count / total : 0;
-    const seg = { ...b, frac, dash: frac * circumference, offset };
-    offset += frac * circumference;
+const HERO_RING_COLORS = ['#e2b742', '#4fb8e0', '#8b6bd8', '#e07a5f', '#51a445', '#d4a5e8', '#f2c14e', '#6a9fb5', '#c17f59', '#9dd47a', '#e895c2', '#7fa8d9'];
+
+function polarPoint(cx: number, cy: number, r: number, angleDeg: number) {
+  const rad = (angleDeg * Math.PI) / 180;
+  return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
+}
+
+function TrendsRing({
+  heroes, positions, onHeroClick, size = 190,
+}: {
+  heroes: { hero_id: number; hero_name: string; hero_icon: string; count: number; match_id: number | null }[];
+  positions: { position: number; position_name: string; count: number }[];
+  onHeroClick: (matchId: number) => void;
+  size?: number;
+}) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const outerR = size / 2 - 27;
+  const outerWidth = 30;
+  const innerR = outerR - 26;
+  const innerWidth = 16;
+
+  const heroTotal = heroes.reduce((s, h) => s + h.count, 0);
+  const outerCirc = 2 * Math.PI * outerR;
+  let outerOffset = 0;
+  const heroSegs = heroes.map((h) => {
+    const frac = heroTotal ? h.count / heroTotal : 0;
+    const seg = { ...h, frac, dash: frac * outerCirc, offset: outerOffset, midAngle: -90 + (outerOffset / outerCirc) * 360 + (frac * 360) / 2 };
+    outerOffset += frac * outerCirc;
     return seg;
   });
+
+  const posTotal = positions.reduce((s, p) => s + p.count, 0);
+  const innerCirc = 2 * Math.PI * innerR;
+  let innerOffset = 0;
+  const posSegs = positions.map((p) => {
+    const frac = posTotal ? p.count / posTotal : 0;
+    const seg = { ...p, frac, dash: frac * innerCirc, offset: innerOffset };
+    innerOffset += frac * innerCirc;
+    return seg;
+  });
+
+  const iconSize = 22;
 
   return (
     <div className="profile-donut-wrap">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="16" />
-        {total === 0 && (
-          <text x={size / 2} y={size / 2} textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="var(--text-muted)">No data</text>
+        <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={outerWidth} />
+        <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={innerWidth} />
+
+        {heroTotal === 0 && (
+          <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="var(--text-muted)">No data</text>
         )}
-        {segments.map((s) => (
+
+        {heroSegs.map((s, i) => (
+          <circle
+            key={s.hero_id}
+            cx={cx} cy={cy} r={outerR}
+            fill="none"
+            stroke={HERO_RING_COLORS[i % HERO_RING_COLORS.length]}
+            strokeWidth={outerWidth}
+            strokeDasharray={`${s.dash} ${outerCirc - s.dash}`}
+            strokeDashoffset={-s.offset}
+            transform={`rotate(-90 ${cx} ${cy})`}
+          >
+            <title>{s.hero_name}: {s.count} games ({Math.round(s.frac * 100)}%)</title>
+          </circle>
+        ))}
+
+        {posSegs.map((s) => (
           <circle
             key={s.position}
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
+            cx={cx} cy={cy} r={innerR}
             fill="none"
             stroke={POSITION_COLORS[s.position]}
-            strokeWidth="16"
-            strokeDasharray={`${s.dash} ${circumference - s.dash}`}
+            strokeWidth={innerWidth}
+            strokeDasharray={`${s.dash} ${innerCirc - s.dash}`}
             strokeDashoffset={-s.offset}
-            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            transform={`rotate(-90 ${cx} ${cy})`}
           >
             <title>{s.position_name}: {s.count} games ({Math.round(s.frac * 100)}%)</title>
           </circle>
         ))}
+
+        {heroSegs.filter((s) => s.frac * 360 >= 12 && s.hero_icon).map((s) => {
+          const [x, y] = polarPoint(cx, cy, outerR, s.midAngle);
+          return (
+            <g
+              key={`icon-${s.hero_id}`}
+              transform={`translate(${x - iconSize / 2}, ${y - iconSize / 2})`}
+              className={s.match_id ? 'profile-ring-hero-icon' : ''}
+              onClick={() => s.match_id && onHeroClick(s.match_id)}
+            >
+              <title>{s.hero_name}: {s.count} games — click to view a recent match</title>
+              <circle cx={iconSize / 2} cy={iconSize / 2} r={iconSize / 2 + 1} fill="var(--bg-base)" />
+              <image href={s.hero_icon} width={iconSize} height={iconSize} clipPath="circle(50%)" />
+            </g>
+          );
+        })}
       </svg>
     </div>
   );
@@ -164,7 +228,7 @@ export default function Profile() {
           onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }}
         />
         <div className="profile-header-info">
-          <h1>{profile?.persona_name || 'Loading…'}</h1>
+          <h1>{profile ? (profile.persona_name || 'Player') : 'Loading…'}</h1>
           {rankLabel && <span className="profile-header-rank-label">{rankLabel}</span>}
         </div>
         {rankBadge && <img src={rankBadge} alt={rankLabel || ''} className="profile-header-rank-badge" />}
@@ -201,20 +265,24 @@ export default function Profile() {
       <div className="profile-stats-row">
         <div className="profile-stat-card glass-surface">
           <div className="profile-stat-value gold">{summary?.matches?.toLocaleString() ?? '—'}</div>
-          <div className="profile-stat-label">Matches</div>
-          {summary?.first_match_at && (
-            <div className="profile-stat-sub">First match: {new Date(summary.first_match_at).toLocaleDateString()}</div>
-          )}
+          <div className="profile-stat-label">
+            Matches
+            {summary?.first_match_at && (
+              <span className="profile-stat-label-sub"> — since {new Date(summary.first_match_at).toLocaleDateString()}</span>
+            )}
+          </div>
         </div>
         <div className="profile-stat-card glass-surface">
-          <div className="profile-stat-value green">{summary?.winrate ?? 0}%</div>
+          <div className="profile-stat-value-row">
+            <div className="profile-stat-value green">{summary?.winrate ?? 0}%</div>
+            {summary && <div className="profile-stat-sub">{summary.wins} - {summary.losses}</div>}
+          </div>
           <div className="profile-stat-label">Win Rate</div>
           {summary && (
             <div className="profile-winrate-bar">
               <div className="profile-winrate-bar-win" style={{ width: `${summary.winrate}%` }} />
             </div>
           )}
-          {summary && <div className="profile-stat-sub">{summary.wins} - {summary.losses}</div>}
         </div>
       </div>
 
@@ -259,76 +327,92 @@ export default function Profile() {
           </div>
         </div>
 
-        <div className="profile-trends-card glass-surface">
-          <div className="profile-card-title-row">
-            <div className="profile-card-title">Trends</div>
-            <div className="profile-window-toggle">
-              <button className={trendWindow === 25 ? 'active' : ''} onClick={() => setTrendWindow(25)}>25 Matches</button>
-              <button className={trendWindow === 100 ? 'active' : ''} onClick={() => setTrendWindow(100)}>100</button>
-            </div>
-          </div>
-
-          <Donut breakdown={trends?.position_breakdown || []} />
-
-          <div className="profile-donut-legend">
-            {(trends?.position_breakdown || []).map((b: any) => (
-              <div key={b.position} className="profile-donut-legend-item">
-                <span className="profile-donut-legend-dot" style={{ background: POSITION_COLORS[b.position] }} />
-                {b.position_name} <span className="profile-donut-legend-count">{b.count}</span>
+        <div className="profile-right-col">
+          <div className="profile-trends-card glass-surface">
+            <div className="profile-card-title-row">
+              <div className="profile-card-title">Trends</div>
+              <div className="profile-window-toggle">
+                <button className={trendWindow === 25 ? 'active' : ''} onClick={() => setTrendWindow(25)}>25 Matches</button>
+                <button className={trendWindow === 100 ? 'active' : ''} onClick={() => setTrendWindow(100)}>100</button>
               </div>
-            ))}
-          </div>
+            </div>
 
-          {(trends?.strip?.length ?? 0) > 0 && (
-            <div className="profile-strip">
-              {trends.strip.map((s: any, i: number) => (
-                <span key={i} className={`profile-strip-dot ${s.result === 'win' ? 'win' : 'loss'}`} title={`${s.result === 'win' ? 'Win' : 'Loss'} — match ${s.match_id}`} />
+            <TrendsRing
+              heroes={trends?.top_heroes || []}
+              positions={trends?.position_breakdown || []}
+              onHeroClick={(matchId) => navigate(`/matches/${matchId}`)}
+            />
+
+            <div className="profile-donut-legend">
+              {(trends?.position_breakdown || []).map((b: any) => (
+                <div key={b.position} className="profile-donut-legend-item">
+                  <span className="profile-donut-legend-dot" style={{ background: POSITION_COLORS[b.position] }} />
+                  {b.position_name} <span className="profile-donut-legend-count">{b.count}</span>
+                </div>
               ))}
             </div>
-          )}
 
-          <div className="profile-trend-footer">
-            <div>
-              <div className="profile-trend-footer-label">Match Win Rate</div>
-              <div className="profile-trend-footer-value">
-                {trends?.winrate ?? 0}%
-                {trends?.newer_half_winrate != null && trends?.older_half_winrate != null && (
-                  <span className={trends.newer_half_winrate >= trends.older_half_winrate ? 'up' : 'down'}>
-                    {trends.newer_half_winrate >= trends.older_half_winrate ? '▲' : '▼'}
-                  </span>
-                )}
+            {(trends?.strip?.length ?? 0) > 0 && (
+              <div className="profile-strip">
+                {trends.strip.map((s: any, i: number) => (
+                  <span key={i} className={`profile-strip-dot ${s.result === 'win' ? 'win' : 'loss'}`} title={`${s.result === 'win' ? 'Win' : 'Loss'} — match ${s.match_id}`} />
+                ))}
               </div>
-            </div>
-            <div>
-              <div className="profile-trend-footer-label">Party Queue</div>
-              <div className="profile-trend-footer-value">{trends?.party_pct ?? 0}%</div>
+            )}
+
+            <div className="profile-trend-footer">
+              <div>
+                <div className="profile-trend-footer-label">Match Win Rate</div>
+                <div className="profile-trend-footer-value">
+                  {trends?.winrate ?? 0}%
+                  {trends?.newer_half_winrate != null && trends?.older_half_winrate != null && (
+                    <span className={trends.newer_half_winrate >= trends.older_half_winrate ? 'up' : 'down'}>
+                      {trends.newer_half_winrate >= trends.older_half_winrate ? '▲' : '▼'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="profile-trend-footer-label">Lane Record</div>
+                <div className="profile-trend-footer-value profile-trend-footer-value-sm">
+                  {trends?.lane_record ? `${trends.lane_record.safe_wins} - ${trends.lane_record.safe_losses} - ${trends.lane_record.off_wins} - ${trends.lane_record.off_losses}` : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="profile-trend-footer-label">Party Queue</div>
+                <div className="profile-trend-footer-value">{trends?.party_pct ?? 0}%</div>
+              </div>
+              <div>
+                <div className="profile-trend-footer-label">Unranked</div>
+                <div className="profile-trend-footer-value">{trends?.unranked_pct ?? 0}%</div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="profile-heroes-card glass-surface">
-        <div className="profile-card-title">Most Played Heroes</div>
-        <div className="profile-heroes-list">
-          {(topHeroes?.heroes || []).map((h: any) => (
-            <div key={h.hero_id} className="profile-hero-row">
-              <img src={h.hero_icon} alt={h.hero_name} className="profile-hero-icon" />
-              <div className="profile-hero-info">
-                <div className="profile-hero-name">{h.hero_name}</div>
-                {h.position_name && <div className="profile-hero-position">{h.position_name}</div>}
-              </div>
-              <div className={`profile-hero-winrate ${h.winrate >= 50 ? 'good' : 'bad'}`}>{h.winrate}%</div>
-              <div className="profile-hero-bar-wrap">
-                <div className="profile-hero-bar" style={{ width: `${Math.min(100, (h.matches / ((topHeroes?.heroes?.[0]?.matches) || h.matches)) * 100)}%` }} />
-              </div>
-              <div className="profile-hero-matches">{h.matches}</div>
+          <div className="profile-heroes-card glass-surface">
+            <div className="profile-card-title">Most Played Heroes</div>
+            <div className="profile-heroes-list">
+              {(topHeroes?.heroes || []).map((h: any) => (
+                <div key={h.hero_id} className="profile-hero-row">
+                  <img src={h.hero_icon} alt={h.hero_name} className="profile-hero-icon" />
+                  <div className="profile-hero-info">
+                    <div className="profile-hero-name">{h.hero_name}</div>
+                    {h.position_name && <div className="profile-hero-position">{h.position_name}</div>}
+                  </div>
+                  <div className={`profile-hero-winrate ${h.winrate >= 50 ? 'good' : 'bad'}`}>{h.winrate}%</div>
+                  <div className="profile-hero-bar-wrap">
+                    <div className="profile-hero-bar" style={{ width: `${Math.min(100, (h.matches / ((topHeroes?.heroes?.[0]?.matches) || h.matches)) * 100)}%` }} />
+                  </div>
+                  <div className="profile-hero-matches">{h.matches}</div>
+                </div>
+              ))}
+              {topHeroes && (topHeroes.heroes || []).length === 0 && <div className="profile-empty">No hero data for these filters.</div>}
             </div>
-          ))}
-          {topHeroes && (topHeroes.heroes || []).length === 0 && <div className="profile-empty">No hero data for these filters.</div>}
+            {topHeroes?.pick_share_pct > 0 && (
+              <div className="profile-card-footer">These {topHeroes.heroes.length} heroes comprise <span className="gold">{topHeroes.pick_share_pct}%</span> of your picks.</div>
+            )}
+          </div>
         </div>
-        {topHeroes?.pick_share_pct > 0 && (
-          <div className="profile-card-footer">These {topHeroes.heroes.length} heroes comprise <span className="gold">{topHeroes.pick_share_pct}%</span> of your picks.</div>
-        )}
       </div>
     </div>
   );

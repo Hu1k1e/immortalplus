@@ -152,11 +152,51 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                         f"?position={query_value}&order_by=matches&legacy=false&mmr=7000&min_matches=1&period=8"
                     )
                     try:
+                        # Confirmed live (2026-09-29) that this endpoint's real
+                        # response has grown to ~4.6MB for a single position —
+                        # every hero now carries a `detailed_stats` blob with
+                        # per-level/per-time-bucket arrays this app never
+                        # reads (damage_profile, damage_timeline,
+                        # level_distribution, daily_stats, ...). Shuttling all
+                        # 6 positions' full payloads (~27MB) back through
+                        # page.evaluate()'s CDP bridge was the actual failure
+                        # here (a genuine timeout/size problem, not a bot-
+                        # detection or URL/param issue — the identical URL
+                        # fetched fine from a live browser tab), so the
+                        # trimming happens INSIDE the page context, before
+                        # crossing that bridge — only ever a few small fields
+                        # per hero leave the browser.
                         raw = await page.evaluate(
                             """async (url) => {
                                 const res = await fetch(url);
                                 if (!res.ok) throw new Error('HTTP ' + res.status);
-                                return await res.json();
+                                const data = await res.json();
+                                return data.map(h => {
+                                    const ds = h.detailed_stats || {};
+                                    const build = ds.best_build_winrate || {};
+                                    return {
+                                        hero_id: h.hero_id,
+                                        matches: h.matches,
+                                        wins: h.wins,
+                                        meta_score: h.meta_score,
+                                        contest_rate: h.contest_rate,
+                                        rating_rank: h.rating_rank,
+                                        rating_cohort_size: h.rating_cohort_size,
+                                        lane_avg_adv_pct: ds.lane_avg_adv_pct,
+                                        radiant_matches: ds.radiant_matches,
+                                        radiant_wins: ds.radiant_wins,
+                                        dire_matches: ds.dire_matches,
+                                        dire_wins: ds.dire_wins,
+                                        phase_1_matches: ds.phase_1_matches,
+                                        phase_1_wins: ds.phase_1_wins,
+                                        phase_2_matches: ds.phase_2_matches,
+                                        phase_2_wins: ds.phase_2_wins,
+                                        phase_3_matches: ds.phase_3_matches,
+                                        phase_3_wins: ds.phase_3_wins,
+                                        build_matches: build.num_matches,
+                                        build_winrate: build.win_rate,
+                                    };
+                                });
                             }""",
                             url,
                         )
@@ -170,8 +210,6 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                         matches = hero.get("matches") or 0
                         if not hero_id or matches <= 0:
                             continue
-                        ds = hero.get("detailed_stats") or {}
-                        build = ds.get("best_build_winrate") or {}
                         rows.append({
                             "hero_id": hero_id,
                             "matches": matches,
@@ -179,21 +217,21 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                             "winrate": (hero.get("wins") or 0) / matches,
                             "meta_score": _to_float(hero.get("meta_score")),
                             "contest_rate": _to_float(hero.get("contest_rate")),
-                            "lane_adv_pct": _to_float(ds.get("lane_avg_adv_pct")),
+                            "lane_adv_pct": _to_float(hero.get("lane_avg_adv_pct")),
                             "rating_rank": hero.get("rating_rank"),
                             "rating_cohort_size": hero.get("rating_cohort_size"),
-                            "radiant_matches": ds.get("radiant_matches") or 0,
-                            "radiant_wins": ds.get("radiant_wins") or 0,
-                            "dire_matches": ds.get("dire_matches") or 0,
-                            "dire_wins": ds.get("dire_wins") or 0,
-                            "phase_1_matches": ds.get("phase_1_matches") or 0,
-                            "phase_1_wins": ds.get("phase_1_wins") or 0,
-                            "phase_2_matches": ds.get("phase_2_matches") or 0,
-                            "phase_2_wins": ds.get("phase_2_wins") or 0,
-                            "phase_3_matches": ds.get("phase_3_matches") or 0,
-                            "phase_3_wins": ds.get("phase_3_wins") or 0,
-                            "build_matches": build.get("num_matches") or 0,
-                            "build_winrate": _to_float(build.get("win_rate")),
+                            "radiant_matches": hero.get("radiant_matches") or 0,
+                            "radiant_wins": hero.get("radiant_wins") or 0,
+                            "dire_matches": hero.get("dire_matches") or 0,
+                            "dire_wins": hero.get("dire_wins") or 0,
+                            "phase_1_matches": hero.get("phase_1_matches") or 0,
+                            "phase_1_wins": hero.get("phase_1_wins") or 0,
+                            "phase_2_matches": hero.get("phase_2_matches") or 0,
+                            "phase_2_wins": hero.get("phase_2_wins") or 0,
+                            "phase_3_matches": hero.get("phase_3_matches") or 0,
+                            "phase_3_wins": hero.get("phase_3_wins") or 0,
+                            "build_matches": hero.get("build_matches") or 0,
+                            "build_winrate": _to_float(hero.get("build_winrate")),
                         })
                     result[position] = rows
                     logger.info(f"Dota2ProTracker detail: fetched {len(rows)} rows for position {position}")

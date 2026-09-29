@@ -1,31 +1,27 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Swords, Hash, Trophy, Skull, Clock, Calendar, Coins, Star,
-  Flame, Building2, HeartPulse, Crosshair, ShieldOff, ArrowUp, Users, Package,
-} from 'lucide-react';
 import api from '../lib/api';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage, getItemImage } from '../lib/dota';
 import { ITEMS } from '../lib/items';
 
 const AVAILABLE_COLUMNS = [
-  { id: 'hero', label: 'Hero', icon: Swords },
-  { id: 'match_id', label: 'Match ID', icon: Hash },
-  { id: 'result', label: 'Result', icon: Trophy },
-  { id: 'kda', label: 'K/D/A', icon: Skull },
-  { id: 'duration', label: 'Duration', icon: Clock },
-  { id: 'date', label: 'Date', icon: Calendar },
-  { id: 'gpm', label: 'GPM', icon: Coins },
-  { id: 'xpm', label: 'XPM', icon: Star },
-  { id: 'hero_damage', label: 'Hero Damage', icon: Flame },
-  { id: 'tower_damage', label: 'Tower Damage', icon: Building2 },
-  { id: 'hero_healing', label: 'Hero Healing', icon: HeartPulse },
-  { id: 'last_hits', label: 'Last Hits', icon: Crosshair },
-  { id: 'denies', label: 'Denies', icon: ShieldOff },
-  { id: 'level', label: 'Level', icon: ArrowUp },
-  { id: 'party_size', label: 'Party Size', icon: Users },
-  { id: 'items', label: 'Items', icon: Package },
+  { id: 'hero', label: 'Hero' },
+  { id: 'match_id', label: 'Match ID' },
+  { id: 'result', label: 'Result' },
+  { id: 'kda', label: 'K/D/A' },
+  { id: 'duration', label: 'Duration' },
+  { id: 'date', label: 'Date' },
+  { id: 'gpm', label: 'GPM' },
+  { id: 'xpm', label: 'XPM' },
+  { id: 'hero_damage', label: 'Hero Damage' },
+  { id: 'tower_damage', label: 'Tower Damage' },
+  { id: 'hero_healing', label: 'Hero Healing' },
+  { id: 'last_hits', label: 'Last Hits' },
+  { id: 'denies', label: 'Denies' },
+  { id: 'level', label: 'Level' },
+  { id: 'party_size', label: 'Party Size' },
+  { id: 'items', label: 'Items' },
 ];
 
 export default function Matches() {
@@ -101,23 +97,22 @@ export default function Matches() {
             Columns
           </button>
           {showColumnsMenu && (
-            <div className="glass-surface" style={{ position: 'absolute', top: '100%', right: '150px', marginTop: '0.5rem', zIndex: 10, padding: '1rem', minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '340px', overflowY: 'auto' }}>
-              <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Visible Columns</div>
+            <div className="matches-columns-menu">
+              <div className="matches-columns-menu-title">Visible Columns</div>
               {AVAILABLE_COLUMNS.map(c => (
-                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                <label key={c.id} className="matches-columns-menu-item">
                   <input
                     type="checkbox"
                     checked={visibleColumns.has(c.id)}
                     onChange={() => toggleColumn(c.id)}
                   />
-                  <c.icon size={13} style={{ opacity: 0.7 }} />
                   {c.label}
                 </label>
               ))}
             </div>
           )}
           <button className="btn btn-primary" onClick={syncMatches} disabled={loading}>
-            {loading ? 'Syncing...' : 'Sync Recent Matches'}
+            {loading ? 'Syncing...' : 'Sync'}
           </button>
         </div>
       </header>
@@ -132,12 +127,7 @@ export default function Matches() {
             <thead>
               <tr>
                 {AVAILABLE_COLUMNS.map(c => visibleColumns.has(c.id) && (
-                  <th key={c.id}>
-                    <div className="matches-table-th">
-                      <c.icon size={13} className="matches-table-th-icon" />
-                      <span>{c.label}</span>
-                    </div>
-                  </th>
+                  <th key={c.id}>{c.label}</th>
                 ))}
               </tr>
             </thead>
