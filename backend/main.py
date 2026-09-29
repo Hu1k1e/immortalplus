@@ -34,7 +34,7 @@ async def background_sync_loop():
         sync_player_matches, create_progress_snapshot,
         sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
     )
-    from services.protracker import sync_hero_position_meta, sync_hero_position_detail
+    from services.protracker import sync_hero_position_meta
 
     # Wait for app to fully start
     await asyncio.sleep(10)
@@ -125,16 +125,30 @@ async def background_sync_loop():
                             await sync_hero_position_meta(session, settings)
                         except Exception as e:
                             logger.error(f"Background sync: hero_position_meta failed: {e}", exc_info=True)
-                        # Same interval/gate as hero_position_meta above —
-                        # the Meta page's richer table (lane advantage,
-                        # contest rate, Radiant/Dire and pick-phase splits)
-                        # is scraped from ProTracker at the same cadence
-                        # requested directly ("pulled as the same rate as
-                        # how we do the draft section").
-                        try:
-                            await sync_hero_position_detail(session)
-                        except Exception as e:
-                            logger.error(f"Background sync: hero_position_detail failed: {e}", exc_info=True)
+                        # hero_position_detail (the Meta page's extra
+                        # columns — lane advantage, contest rate,
+                        # Radiant/Dire and pick-phase splits) is NOT
+                        # synced here anymore. Confirmed live (2026-09-29)
+                        # across five different request-pattern fixes
+                        # (shared session, fresh session per position,
+                        # one-position-per-cycle rotation, multiple retry/
+                        # backoff strategies) that it kept failing
+                        # unpredictably regardless — including two fully
+                        # independent fresh-session attempts on the same
+                        # position minutes apart both failing identically,
+                        # which rules out anything about our own request
+                        # logic and points at Cloudflare/bot-mitigation
+                        # having flagged this server's IP from the sheer
+                        # volume of automated requests this debugging
+                        # session generated. Continuing to hit it would
+                        # likely only prolong that. The Meta page now runs
+                        # entirely on hero_position_meta above instead
+                        # (see routers/meta.py) — reliable, never failed
+                        # once. sync_hero_position_detail/
+                        # fetch_hero_position_detail are kept in
+                        # services/protracker.py, unused, in case this is
+                        # ever worth revisiting (e.g. from a different
+                        # egress IP).
                         last_protracker_sync = datetime.utcnow()
 
             session.close()

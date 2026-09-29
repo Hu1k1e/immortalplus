@@ -10,20 +10,6 @@ interface HeroRow {
   winrate: number;
   meta_score: number;
   tier: string;
-  contest_rate: number | null;
-  lane_adv_pct: number | null;
-  radiant_matches: number;
-  radiant_winrate: number | null;
-  dire_matches: number;
-  dire_winrate: number | null;
-  phase_1_matches: number;
-  phase_1_winrate: number | null;
-  phase_2_matches: number;
-  phase_2_winrate: number | null;
-  phase_3_matches: number;
-  phase_3_winrate: number | null;
-  build_matches: number;
-  build_winrate: number | null;
   updated_at: string | null;
 }
 
@@ -49,10 +35,7 @@ const TIER_COLORS: Record<string, string> = {
   S: '#e04b4b', A: '#e2a53a', B: '#e2c93a', C: '#7fbf5f', D: '#5f9fbf', E: '#8a8a8a',
 };
 
-type SortKey =
-  | 'matches' | 'meta_score' | 'winrate' | 'lane_adv_pct' | 'contest_rate'
-  | 'build_winrate' | 'radiant_winrate' | 'dire_winrate'
-  | 'phase_1_winrate' | 'phase_2_winrate' | 'phase_3_winrate';
+type SortKey = 'matches' | 'meta_score' | 'winrate';
 
 function formatAge(iso: string | null): string {
   if (!iso) return 'never';
@@ -299,14 +282,6 @@ export default function Meta() {
                   <th className="sortable" onClick={() => toggleSort('meta_score')}>D2PT Rating{sortArrow('meta_score')}</th>
                   <th>Tier</th>
                   <th className="sortable" onClick={() => toggleSort('winrate')}>WR{sortArrow('winrate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('lane_adv_pct')}>Lane Adv{sortArrow('lane_adv_pct')}</th>
-                  <th className="sortable" onClick={() => toggleSort('contest_rate')}>Contest Rate{sortArrow('contest_rate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('build_winrate')}>Best Build WR{sortArrow('build_winrate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('radiant_winrate')}>Radiant{sortArrow('radiant_winrate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('dire_winrate')}>Dire{sortArrow('dire_winrate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('phase_1_winrate')}>1st Phase{sortArrow('phase_1_winrate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('phase_2_winrate')}>2nd Phase{sortArrow('phase_2_winrate')}</th>
-                  <th className="sortable" onClick={() => toggleSort('phase_3_winrate')}>3rd Phase{sortArrow('phase_3_winrate')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -320,32 +295,6 @@ export default function Meta() {
                     <td className="meta-table-rating" style={{ color: TIER_COLORS[h.tier] }}>{h.meta_score?.toFixed(0)}/100</td>
                     <td><span className="meta-tier-badge" style={{ background: TIER_COLORS[h.tier] }}>{h.tier}</span></td>
                     <td className={h.winrate >= 50 ? 'good' : 'bad'}>{pct(h.winrate)}</td>
-                    <td className={h.lane_adv_pct !== null ? (h.lane_adv_pct >= 0 ? 'good' : 'bad') : ''}>{pct(h.lane_adv_pct, true)}</td>
-                    <td>{h.contest_rate !== null ? `${h.contest_rate.toFixed(1)}%` : '—'}</td>
-                    <td>
-                      {pct(h.build_winrate)}
-                      {h.build_matches > 0 && <span className="meta-table-sub"> ({h.build_matches.toLocaleString()})</span>}
-                    </td>
-                    <td>
-                      {pct(h.radiant_winrate)}
-                      {h.radiant_matches > 0 && <span className="meta-table-sub"> ({h.radiant_matches.toLocaleString()})</span>}
-                    </td>
-                    <td>
-                      {pct(h.dire_winrate)}
-                      {h.dire_matches > 0 && <span className="meta-table-sub"> ({h.dire_matches.toLocaleString()})</span>}
-                    </td>
-                    <td>
-                      {pct(h.phase_1_winrate)}
-                      {h.phase_1_matches > 0 && <span className="meta-table-sub"> ({h.phase_1_matches.toLocaleString()})</span>}
-                    </td>
-                    <td>
-                      {pct(h.phase_2_winrate)}
-                      {h.phase_2_matches > 0 && <span className="meta-table-sub"> ({h.phase_2_matches.toLocaleString()})</span>}
-                    </td>
-                    <td>
-                      {pct(h.phase_3_winrate)}
-                      {h.phase_3_matches > 0 && <span className="meta-table-sub"> ({h.phase_3_matches.toLocaleString()})</span>}
-                    </td>
                   </tr>
                 ))}
               </tbody>

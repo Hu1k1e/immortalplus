@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import HeroMeta, HeroMatchup, HeroPositionDetail, UserSettings
+from models import HeroMeta, HeroMatchup, HeroPositionMeta, UserSettings
 from services.opendota import get_opendota_client
 from services.sync import sync_hero_meta
 from utils.dota_constants import HEROES, get_hero_name, get_hero_image_url, get_hero_icon_url, POSITIONS
@@ -142,10 +142,6 @@ async def get_hero_list():
     ]
 
 
-def _winrate(wins: int, matches: int) -> Optional[float]:
-    return round(wins / matches * 100, 1) if matches else None
-
-
 def _tier_for_rank(rank_in_list: int, total: int) -> str:
     """
     S/A/B/C/D/E tier from percentile rank within the current position's
@@ -153,10 +149,9 @@ def _tier_for_rank(rank_in_list: int, total: int) -> str:
     above, extended to 6 tiers to match ProTracker's own real tier
     filter buttons (S/A/B/C/D/E, confirmed live on their /meta page).
     This is an approximation of their internal tier algorithm (not
-    reverse-engineerable from the API response alone — no literal
-    "tier" field exists on the richer per-position endpoint this data
-    comes from, only on a different, coarser one), not a claimed exact
-    match; disclosed as such rather than presented as their real value.
+    reverse-engineerable from the API response alone), not a claimed
+    exact match; disclosed as such rather than presented as their real
+    value.
     """
     if total <= 0:
         return "E"
@@ -180,48 +175,73 @@ async def get_protracker_meta(
     session: Session = Depends(get_session),
 ):
     """
-    Real per-hero data behind the Meta page's table — from
-    HeroPositionDetail, synced from Dota2ProTracker's own
-    /api/heroes/stats endpoint (see services/protracker.py's
-    fetch_hero_position_detail for how this was found and what every
-    field really means). Sorted by meta_score (their real displayed
-    0-100 "D2PT Rating") descending, same default sort as their own
-    page. top_heroes is the same list's first 7 entries — matching the
-    "Top Heroes" card row on their page, not a separately-fetched list.
+    Per-hero data behind the Meta page's table — from HeroPositionMeta,
+    synced from Dota2ProTracker's own /api/heroes/list endpoint (see
+    services/protracker.py's fetch_hero_position_meta). Sorted by
+    d2pt_rating (their real displayed 0-100 "D2PT Rating") descending,
+    same default sort as their own page. top_heroes is the same list's
+    first 7 entries.
+
+    This previously sourced a richer HeroPositionDetail table (lane
+    advantage, contest rate, Radiant/Dire and pick-phase splits, from a
+    different ProTracker endpoint), but that endpoint proved unreliable
+    in production across five different fix attempts — see main.py's
+    background_sync_loop for the full story — and was dropped in favor
+    of this table, which has never once failed. "All Roles" (position 0)
+    has no direct row in HeroPositionMeta (ProTracker's own per-position
+    endpoint has no combined view), so it's synthesized here: summed
+    matches across positions 1-5 per hero, winrate/rating as a
+    matches-weighted average.
     """
-    rows = session.exec(
-        select(HeroPositionDetail).where(HeroPositionDetail.position == position)
-    ).all()
-    rows = [r for r in rows if r.meta_score is not None]
-    rows.sort(key=lambda r: r.meta_score, reverse=True)
+    if position == 0:
+        all_rows = session.exec(
+            select(HeroPositionMeta).where(HeroPositionMeta.position.in_([1, 2, 3, 4, 5]))
+        ).all()
+        by_hero: dict = {}
+        for r in all_rows:
+            if not r.matches:
+                continue
+            d = by_hero.setdefault(r.hero_id, {"matches": 0, "winrate_sum": 0.0, "rating_sum": 0.0, "updated_at": None})
+            d["matches"] += r.matches
+            d["winrate_sum"] += (r.winrate or 0) * r.matches
+            d["rating_sum"] += (r.d2pt_rating or 0) * r.matches
+            if r.updated_at and (d["updated_at"] is None or r.updated_at > d["updated_at"]):
+                d["updated_at"] = r.updated_at
+        rows = [
+            {
+                "hero_id": hid,
+                "matches": d["matches"],
+                "winrate": d["winrate_sum"] / d["matches"] if d["matches"] else None,
+                "d2pt_rating": d["rating_sum"] / d["matches"] if d["matches"] else None,
+                "updated_at": d["updated_at"],
+            }
+            for hid, d in by_hero.items()
+        ]
+    else:
+        db_rows = session.exec(
+            select(HeroPositionMeta).where(HeroPositionMeta.position == position)
+        ).all()
+        rows = [
+            {"hero_id": r.hero_id, "matches": r.matches, "winrate": r.winrate, "d2pt_rating": r.d2pt_rating, "updated_at": r.updated_at}
+            for r in db_rows
+        ]
+
+    rows = [r for r in rows if r["d2pt_rating"] is not None]
+    rows.sort(key=lambda r: r["d2pt_rating"], reverse=True)
 
     total = len(rows)
     heroes = []
     for i, r in enumerate(rows):
         heroes.append({
-            "hero_id": r.hero_id,
-            "hero_name": get_hero_name(r.hero_id),
-            "hero_icon": get_hero_icon_url(r.hero_id),
-            "hero_image": get_hero_image_url(r.hero_id),
-            "matches": r.matches,
-            "winrate": round((r.winrate or 0) * 100, 1),
-            "meta_score": r.meta_score,
+            "hero_id": r["hero_id"],
+            "hero_name": get_hero_name(r["hero_id"]),
+            "hero_icon": get_hero_icon_url(r["hero_id"]),
+            "hero_image": get_hero_image_url(r["hero_id"]),
+            "matches": r["matches"],
+            "winrate": round((r["winrate"] or 0) * 100, 1),
+            "meta_score": round(r["d2pt_rating"], 1) if r["d2pt_rating"] is not None else None,
             "tier": _tier_for_rank(i, total),
-            "contest_rate": r.contest_rate,
-            "lane_adv_pct": round((r.lane_adv_pct or 0) * 100, 1) if r.lane_adv_pct is not None else None,
-            "radiant_matches": r.radiant_matches,
-            "radiant_winrate": _winrate(r.radiant_wins, r.radiant_matches),
-            "dire_matches": r.dire_matches,
-            "dire_winrate": _winrate(r.dire_wins, r.dire_matches),
-            "phase_1_matches": r.phase_1_matches,
-            "phase_1_winrate": _winrate(r.phase_1_wins, r.phase_1_matches),
-            "phase_2_matches": r.phase_2_matches,
-            "phase_2_winrate": _winrate(r.phase_2_wins, r.phase_2_matches),
-            "phase_3_matches": r.phase_3_matches,
-            "phase_3_winrate": _winrate(r.phase_3_wins, r.phase_3_matches),
-            "build_matches": r.build_matches,
-            "build_winrate": round((r.build_winrate or 0) * 100, 1) if r.build_winrate is not None else None,
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
         })
 
     return {
