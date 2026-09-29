@@ -256,13 +256,23 @@
 }
 .profile-ring-segment {
   cursor: pointer;
-  transition: stroke-opacity 150ms ease;
+  transition: stroke-opacity 180ms ease, filter 180ms ease;
 }
 .profile-ring-segment:hover {
   stroke-opacity: 1 !important;
+  filter: brightness(1.3) saturate(1.15) drop-shadow(0 0 6px rgba(226, 183, 66, 0.35));
 }
 .profile-ring-hero-icon {
   cursor: pointer;
+}
+.profile-ring-hero-icon circle {
+  transition: fill 180ms ease;
+}
+.profile-ring-hero-icon image {
+  transition: filter 180ms ease;
+}
+.profile-ring-hero-icon:hover image {
+  filter: brightness(1.2) drop-shadow(0 0 4px rgba(226, 183, 66, 0.5));
 }
 .profile-ring-tooltip {
   position: absolute;

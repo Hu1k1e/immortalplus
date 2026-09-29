@@ -184,6 +184,64 @@ async def run_history_backfill_once():
         session.close()
 
 
+async def refresh_player_identity_once():
+    """
+    One-shot persona name / avatar resolution, run at every container
+    startup — directly requested after the profile picture kept showing
+    as unset even once the resolution logic itself was fixed: a stored
+    Player row's persona_name/avatar_url only ever changes when something
+    calls resolve_persona_avatar (see services/player_identity.py), which
+    previously only happened from a manual Settings action, so a player
+    linked before that fix (or whose Stratz/Steam data simply wasn't
+    available yet) stayed stuck on whatever it was first set to. Running
+    this unconditionally on every boot means a redeploy alone is enough to
+    pick up newly-available data, without the user needing to find and
+    click a refresh button.
+    """
+    from sqlmodel import select
+    from database import SessionLocal
+    from models import Player, UserSettings
+    from services.opendota import get_opendota_client
+    from services.player_identity import resolve_persona_avatar
+
+    await asyncio.sleep(12)  # let the app finish starting first
+
+    session = SessionLocal()
+    try:
+        player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+        if not player or not player.account_id:
+            return
+        settings = session.exec(select(UserSettings).limit(1)).first()
+
+        opendota_profile = {}
+        try:
+            client = get_opendota_client(settings.opendota_api_key if settings else None)
+            data = await client.get_player(player.account_id)
+            opendota_profile = data.get("profile") or {}
+        except Exception as e:
+            logger.info(f"Startup profile refresh: OpenDota lookup failed (non-fatal, other sources still tried): {e}")
+
+        persona_name, avatar_url, profile_url = await resolve_persona_avatar(
+            player.account_id, player.steam_id, opendota_profile, settings,
+        )
+        persona_name = persona_name or player.persona_name
+        avatar_url = avatar_url or player.avatar_url
+        profile_url = profile_url or player.profile_url
+
+        if (persona_name, avatar_url, profile_url) != (player.persona_name, player.avatar_url, player.profile_url):
+            player.persona_name = persona_name
+            player.avatar_url = avatar_url
+            player.profile_url = profile_url
+            session.commit()
+            logger.info(f"Startup profile refresh: updated persona_name/avatar_url for player {player.account_id}")
+        else:
+            logger.info("Startup profile refresh: no change")
+    except Exception as e:
+        logger.error(f"Startup profile refresh failed: {e}", exc_info=True)
+    finally:
+        session.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan — startup and shutdown."""
@@ -201,6 +259,10 @@ async def lifespan(app: FastAPI):
     # get blocked by that loop's own 30-min cycle.
     backfill_task = asyncio.create_task(run_history_backfill_once())
 
+    # One-shot persona name/avatar resolution — see
+    # refresh_player_identity_once's docstring.
+    identity_task = asyncio.create_task(refresh_player_identity_once())
+
     # Start dedicated auto-parse worker (replay downloading + local parsing + OD requests)
     from services.auto_parse import auto_parse_worker
     parse_task = asyncio.create_task(auto_parse_worker())
@@ -210,6 +272,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     sync_task.cancel()
     backfill_task.cancel()
+    identity_task.cancel()
     parse_task.cancel()
     logger.info("Immortal+ Backend shutting down")
 

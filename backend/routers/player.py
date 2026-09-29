@@ -14,7 +14,7 @@ from sqlmodel import select
 from database import get_session
 from models import Player, UserSettings, Match
 from services.opendota import get_opendota_client
-from services.steam import SteamClient
+from services.player_identity import resolve_persona_avatar
 from utils.dota_constants import (
     GAME_MODES, LOBBY_TYPES, POSITIONS,
     get_hero_name, get_hero_icon_url, get_hero_image_url,
@@ -72,47 +72,6 @@ def _steam_id_to_account_id(steam_id: str) -> int:
     return steam64 - 76561197960265728
 
 
-async def _fill_missing_profile_fields(
-    account_id: int, steamid64: str, persona_name: Optional[str], avatar_url: Optional[str],
-    profile_url: Optional[str], settings: Optional[UserSettings],
-) -> tuple[Optional[str], Optional[str], Optional[str]]:
-    """
-    Fills in whichever of persona_name/avatar_url/profile_url OpenDota
-    didn't have, trying Stratz first (same GraphQL token already used
-    everywhere else in this app, and it maintains its own Steam account
-    cache independent of OpenDota's) and then the Steam Web API directly
-    (the ultimate source of truth — works even for accounts neither
-    OpenDota nor Stratz has indexed, as long as the account itself isn't
-    fully private). Both are best-effort: any failure just leaves the
-    field as-is rather than raising.
-    """
-    if persona_name and avatar_url:
-        return persona_name, avatar_url, profile_url
-
-    if settings and settings.stratz_api_token:
-        try:
-            from services.stratz import get_stratz_client
-            stratz_client = get_stratz_client(settings.stratz_api_token)
-            if stratz_client:
-                summary = await stratz_client.get_player_profile(account_id)
-                if summary:
-                    persona_name = persona_name or summary.get("personaname")
-                    avatar_url = avatar_url or summary.get("avatarfull")
-                    profile_url = profile_url or summary.get("profileurl")
-        except Exception as e:
-            logger.info(f"Stratz profile fallback failed for {account_id}: {e}")
-
-    if (not persona_name or not avatar_url) and settings and settings.steam_api_key:
-        try:
-            summary = await SteamClient(settings.steam_api_key).get_player_summary(steamid64)
-            if summary:
-                persona_name = persona_name or summary.get("personaname")
-                avatar_url = avatar_url or summary.get("avatarfull")
-                profile_url = profile_url or summary.get("profileurl")
-        except Exception as e:
-            logger.info(f"Steam API profile fallback failed for {steamid64}: {e}")
-
-    return persona_name, avatar_url, profile_url
 
 
 @router.post("/setup")
@@ -148,20 +107,19 @@ async def setup_player(
     profile = data.get("profile", {})
     rank_tier = data.get("rank_tier")
     mmr = data.get("mmr_estimate", {}).get("estimate")
-    # OpenDota's own /players/{id} response has been observed with a real
-    # "profile" object whose personaname/avatarfull/profileurl keys are
-    # PRESENT but explicitly null (not simply absent) for accounts it
-    # hasn't fully cached yet — `dict.get(key, default)` only falls back
-    # to `default` when the key is missing, not when its value is None,
-    # so this must use `or` to actually catch that case.
-    persona_name = profile.get("personaname") or (existing.persona_name if existing else None)
-    avatar_url = profile.get("avatarfull") or (existing.avatar_url if existing else None)
-    profile_url = profile.get("profileurl") or (existing.profile_url if existing else None)
     steamid64 = profile.get("steamid") or sid
 
-    persona_name, avatar_url, profile_url = await _fill_missing_profile_fields(
-        account_id, steamid64, persona_name, avatar_url, profile_url, settings,
+    # Stratz is tried first (see resolve_persona_avatar's docstring), with
+    # OpenDota's `profile` and then the Steam Web API as fallbacks; an
+    # already-stored value (for a re-run of setup on an existing player)
+    # is the final fallback so a transient failure this time around
+    # doesn't blank out a name/avatar a previous run already found.
+    persona_name, avatar_url, profile_url = await resolve_persona_avatar(
+        account_id, steamid64, profile, settings,
     )
+    persona_name = persona_name or (existing.persona_name if existing else None)
+    avatar_url = avatar_url or (existing.avatar_url if existing else None)
+    profile_url = profile_url or (existing.profile_url if existing else None)
 
     if existing:
         existing.persona_name = persona_name
@@ -307,17 +265,13 @@ async def refresh_player_data(session: Session = Depends(get_session)):
     try:
         data = await client.get_player(player.account_id)
         profile = data.get("profile", {})
-        persona_name = profile.get("personaname") or player.persona_name
-        avatar_url = profile.get("avatarfull") or player.avatar_url
-        profile_url = profile.get("profileurl") or player.profile_url
 
-        persona_name, avatar_url, profile_url = await _fill_missing_profile_fields(
-            player.account_id, player.steam_id, persona_name, avatar_url, profile_url, settings,
+        persona_name, avatar_url, profile_url = await resolve_persona_avatar(
+            player.account_id, player.steam_id, profile, settings,
         )
-
-        player.persona_name = persona_name
-        player.avatar_url = avatar_url
-        player.profile_url = profile_url
+        player.persona_name = persona_name or player.persona_name
+        player.avatar_url = avatar_url or player.avatar_url
+        player.profile_url = profile_url or player.profile_url
         player.rank_tier = data.get("rank_tier") or player.rank_tier
         player.mmr_estimate = data.get("mmr_estimate", {}).get("estimate") or player.mmr_estimate
         player.last_sync_at = datetime.utcnow()

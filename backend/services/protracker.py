@@ -110,26 +110,31 @@ async def fetch_hero_position_meta() -> Optional[list[dict]]:
     return rows
 
 
-# position query values ProTracker's own /meta page uses (confirmed by
-# clicking each real position tab and watching the network request it
-# fires) — 0 is this app's own convention for "All Roles", mapped to
-# their real "all" query value.
-_POSITION_QUERY_VALUES = {0: "all", 1: "pos+1", 2: "pos+2", 3: "pos+3", 4: "pos+4", 5: "pos+5"}
-
-
 async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
     """
     The full per-hero, per-position breakdown behind Dota2ProTracker's
-    Meta page table (see HeroPositionDetail's docstring for how this
-    endpoint — /api/heroes/stats, not /api/heroes/list — was found: by
-    clicking a real position tab on their live page and watching the
-    network tab, since switching tabs fires no visible page reload).
+    Meta page table (see HeroPositionDetail's docstring for what
+    /api/heroes/stats returns and means).
 
-    Opens the page once (same Cloudflare-bypass approach as
-    fetch_hero_position_meta — a real browser navigation is what gets
-    past their bot detection) and then issues one same-origin fetch()
-    per position from inside that already-cleared browser session,
-    rather than reloading the whole page 6 times.
+    Drives the page the same way a real visitor does — load once, then
+    click through the six real <button role="tab"> position tabs in turn
+    (their own order: All Roles, Carry, Mid, Offlane, Support, Hard
+    Support), a real pause between each — rather than issuing our own
+    fetch() calls or reloading the page per position. Confirmed live
+    (2026-09-29), in this order, chasing three different failures:
+      1. `page.goto(..., wait_until="networkidle")` could time out even
+         after the data we needed had already arrived — this page never
+         goes fully network-idle.
+      2. Once past that, six back-to-back same-page fetch() calls (even
+         with a trimmed return value) got every request after the first
+         rejected with HTTP 403 — a burst/rate check on the site's side,
+         not a URL/param/payload-size problem (the identical URL succeeds
+         from a real browser tab).
+      3. A fresh full-page navigation straight to `?position=pos+1` does
+         NOT itself trigger the stats request either — only the page's
+         own client-side tab-switch handler does.
+      Clicking each real tab, a few seconds apart, succeeded for all 6
+      positions in one continuous session — this is that.
 
     Returns {position: [{hero_id, matches, wins, winrate, meta_score,
     contest_rate, lane_adv_pct, rating_rank, rating_cohort_size,
@@ -143,84 +148,58 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
         logger.error("Dota2ProTracker detail fetch failed: playwright not installed")
         return None
 
+    import asyncio as _asyncio
+
     result: dict[int, list[dict]] = {}
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
                 page = await browser.new_page(user_agent=_REAL_BROWSER_UA)
-                # "load" (not "networkidle" — see fetch_hero_position_meta's
-                # comment on that same flakiness) is enough here: this
-                # function doesn't need any particular auto-fired request to
-                # complete, just for the page's own JS (including whatever
-                # Cloudflare challenge script runs) to have finished, so our
-                # own fetch() calls below carry a valid session.
                 await page.goto(PROTRACKER_META_PAGE_URL, wait_until="load", timeout=30000)
+                await _asyncio.sleep(2)  # let the page settle before the first click
 
-                for position, query_value in _POSITION_QUERY_VALUES.items():
-                    url = (
-                        "https://dota2protracker.com/api/heroes/stats"
-                        f"?position={query_value}&order_by=matches&legacy=false&mmr=7000&min_matches=1&period=8"
-                    )
-                    try:
-                        # Confirmed live (2026-09-29) that this endpoint's real
-                        # response has grown to ~4.6MB for a single position —
-                        # every hero now carries a `detailed_stats` blob with
-                        # per-level/per-time-bucket arrays this app never
-                        # reads (damage_profile, damage_timeline,
-                        # level_distribution, daily_stats, ...). Shuttling all
-                        # 6 positions' full payloads (~27MB) back through
-                        # page.evaluate()'s CDP bridge was the actual failure
-                        # here (a genuine timeout/size problem, not a bot-
-                        # detection or URL/param issue — the identical URL
-                        # fetched fine from a live browser tab), so the
-                        # trimming happens INSIDE the page context, before
-                        # crossing that bridge — only ever a few small fields
-                        # per hero leave the browser.
-                        raw = await page.evaluate(
-                            """async (url) => {
-                                const res = await fetch(url);
-                                if (!res.ok) throw new Error('HTTP ' + res.status);
-                                const data = await res.json();
-                                return data.map(h => {
-                                    const ds = h.detailed_stats || {};
-                                    const build = ds.best_build_winrate || {};
-                                    return {
-                                        hero_id: h.hero_id,
-                                        matches: h.matches,
-                                        wins: h.wins,
-                                        meta_score: h.meta_score,
-                                        contest_rate: h.contest_rate,
-                                        rating_rank: h.rating_rank,
-                                        rating_cohort_size: h.rating_cohort_size,
-                                        lane_avg_adv_pct: ds.lane_avg_adv_pct,
-                                        radiant_matches: ds.radiant_matches,
-                                        radiant_wins: ds.radiant_wins,
-                                        dire_matches: ds.dire_matches,
-                                        dire_wins: ds.dire_wins,
-                                        phase_1_matches: ds.phase_1_matches,
-                                        phase_1_wins: ds.phase_1_wins,
-                                        phase_2_matches: ds.phase_2_matches,
-                                        phase_2_wins: ds.phase_2_wins,
-                                        phase_3_matches: ds.phase_3_matches,
-                                        phase_3_wins: ds.phase_3_wins,
-                                        build_matches: build.num_matches,
-                                        build_winrate: build.win_rate,
-                                    };
-                                });
-                            }""",
-                            url,
-                        )
-                    except Exception as e:
-                        logger.error(f"Dota2ProTracker detail fetch failed for position {position}: {e}")
+                # Tab order confirmed live: ["All Roles", "Carry", "Mid",
+                # "Offlane", "Support", "Hard Support"] — matches this
+                # app's own 0-5 position convention index-for-index.
+                tabs = page.locator('button[role="tab"]')
+
+                for position in range(6):
+                    raw = None
+                    for attempt in range(2):
+                        try:
+                            async with page.expect_response(
+                                lambda r: "/api/heroes/stats" in r.url and r.status == 200, timeout=20000
+                            ) as response_info:
+                                await tabs.nth(position).click(timeout=10000)
+                            response = await response_info.value
+                            # response.json() reads the raw body over CDP and
+                            # parses it in Python — far lighter than the
+                            # ~4.6MB-per-position payload going through
+                            # page.evaluate()'s live-object serialization
+                            # (the earlier, different failure noted above).
+                            raw = await response.json()
+                            break
+                        except Exception as e:
+                            if "403" in str(e) and attempt == 0:
+                                logger.warning(f"Dota2ProTracker detail: position {position} got HTTP 403, backing off 10s and retrying once")
+                                await _asyncio.sleep(10)
+                                continue
+                            logger.error(f"Dota2ProTracker detail fetch failed for position {position}: {e}")
+                            break
+
+                    if raw is None:
+                        await _asyncio.sleep(4)
                         continue
 
                     rows = []
-                    for hero in raw or []:
+                    for hero in raw:
                         hero_id = hero.get("hero_id")
                         matches = hero.get("matches") or 0
                         if not hero_id or matches <= 0:
                             continue
+                        ds = hero.get("detailed_stats") or {}
+                        build = ds.get("best_build_winrate") or {}
                         rows.append({
                             "hero_id": hero_id,
                             "matches": matches,
@@ -228,30 +207,29 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
                             "winrate": (hero.get("wins") or 0) / matches,
                             "meta_score": _to_float(hero.get("meta_score")),
                             "contest_rate": _to_float(hero.get("contest_rate")),
-                            "lane_adv_pct": _to_float(hero.get("lane_avg_adv_pct")),
+                            "lane_adv_pct": _to_float(ds.get("lane_avg_adv_pct")),
                             "rating_rank": hero.get("rating_rank"),
                             "rating_cohort_size": hero.get("rating_cohort_size"),
-                            "radiant_matches": hero.get("radiant_matches") or 0,
-                            "radiant_wins": hero.get("radiant_wins") or 0,
-                            "dire_matches": hero.get("dire_matches") or 0,
-                            "dire_wins": hero.get("dire_wins") or 0,
-                            "phase_1_matches": hero.get("phase_1_matches") or 0,
-                            "phase_1_wins": hero.get("phase_1_wins") or 0,
-                            "phase_2_matches": hero.get("phase_2_matches") or 0,
-                            "phase_2_wins": hero.get("phase_2_wins") or 0,
-                            "phase_3_matches": hero.get("phase_3_matches") or 0,
-                            "phase_3_wins": hero.get("phase_3_wins") or 0,
-                            "build_matches": hero.get("build_matches") or 0,
-                            "build_winrate": _to_float(hero.get("build_winrate")),
+                            "radiant_matches": ds.get("radiant_matches") or 0,
+                            "radiant_wins": ds.get("radiant_wins") or 0,
+                            "dire_matches": ds.get("dire_matches") or 0,
+                            "dire_wins": ds.get("dire_wins") or 0,
+                            "phase_1_matches": ds.get("phase_1_matches") or 0,
+                            "phase_1_wins": ds.get("phase_1_wins") or 0,
+                            "phase_2_matches": ds.get("phase_2_matches") or 0,
+                            "phase_2_wins": ds.get("phase_2_wins") or 0,
+                            "phase_3_matches": ds.get("phase_3_matches") or 0,
+                            "phase_3_wins": ds.get("phase_3_wins") or 0,
+                            "build_matches": build.get("num_matches") or 0,
+                            "build_winrate": _to_float(build.get("win_rate")),
                         })
                     result[position] = rows
                     logger.info(f"Dota2ProTracker detail: fetched {len(rows)} rows for position {position}")
-                    # Same crawl-delay courtesy already applied to the
-                    # single /api/heroes/list call elsewhere in this file —
-                    # this is now 6 requests in one sync, still well under
-                    # robots.txt's general 2s guidance per request.
-                    import asyncio as _asyncio
-                    await _asyncio.sleep(1.5)
+
+                    # Real human-like pacing between tab clicks — this
+                    # pacing (not the URL/params/payload) is what avoided
+                    # the 403s seen with back-to-back fetch() calls.
+                    await _asyncio.sleep(4)
             finally:
                 await browser.close()
     except Exception as e:
