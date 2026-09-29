@@ -465,28 +465,40 @@ async def fetch_hero_overview(hero_localized_name: str, hero_id: int, position: 
 
     url = f"https://dota2protracker.com/hero/{quote(hero_localized_name)}?position=pos+{position}"
 
-    captured: dict = {}
-
-    async def handle_response(response):
+    async def wait_for_json(page, url_fragment: str, timeout_ms: int) -> Optional[dict]:
+        """Waits for a specific real response event (armed before
+        navigation, so it can't miss one that fires immediately after
+        load) rather than a fixed sleep-then-hope-it-landed — a blind
+        3s sleep was confirmed live (2026-09-29) to sometimes be too
+        short for role-rankings specifically, leaving D2PT Rating blank
+        even though the overview request itself had already succeeded."""
         try:
-            if f"/api/hero/{hero_id}/overview" in response.url and response.status == 200:
-                captured["overview"] = await response.json()
-            elif "/api/heroes/role-rankings" in response.url and response.status == 200:
-                captured["rankings"] = await response.json()
-            elif f"/api/abilities?hero_id={hero_id}" in response.url and response.status == 200:
-                captured["abilities"] = await response.json()
+            response = await page.wait_for_event(
+                "response",
+                predicate=lambda r: url_fragment in r.url and r.status == 200,
+                timeout=timeout_ms,
+            )
+            return await response.json()
         except Exception:
-            pass
+            return None
 
+    overview = None
+    rankings = None
+    abilities = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
                 context = await browser.new_context(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
                 page = await context.new_page()
-                page.on("response", handle_response)
+
+                # Armed before goto() so none of the three can be missed.
+                overview_task = _asyncio.ensure_future(wait_for_json(page, f"/api/hero/{hero_id}/overview", 20000))
+                rankings_task = _asyncio.ensure_future(wait_for_json(page, "/api/heroes/role-rankings", 20000))
+                abilities_task = _asyncio.ensure_future(wait_for_json(page, f"/api/abilities?hero_id={hero_id}", 20000))
+
                 await page.goto(url, wait_until="load", timeout=30000)
-                await _asyncio.sleep(3)  # let the auto-fired requests land
+                overview, rankings, abilities = await _asyncio.gather(overview_task, rankings_task, abilities_task)
             finally:
                 await context.close()
                 await browser.close()
@@ -494,19 +506,20 @@ async def fetch_hero_overview(hero_localized_name: str, hero_id: int, position: 
         logger.error(f"Dota2ProTracker hero overview fetch failed for hero {hero_id} position {position}: {e}")
         return None
 
-    overview = captured.get("overview")
     if overview is None:
         logger.error(f"Dota2ProTracker hero overview fetch failed for hero {hero_id} position {position}: overview response never captured")
         return None
+    if rankings is None:
+        logger.warning(f"Dota2ProTracker hero overview for hero {hero_id} position {position}: role-rankings response never captured — D2PT rating/lane advantage/rank will be blank")
 
     build = overview.get("build") or {}
-    selected = (captured.get("rankings") or {}).get("selected") or {}
+    selected = (rankings or {}).get("selected") or {}
     weekly_points = ((overview.get("rates") or {}).get("weekly") or {}).get("points") or []
 
     # Resolve ability_sequence's raw ability_ids into real name/icon info
     # via the abilities list also captured above — without this, the
     # frontend would only have opaque numeric ids to render with.
-    ability_by_id = {a["ability_id"]: a for a in (captured.get("abilities") or [])}
+    ability_by_id = {a["ability_id"]: a for a in (abilities or [])}
     ability_sequence = [
         {
             "ability_id": aid,

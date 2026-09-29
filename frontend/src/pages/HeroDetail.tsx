@@ -70,46 +70,85 @@ function formatAge(iso: string | null): string {
   return `${(hours / 24).toFixed(1)}d ago`;
 }
 
-function WeeklyRateChart({ points, valueKey, label, color, suffix = '%' }: {
-  points: WeeklyRate[]; valueKey: 'win_rate' | 'pick_rate'; label: string; color: string; suffix?: string;
-}) {
-  const width = 300;
-  const height = 90;
-  const padding = 6;
-  const values = points.map((p) => p[valueKey]);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
+function fmtWeekDate(ts: number): string {
+  return new Date(ts * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
 
-  const coords = points.map((p, i) => {
-    const x = padding + (i / Math.max(1, points.length - 1)) * (width - padding * 2);
-    const y = height - padding - ((p[valueKey] - min) / range) * (height - padding * 2);
-    return [x, y];
-  });
-  const pathD = coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const areaD = `${pathD} L${coords[coords.length - 1][0].toFixed(1)},${height - padding} L${coords[0][0].toFixed(1)},${height - padding} Z`;
+function WeeklyRateChart({ points }: { points: WeeklyRate[] }) {
+  const width = 700;
+  const height = 140;
+  const padding = 14;
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+
+  const winValues = points.map((p) => p.win_rate);
+  const pickValues = points.map((p) => p.pick_rate);
+  const winMin = Math.min(...winValues);
+  const winRange = Math.max(...winValues) - winMin || 1;
+  const pickMin = Math.min(...pickValues);
+  const pickRange = Math.max(...pickValues) - pickMin || 1;
+
+  const xFor = (i: number) => padding + (i / Math.max(1, points.length - 1)) * (width - padding * 2);
+  const winYFor = (v: number) => height - padding - ((v - winMin) / winRange) * (height - padding * 2);
+  const pickYFor = (v: number) => height - padding - ((v - pickMin) / pickRange) * (height - padding * 2);
+
+  const winCoords = points.map((p, i) => [xFor(i), winYFor(p.win_rate)]);
+  const pickCoords = points.map((p, i) => [xFor(i), pickYFor(p.pick_rate)]);
+  const winPath = winCoords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const pickPath = pickCoords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const winArea = `${winPath} L${winCoords[winCoords.length - 1][0].toFixed(1)},${height - padding} L${winCoords[0][0].toFixed(1)},${height - padding} Z`;
+  const slotWidth = (width - padding * 2) / points.length;
 
   return (
-    <div className="hero-chart">
-      <div className="hero-chart-label">{label}</div>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        <defs>
-          <linearGradient id={`grad-${valueKey}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={color} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <path d={areaD} fill={`url(#grad-${valueKey})`} />
-        <path d={pathD} fill="none" stroke={color} strokeWidth="2" />
-        {coords.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="2.5" fill={color}>
-            <title>{points[i][valueKey].toFixed(1)}{suffix}</title>
-          </circle>
-        ))}
-      </svg>
-      <div className="hero-chart-range">
-        <span>{min.toFixed(1)}{suffix}</span>
-        <span>{max.toFixed(1)}{suffix}</span>
+    <div className="hero-chart-wrap">
+      <div className="hero-chart-legend">
+        <span className="hero-chart-legend-item"><span className="hero-chart-dot" style={{ background: '#51a445' }} />Win Rate</span>
+        <span className="hero-chart-legend-item"><span className="hero-chart-dot dashed" style={{ borderColor: '#e2b742' }} />Pick Rate</span>
+      </div>
+      <div className="hero-chart-svg-wrap">
+        <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="hero-chart-svg">
+          <defs>
+            <linearGradient id="hero-chart-win-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#51a445" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="#51a445" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={winArea} fill="url(#hero-chart-win-grad)" />
+          <path d={winPath} fill="none" stroke="#51a445" strokeWidth="2" />
+          <path d={pickPath} fill="none" stroke="#e2b742" strokeWidth="2" strokeDasharray="5 4" />
+          {hoverIdx !== null && (
+            <line x1={xFor(hoverIdx)} y1={padding / 2} x2={xFor(hoverIdx)} y2={height - padding / 2} stroke="rgba(255,255,255,0.15)" strokeWidth="1.5" />
+          )}
+          {points.map((p, i) => (
+            <g key={i}>
+              <circle cx={xFor(i)} cy={winYFor(p.win_rate)} r={hoverIdx === i ? 4.5 : 2.5} fill="#51a445" className="hero-chart-point" />
+              <circle cx={xFor(i)} cy={pickYFor(p.pick_rate)} r={hoverIdx === i ? 4.5 : 2.5} fill="#e2b742" className="hero-chart-point" />
+              <rect
+                x={xFor(i) - slotWidth / 2} y={0} width={slotWidth} height={height}
+                fill="transparent"
+                onMouseEnter={() => setHoverIdx(i)}
+                onMouseLeave={() => setHoverIdx(null)}
+              />
+            </g>
+          ))}
+        </svg>
+        {hoverIdx !== null && (
+          <div
+            className="hero-chart-tooltip"
+            style={{
+              left: `${(xFor(hoverIdx) / width) * 100}%`,
+              transform: `translateX(${xFor(hoverIdx) / width > 0.7 ? '-100%' : '-8px'})`,
+            }}
+          >
+            <div className="hero-chart-tooltip-date">{fmtWeekDate(points[hoverIdx].window_start)}</div>
+            <div className="hero-chart-tooltip-row"><span className="dot" style={{ background: '#51a445' }} />Win rate <b>{points[hoverIdx].win_rate.toFixed(1)}%</b></div>
+            <div className="hero-chart-tooltip-row"><span className="dot" style={{ background: '#e2b742' }} />Pick rate <b>{points[hoverIdx].pick_rate.toFixed(1)}%</b></div>
+            <div className="hero-chart-tooltip-matches">{points[hoverIdx].matches.toLocaleString()} matches</div>
+          </div>
+        )}
+      </div>
+      <div className="hero-chart-x-axis">
+        <span>{fmtWeekDate(points[0].window_start)}</span>
+        <span>{fmtWeekDate(points[points.length - 1].window_start)}</span>
       </div>
     </div>
   );
@@ -220,10 +259,7 @@ export default function HeroDetail() {
           {overview.weekly_rates.length > 1 && (
             <div className="glass-surface hero-detail-chart-card">
               <h4>Pick &amp; Win Rate — last {overview.weekly_rates.length} weeks</h4>
-              <div className="hero-chart-row">
-                <WeeklyRateChart points={overview.weekly_rates} valueKey="win_rate" label="Win Rate" color="#51a445" />
-                <WeeklyRateChart points={overview.weekly_rates} valueKey="pick_rate" label="Pick Rate" color="#e2b742" />
-              </div>
+              <WeeklyRateChart points={overview.weekly_rates} />
             </div>
           )}
 
