@@ -40,7 +40,7 @@ export default function Sidebar() {
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-header">
         <Link to="/" className="logo">
-          <img src="/logo.svg" alt="" className="logo-mark" />
+          <img src="/logo.png" alt="" className="logo-mark" />
           {!collapsed && (
             <span className="logo-text">
               Immortal<span className="accent">+</span>

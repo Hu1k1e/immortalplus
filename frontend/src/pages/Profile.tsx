@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, ExternalLink } from 'lucide-react';
+import { Users } from 'lucide-react';
 import api from '../lib/api';
 import { HEROES, getHeroImage } from '../lib/dota';
 import { getRankBadge, getRankLabel } from '../lib/rank';
@@ -101,7 +101,6 @@ export default function Profile() {
   const [trends, setTrends] = useState<any>(null);
   const [trendWindow, setTrendWindow] = useState(25);
   const [topHeroes, setTopHeroes] = useState<any>(null);
-  const [teammates, setTeammates] = useState<any>(null);
 
   useEffect(() => {
     api.get('/player/profile').then((r) => {
@@ -113,10 +112,6 @@ export default function Profile() {
       if (d && typeof d === 'object' && Array.isArray(d.positions)) setFilterOptions(d);
     }).catch(() => {});
     api.get('/meta/hero-list').then((r) => setHeroList(Array.isArray(r.data) ? r.data : [])).catch(() => {});
-    api.get('/player/teammates', { params: { limit: 6 } }).then((r) => {
-      const d = r.data;
-      if (d && typeof d === 'object' && Array.isArray(d.teammates)) setTeammates(d);
-    }).catch(() => {});
   }, []);
 
   const filterParams = useMemo(() => {
@@ -163,10 +158,10 @@ export default function Profile() {
     <div className="profile-page">
       <div className="profile-header glass-surface">
         <img
-          src={profile?.avatar_url || '/logo.svg'}
+          src={profile?.avatar_url || '/logo.png'}
           alt=""
           className="profile-header-avatar"
-          onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; }}
+          onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }}
         />
         <div className="profile-header-info">
           <h1>{profile?.persona_name || 'Loading…'}</h1>
@@ -312,58 +307,28 @@ export default function Profile() {
         </div>
       </div>
 
-      <div className="profile-main-row">
-        <div className="profile-heroes-card glass-surface">
-          <div className="profile-card-title">Most Played Heroes</div>
-          <div className="profile-heroes-list">
-            {(topHeroes?.heroes || []).map((h: any) => (
-              <div key={h.hero_id} className="profile-hero-row">
-                <img src={h.hero_icon} alt={h.hero_name} className="profile-hero-icon" />
-                <div className="profile-hero-info">
-                  <div className="profile-hero-name">{h.hero_name}</div>
-                  {h.position_name && <div className="profile-hero-position">{h.position_name}</div>}
-                </div>
-                <div className={`profile-hero-winrate ${h.winrate >= 50 ? 'good' : 'bad'}`}>{h.winrate}%</div>
-                <div className="profile-hero-bar-wrap">
-                  <div className="profile-hero-bar" style={{ width: `${Math.min(100, (h.matches / ((topHeroes?.heroes?.[0]?.matches) || h.matches)) * 100)}%` }} />
-                </div>
-                <div className="profile-hero-matches">{h.matches}</div>
+      <div className="profile-heroes-card glass-surface">
+        <div className="profile-card-title">Most Played Heroes</div>
+        <div className="profile-heroes-list">
+          {(topHeroes?.heroes || []).map((h: any) => (
+            <div key={h.hero_id} className="profile-hero-row">
+              <img src={h.hero_icon} alt={h.hero_name} className="profile-hero-icon" />
+              <div className="profile-hero-info">
+                <div className="profile-hero-name">{h.hero_name}</div>
+                {h.position_name && <div className="profile-hero-position">{h.position_name}</div>}
               </div>
-            ))}
-            {topHeroes && (topHeroes.heroes || []).length === 0 && <div className="profile-empty">No hero data for these filters.</div>}
-          </div>
-          {topHeroes?.pick_share_pct > 0 && (
-            <div className="profile-card-footer">These {topHeroes.heroes.length} heroes comprise <span className="gold">{topHeroes.pick_share_pct}%</span> of your picks.</div>
-          )}
+              <div className={`profile-hero-winrate ${h.winrate >= 50 ? 'good' : 'bad'}`}>{h.winrate}%</div>
+              <div className="profile-hero-bar-wrap">
+                <div className="profile-hero-bar" style={{ width: `${Math.min(100, (h.matches / ((topHeroes?.heroes?.[0]?.matches) || h.matches)) * 100)}%` }} />
+              </div>
+              <div className="profile-hero-matches">{h.matches}</div>
+            </div>
+          ))}
+          {topHeroes && (topHeroes.heroes || []).length === 0 && <div className="profile-empty">No hero data for these filters.</div>}
         </div>
-
-        <div className="profile-teammates-card glass-surface">
-          <div className="profile-card-title-row">
-            <div className="profile-card-title">Teammates</div>
-          </div>
-          <div className="profile-teammates-list">
-            {(teammates?.teammates || []).map((t: any) => (
-              <a key={t.account_id} className="profile-teammate-row" href={t.profile_url} target="_blank" rel="noopener noreferrer">
-                <img
-                  src={t.avatar_url || '/logo.svg'}
-                  alt=""
-                  className="profile-teammate-avatar"
-                  onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; }}
-                />
-                <div className="profile-teammate-info">
-                  <div className="profile-teammate-name">{t.persona_name}</div>
-                  <div className="profile-hero-bar-wrap">
-                    <div className={`profile-hero-bar ${t.winrate >= 50 ? '' : 'bad'}`} style={{ width: `${t.winrate}%` }} />
-                  </div>
-                </div>
-                <div className={`profile-hero-winrate ${t.winrate >= 50 ? 'good' : 'bad'}`}>{t.winrate}%</div>
-                <div className="profile-hero-matches">{t.matches}</div>
-                <ExternalLink size={12} className="profile-teammate-link-icon" />
-              </a>
-            ))}
-            {teammates && (teammates.teammates || []).length === 0 && <div className="profile-empty">No teammate data yet — only available for matches with full details synced.</div>}
-          </div>
-        </div>
+        {topHeroes?.pick_share_pct > 0 && (
+          <div className="profile-card-footer">These {topHeroes.heroes.length} heroes comprise <span className="gold">{topHeroes.pick_share_pct}%</span> of your picks.</div>
+        )}
       </div>
     </div>
   );

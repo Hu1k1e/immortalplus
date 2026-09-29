@@ -3,7 +3,6 @@ Player profile and stats endpoints.
 """
 
 import re
-import json
 import logging
 from datetime import datetime
 from typing import Optional
@@ -435,89 +434,3 @@ async def get_most_played_heroes(
     pick_share = round(sum(r["matches"] for r in top) / total * 100, 1) if total else 0
 
     return {"heroes": top, "pick_share_pct": pick_share, "total_matches": total}
-
-
-@router.get("/teammates")
-async def get_teammates(
-    limit: int = Query(6, ge=1, le=25),
-    session: Session = Depends(get_session),
-):
-    """Most-frequent teammates, aggregated from the per-match `all_players`
-    snapshot stored on each locally-synced Match — which is only populated
-    for matches whose full details were fetched (is_parsed / detail-synced
-    ones), not the entire raw match-history backfill, so this is a
-    best-effort view over however many detailed matches exist locally, not
-    a literal "all-time" teammate count. Avatars are fetched live from
-    OpenDota for just the returned rows (not stored), since match player
-    snapshots don't carry avatar URLs.
-    """
-    player = _require_player(session)
-    if not player.account_id:
-        raise HTTPException(status_code=404, detail="No player profile found")
-
-    matches = session.exec(
-        select(Match).where(Match.player_id == player.id, Match.all_players.is_not(None))
-    ).all()
-
-    agg: dict = {}
-    for m in matches:
-        try:
-            players = json.loads(m.all_players)
-        except (json.JSONDecodeError, TypeError):
-            continue
-
-        own = next((p for p in players if p.get("account_id") == player.account_id), None)
-        if not own:
-            continue
-        own_slot = own.get("player_slot")
-        if own_slot is None:
-            continue
-        own_is_radiant = own_slot < 128
-
-        for p in players:
-            acc = p.get("account_id")
-            if not acc or acc == player.account_id:
-                continue
-            slot = p.get("player_slot")
-            if slot is None or (slot < 128) != own_is_radiant:
-                continue  # opponent, not teammate
-
-            d = agg.setdefault(acc, {"matches": 0, "wins": 0, "persona": None})
-            d["matches"] += 1
-            if m.result == "win":
-                d["wins"] += 1
-            name = p.get("persona") or p.get("personaname")
-            if name:
-                d["persona"] = name
-
-    rows = []
-    for acc, d in agg.items():
-        rows.append({
-            "account_id": acc,
-            "persona_name": d["persona"] or f"Player {acc}",
-            "matches": d["matches"],
-            "wins": d["wins"],
-            "winrate": round(d["wins"] / d["matches"] * 100, 1) if d["matches"] else 0,
-            "profile_url": f"https://www.opendota.com/players/{acc}",
-            "avatar_url": None,
-        })
-    rows.sort(key=lambda r: r["matches"], reverse=True)
-    top = rows[:limit]
-
-    if top:
-        settings = session.exec(select(UserSettings)).first()
-        client = get_opendota_client(settings.opendota_api_key if settings else None)
-        for r in top:
-            try:
-                data = await client.get_player(r["account_id"])
-                profile = data.get("profile", {})
-                r["avatar_url"] = profile.get("avatarfull")
-                if profile.get("personaname"):
-                    r["persona_name"] = profile["personaname"]
-            except Exception as e:
-                logger.info(f"Teammate avatar lookup failed for {r['account_id']}: {e}")
-
-    return {
-        "teammates": top,
-        "note": "Based on locally-synced matches with full details, not the entire match history.",
-    }

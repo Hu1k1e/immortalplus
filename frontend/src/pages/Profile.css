@@ -303,39 +303,33 @@
 .profile-trend-footer-value .up { color: var(--radiant-green); font-size: 0.75rem; }
 .profile-trend-footer-value .down { color: var(--dire-red); font-size: 0.75rem; }
 
-/* Most played heroes / Teammates shared row styles */
-.profile-heroes-list, .profile-teammates-list {
+/* Most played heroes */
+.profile-heroes-list {
   display: flex;
   flex-direction: column;
   padding-bottom: 0.5rem;
 }
-.profile-hero-row, .profile-teammate-row {
+.profile-hero-row {
   display: grid;
-  grid-template-columns: 32px 1fr 44px 90px 30px;
+  grid-template-columns: 32px 1fr 44px 160px 40px;
   align-items: center;
   gap: 0.7rem;
   padding: 0.5rem 1.25rem;
   transition: background 220ms ease;
 }
-.profile-teammate-row {
-  grid-template-columns: 32px 1fr 44px 30px 14px;
-  color: inherit;
-  cursor: pointer;
-}
-.profile-hero-row:hover, .profile-teammate-row:hover {
+.profile-hero-row:hover {
   background: linear-gradient(90deg, rgba(226, 183, 66, 0.08), rgba(226, 183, 66, 0.015) 60%, transparent);
 }
-.profile-hero-icon, .profile-teammate-avatar {
+.profile-hero-icon {
   width: 32px;
   height: 32px;
   border-radius: 6px;
   object-fit: cover;
 }
-.profile-teammate-avatar { border-radius: 50%; }
-.profile-hero-info, .profile-teammate-info {
+.profile-hero-info {
   min-width: 0;
 }
-.profile-hero-name, .profile-teammate-name {
+.profile-hero-name {
   font-size: 0.85rem;
   font-weight: 500;
   white-space: nowrap;
@@ -354,7 +348,7 @@
 .profile-hero-winrate.good { color: var(--radiant-green); }
 .profile-hero-winrate.bad { color: var(--dire-red); }
 .profile-hero-bar-wrap {
-  width: 90px;
+  width: 160px;
   height: 6px;
   border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.06);
@@ -372,12 +366,6 @@
   font-size: 0.78rem;
   text-align: right;
 }
-.profile-teammate-link-icon {
-  color: var(--text-muted);
-  opacity: 0;
-  transition: opacity 150ms ease;
-}
-.profile-teammate-row:hover .profile-teammate-link-icon { opacity: 1; }
 
 @media (max-width: 900px) {
   .profile-main-row {
@@ -385,5 +373,11 @@
   }
   .profile-stats-row {
     grid-template-columns: 1fr;
+  }
+  .profile-hero-row {
+    grid-template-columns: 32px 1fr 44px 30px;
+  }
+  .profile-hero-bar-wrap {
+    display: none;
   }
 }

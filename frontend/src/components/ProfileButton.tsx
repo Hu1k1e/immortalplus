@@ -29,10 +29,10 @@ export default function ProfileButton() {
     >
       <div className="profile-button-avatar-wrap">
         <img
-          src={profile.avatar_url || '/logo.svg'}
+          src={profile.avatar_url || '/logo.png'}
           alt=""
           className="profile-button-avatar"
-          onError={(e) => { (e.target as HTMLImageElement).src = '/logo.svg'; }}
+          onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }}
         />
         {rankBadge && <img src={rankBadge} alt="" className="profile-button-rank" />}
       </div>
