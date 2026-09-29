@@ -200,20 +200,30 @@ async def _fetch_one_position_detail(browser, position: int) -> Optional[list]:
         await context.close()
 
 
-async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
+async def fetch_hero_position_detail(position: int) -> Optional[list[dict]]:
     """
-    The full per-hero, per-position breakdown behind Dota2ProTracker's
-    Meta page table (see HeroPositionDetail's docstring for what
-    /api/heroes/stats returns and means). See _fetch_one_position_detail
-    for how each position is actually fetched (a fresh browser context
-    per position) and why, after several other approaches each failed
-    differently in production.
+    One position's full per-hero breakdown behind Dota2ProTracker's Meta
+    page table (see HeroPositionDetail's docstring for what
+    /api/heroes/stats returns and means).
 
-    Returns {position: [{hero_id, matches, wins, winrate, meta_score,
-    contest_rate, lane_adv_pct, rating_rank, rating_cohort_size,
-    radiant_matches, radiant_wins, dire_matches, dire_wins,
-    phase_1/2/3_matches, phase_1/2/3_wins, build_matches, build_winrate},
-    ...]} for positions 0 (All Roles) and 1-5, or None on failure.
+    Fetches ONLY this one position, not all six — see
+    sync_hero_position_detail's docstring for why: even a single request,
+    in its own fully-fresh browser context, has been observed failing
+    unpredictably in production (a different position each time, no
+    consistent pattern), which points at something upstream of this app's
+    code (most likely Cloudflare/bot-mitigation treating this server's
+    IP with rising suspicion the more it's hit — a fresh cookie jar
+    doesn't reset that). Retrying several times with real backoff between
+    attempts, each in its own fresh context, is the most this function
+    can reasonably do about that; spreading the six positions across
+    separate sync cycles instead of bursting all six every time is the
+    other half of the mitigation, handled by the caller.
+
+    Returns [{hero_id, matches, wins, winrate, meta_score, contest_rate,
+    lane_adv_pct, rating_rank, rating_cohort_size, radiant_matches,
+    radiant_wins, dire_matches, dire_wins, phase_1/2/3_matches,
+    phase_1/2/3_wins, build_matches, build_winrate}, ...], or None on
+    failure after all retries.
     """
     try:
         from playwright.async_api import async_playwright
@@ -223,48 +233,35 @@ async def fetch_hero_position_detail() -> Optional[dict[int, list[dict]]]:
 
     import asyncio as _asyncio
 
-    result: dict[int, list[dict]] = {}
+    raw = None
+    last_error = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             try:
-                for position in range(6):
-                    raw = None
-                    last_error = None
-                    for attempt in range(2):
-                        try:
-                            raw = await _fetch_one_position_detail(browser, position)
-                            break
-                        except Exception as e:
-                            last_error = e
-                            backoff = 15 if "403" in str(e) else 8
-                            if attempt == 0:
-                                logger.warning(f"Dota2ProTracker detail: position {position} ({_TAB_NAMES[position]}) attempt 1 failed ({e}), retrying with a fresh session in {backoff}s")
-                                await _asyncio.sleep(backoff)
-
-                    if raw is None:
-                        logger.error(f"Dota2ProTracker detail fetch failed for position {position} ({_TAB_NAMES[position]}) after 2 fresh-session attempts: {last_error}")
-                        await _asyncio.sleep(3)
-                        continue
-
-                    rows = _parse_position_detail_rows(raw)
-                    result[position] = rows
-                    logger.info(f"Dota2ProTracker detail: fetched {len(rows)} rows for position {position}")
-
-                    # Real pacing between positions — each already
-                    # involves its own fresh page load, so this is on top
-                    # of that, not a substitute for it.
-                    await _asyncio.sleep(3)
+                for attempt in range(4):
+                    try:
+                        raw = await _fetch_one_position_detail(browser, position)
+                        break
+                    except Exception as e:
+                        last_error = e
+                        backoff = 20 if "403" in str(e) else 12
+                        if attempt < 3:
+                            logger.warning(f"Dota2ProTracker detail: position {position} ({_TAB_NAMES[position]}) attempt {attempt + 1} failed ({e}), retrying with a fresh session in {backoff}s")
+                            await _asyncio.sleep(backoff)
             finally:
                 await browser.close()
     except Exception as e:
-        logger.error(f"Dota2ProTracker detail fetch failed: {e}")
+        logger.error(f"Dota2ProTracker detail fetch failed for position {position}: {e}")
         return None
 
-    if not any(result.values()):
-        logger.error("Dota2ProTracker detail fetch failed: no position returned any rows")
+    if raw is None:
+        logger.error(f"Dota2ProTracker detail fetch failed for position {position} ({_TAB_NAMES[position]}) after 4 fresh-session attempts: {last_error}")
         return None
-    return result
+
+    rows = _parse_position_detail_rows(raw)
+    logger.info(f"Dota2ProTracker detail: fetched {len(rows)} rows for position {position}")
+    return rows
 
 
 def _to_float(value) -> Optional[float]:
@@ -353,61 +350,86 @@ async def sync_hero_position_detail(session) -> int:
     """
     Fetch + upsert into HeroPositionDetail — the rich per-position
     breakdown behind the Meta page (see fetch_hero_position_detail).
-    No Stratz fallback: unlike HeroPositionMeta (which the draft-
-    suggestion engine actually depends on and needs to degrade
-    gracefully), this table is purely for the Meta page display, and
-    the fields it needs (lane advantage, contest rate, pick-phase and
-    Radiant/Dire splits) don't have a known equivalent anywhere else in
-    this app's data sources — a failed scrape here just means the Meta
-    page keeps showing whatever it last had.
 
-    Returns the number of rows written, or 0 on failure.
+    Fetches ONE position per call, not all six — this table used to be
+    refreshed by bursting all six positions back-to-back every sync, but
+    that consistently failed in production for at least one of the six no
+    matter how the burst was restructured (shared session, fresh session
+    per position, different click orders/warm-ups — each change produced
+    a DIFFERENT position failing, never a consistent one), which points
+    at something upstream of this app entirely (most likely Cloudflare/
+    bot-mitigation reacting to repeated bursts from this server's IP, not
+    anything about the request itself). Fetching one position per sync
+    cycle spreads those six requests out over six cycles instead — at
+    protracker_interval_minutes' default of 30 minutes that's a full
+    refresh roughly every 3 hours, far less bursty, and each individual
+    fetch still retries with fresh sessions internally (see
+    fetch_hero_position_detail) as a second layer of resilience.
+
+    Picks whichever position has gone longest without a successful
+    update (all-null/never-fetched sorts first) so every position
+    eventually gets covered in rotation rather than always retrying the
+    same one. No Stratz fallback: unlike HeroPositionMeta (which the
+    draft-suggestion engine actually depends on and needs to degrade
+    gracefully), this table is purely for the Meta page display, and the
+    fields it needs (lane advantage, contest rate, pick-phase and
+    Radiant/Dire splits) don't have a known equivalent anywhere else in
+    this app's data sources — a failed fetch here just means that one
+    position keeps showing whatever it last had until the next rotation.
+
+    Returns the number of rows written for the position it picked, or 0
+    on failure.
     """
-    from sqlmodel import select
+    from sqlmodel import select, func as sa_func
     from models import HeroPositionDetail
 
-    by_position = await fetch_hero_position_detail()
-    if not by_position:
-        logger.error("Hero-position detail sync failed: Dota2ProTracker fetch returned nothing")
+    position_ages: dict[int, Optional[datetime]] = {}
+    for position in range(6):
+        position_ages[position] = session.exec(
+            select(sa_func.max(HeroPositionDetail.updated_at)).where(HeroPositionDetail.position == position)
+        ).first()
+    # Never-fetched (None) sorts before any real timestamp.
+    position = min(range(6), key=lambda p: (position_ages[p] is not None, position_ages[p] or datetime.min))
+
+    rows = await fetch_hero_position_detail(position)
+    if not rows:
+        logger.error(f"Hero-position detail sync failed for position {position} ({_TAB_NAMES[position]})")
         return 0
 
     now = datetime.utcnow()
-    total = 0
-    for position, rows in by_position.items():
-        for row in rows:
-            existing = session.exec(
-                select(HeroPositionDetail)
-                .where(HeroPositionDetail.hero_id == row["hero_id"])
-                .where(HeroPositionDetail.position == position)
-            ).first()
-            if existing:
-                target = existing
-            else:
-                target = HeroPositionDetail(hero_id=row["hero_id"], position=position)
-                session.add(target)
-            target.matches = row["matches"]
-            target.wins = row["wins"]
-            target.winrate = row["winrate"]
-            target.meta_score = row["meta_score"]
-            target.contest_rate = row["contest_rate"]
-            target.lane_adv_pct = row["lane_adv_pct"]
-            target.rating_rank = row["rating_rank"]
-            target.rating_cohort_size = row["rating_cohort_size"]
-            target.radiant_matches = row["radiant_matches"]
-            target.radiant_wins = row["radiant_wins"]
-            target.dire_matches = row["dire_matches"]
-            target.dire_wins = row["dire_wins"]
-            target.phase_1_matches = row["phase_1_matches"]
-            target.phase_1_wins = row["phase_1_wins"]
-            target.phase_2_matches = row["phase_2_matches"]
-            target.phase_2_wins = row["phase_2_wins"]
-            target.phase_3_matches = row["phase_3_matches"]
-            target.phase_3_wins = row["phase_3_wins"]
-            target.build_matches = row["build_matches"]
-            target.build_winrate = row["build_winrate"]
-            target.updated_at = now
-            total += 1
+    for row in rows:
+        existing = session.exec(
+            select(HeroPositionDetail)
+            .where(HeroPositionDetail.hero_id == row["hero_id"])
+            .where(HeroPositionDetail.position == position)
+        ).first()
+        if existing:
+            target = existing
+        else:
+            target = HeroPositionDetail(hero_id=row["hero_id"], position=position)
+            session.add(target)
+        target.matches = row["matches"]
+        target.wins = row["wins"]
+        target.winrate = row["winrate"]
+        target.meta_score = row["meta_score"]
+        target.contest_rate = row["contest_rate"]
+        target.lane_adv_pct = row["lane_adv_pct"]
+        target.rating_rank = row["rating_rank"]
+        target.rating_cohort_size = row["rating_cohort_size"]
+        target.radiant_matches = row["radiant_matches"]
+        target.radiant_wins = row["radiant_wins"]
+        target.dire_matches = row["dire_matches"]
+        target.dire_wins = row["dire_wins"]
+        target.phase_1_matches = row["phase_1_matches"]
+        target.phase_1_wins = row["phase_1_wins"]
+        target.phase_2_matches = row["phase_2_matches"]
+        target.phase_2_wins = row["phase_2_wins"]
+        target.phase_3_matches = row["phase_3_matches"]
+        target.phase_3_wins = row["phase_3_wins"]
+        target.build_matches = row["build_matches"]
+        target.build_winrate = row["build_winrate"]
+        target.updated_at = now
 
     session.commit()
-    logger.info(f"Hero-position detail: synced {total} rows across {len(by_position)} positions")
-    return total
+    logger.info(f"Hero-position detail: synced {len(rows)} rows for position {position} ({_TAB_NAMES[position]})")
+    return len(rows)
