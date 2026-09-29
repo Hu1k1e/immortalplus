@@ -54,6 +54,7 @@ def _match_to_dict(m: Match) -> dict:
         "level": m.level,
         "lane": m.lane,
         "lane_role": m.lane_role,
+        "position": m.position,
         "items": _parse_json_field(m.items),
         "neutral_item": m.neutral_item,
         "party_size": m.party_size,
@@ -75,6 +76,10 @@ async def get_matches(
     result: str = None,
     game_mode: int = None,
     lane_role: int = None,
+    position: int = None,
+    lobby_type: int = None,
+    exclude_turbo: bool = False,
+    solo_party: str = None,
     session: Session = Depends(get_session),
 ):
     """Get match history from local database."""
@@ -82,32 +87,40 @@ async def get_matches(
     if not player:
         raise HTTPException(status_code=404, detail="No player profile found")
 
-    query = select(Match).where(Match.player_id == player.id)
+    def _base_query():
+        q = select(Match).where(Match.player_id == player.id)
+        if hero_id:
+            q = q.where(Match.hero_id == hero_id)
+        if result:
+            q = q.where(Match.result == result)
+        if game_mode is not None:
+            q = q.where(Match.game_mode == game_mode)
+        if lane_role is not None:
+            q = q.where(Match.lane_role == lane_role)
+        if position is not None:
+            q = q.where(Match.position == position)
+        if lobby_type is not None:
+            q = q.where(Match.lobby_type == lobby_type)
+        if exclude_turbo:
+            q = q.where(Match.game_mode != 23)
+        return q
 
-    if hero_id:
-        query = query.where(Match.hero_id == hero_id)
-    if result:
-        query = query.where(Match.result == result)
-    if game_mode is not None:
-        query = query.where(Match.game_mode == game_mode)
-    if lane_role is not None:
-        query = query.where(Match.lane_role == lane_role)
-
-    query = query.order_by(Match.match_id.desc()).offset(offset).limit(limit)
-    matches = session.exec(query).all()
-
-    # Total count for pagination
-    count_query = select(Match).where(Match.player_id == player.id)
-    if hero_id:
-        count_query = count_query.where(Match.hero_id == hero_id)
-    if result:
-        count_query = count_query.where(Match.result == result)
-    if game_mode is not None:
-        count_query = count_query.where(Match.game_mode == game_mode)
-    if lane_role is not None:
-        count_query = count_query.where(Match.lane_role == lane_role)
-
-    total = len(session.exec(count_query).all())
+    query = _base_query().order_by(Match.match_id.desc())
+    if solo_party != "solo" and solo_party != "party":
+        # party_size filtering can't be expressed in SQL cleanly against a
+        # nullable "1 or unset means solo" column, so only fall back to
+        # in-memory filtering (below) when this filter is actually used.
+        query = query.offset(offset).limit(limit)
+        matches = session.exec(query).all()
+        total = len(session.exec(_base_query()).all())
+    else:
+        all_matches = session.exec(query).all()
+        if solo_party == "solo":
+            all_matches = [m for m in all_matches if (m.party_size or 1) <= 1]
+        else:
+            all_matches = [m for m in all_matches if (m.party_size or 1) > 1]
+        total = len(all_matches)
+        matches = all_matches[offset:offset + limit]
 
     return {
         "matches": [_match_to_dict(m) for m in matches],

@@ -1,27 +1,31 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Swords, Hash, Trophy, Skull, Clock, Calendar, Coins, Star,
+  Flame, Building2, HeartPulse, Crosshair, ShieldOff, ArrowUp, Users, Package,
+} from 'lucide-react';
 import api from '../lib/api';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage, getItemImage } from '../lib/dota';
 import { ITEMS } from '../lib/items';
 
 const AVAILABLE_COLUMNS = [
-  { id: 'hero', label: 'Hero' },
-  { id: 'match_id', label: 'Match ID' },
-  { id: 'result', label: 'Result' },
-  { id: 'kda', label: 'K/D/A' },
-  { id: 'duration', label: 'Duration' },
-  { id: 'date', label: 'Date' },
-  { id: 'gpm', label: 'GPM' },
-  { id: 'xpm', label: 'XPM' },
-  { id: 'hero_damage', label: 'Hero Damage' },
-  { id: 'tower_damage', label: 'Tower Damage' },
-  { id: 'hero_healing', label: 'Hero Healing' },
-  { id: 'last_hits', label: 'Last Hits' },
-  { id: 'denies', label: 'Denies' },
-  { id: 'level', label: 'Level' },
-  { id: 'party_size', label: 'Party Size' },
-  { id: 'items', label: 'Items' }
+  { id: 'hero', label: 'Hero', icon: Swords },
+  { id: 'match_id', label: 'Match ID', icon: Hash },
+  { id: 'result', label: 'Result', icon: Trophy },
+  { id: 'kda', label: 'K/D/A', icon: Skull },
+  { id: 'duration', label: 'Duration', icon: Clock },
+  { id: 'date', label: 'Date', icon: Calendar },
+  { id: 'gpm', label: 'GPM', icon: Coins },
+  { id: 'xpm', label: 'XPM', icon: Star },
+  { id: 'hero_damage', label: 'Hero Damage', icon: Flame },
+  { id: 'tower_damage', label: 'Tower Damage', icon: Building2 },
+  { id: 'hero_healing', label: 'Hero Healing', icon: HeartPulse },
+  { id: 'last_hits', label: 'Last Hits', icon: Crosshair },
+  { id: 'denies', label: 'Denies', icon: ShieldOff },
+  { id: 'level', label: 'Level', icon: ArrowUp },
+  { id: 'party_size', label: 'Party Size', icon: Users },
+  { id: 'items', label: 'Items', icon: Package },
 ];
 
 export default function Matches() {
@@ -84,28 +88,29 @@ export default function Matches() {
 
   return (
     <div>
-      <header className="page-header" style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <header className="page-header" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h1 className="gold-text-gradient">Match History</h1>
           <p className="text-secondary">Review and analyze your recent games.</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem', position: 'relative' }}>
-          <button 
-            className="btn btn-secondary" 
+          <button
+            className="btn btn-secondary"
             onClick={() => setShowColumnsMenu(!showColumnsMenu)}
           >
             Columns
           </button>
           {showColumnsMenu && (
-            <div className="glass-surface" style={{ position: 'absolute', top: '100%', right: '150px', marginTop: '0.5rem', zIndex: 10, padding: '1rem', minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div className="glass-surface" style={{ position: 'absolute', top: '100%', right: '150px', marginTop: '0.5rem', zIndex: 10, padding: '1rem', minWidth: '200px', display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '340px', overflowY: 'auto' }}>
               <div style={{ fontWeight: 'bold', marginBottom: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>Visible Columns</div>
               {AVAILABLE_COLUMNS.map(c => (
                 <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={visibleColumns.has(c.id)} 
-                    onChange={() => toggleColumn(c.id)} 
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.has(c.id)}
+                    onChange={() => toggleColumn(c.id)}
                   />
+                  <c.icon size={13} style={{ opacity: 0.7 }} />
                   {c.label}
                 </label>
               ))}
@@ -116,18 +121,23 @@ export default function Matches() {
           </button>
         </div>
       </header>
-      
-      <div className="glass-surface p-4" style={{ padding: '1.5rem', overflowX: 'auto' }}>
+
+      <div className="glass-surface matches-table-wrap">
         {loading && matches.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>Loading match history...</div>
         ) : matches.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>No matches found. Make sure you set your Steam ID in Settings and click Sync.</div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+          <table className="matches-table">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+              <tr>
                 {AVAILABLE_COLUMNS.map(c => visibleColumns.has(c.id) && (
-                  <th key={c.id} style={{ padding: '1rem', fontWeight: '500' }}>{c.label}</th>
+                  <th key={c.id}>
+                    <div className="matches-table-th">
+                      <c.icon size={13} className="matches-table-th-icon" />
+                      <span>{c.label}</span>
+                    </div>
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -135,10 +145,9 @@ export default function Matches() {
               {matches.map((m) => {
                 const hero = HEROES[m.hero_id] || { name: `Unknown (${m.hero_id})`, img_name: 'unknown' };
                 return (
-                  <tr 
-                    key={m.match_id} 
-                    className="card-interactive" 
-                    style={{ borderBottom: '1px solid var(--border-color)', transition: 'background-color 0.2s', cursor: 'pointer' }}
+                  <tr
+                    key={m.match_id}
+                    className={`matches-row ${m.result === 'win' ? 'is-win' : m.result === 'loss' ? 'is-loss' : ''}`}
                     onClick={() => navigate(`/matches/${m.match_id}`)}
                   >
                     {AVAILABLE_COLUMNS.map(c => {
@@ -148,19 +157,18 @@ export default function Matches() {
 
                       if (c.id === 'hero') {
                         content = (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                            <img 
-                              src={getHeroImage(hero.img_name)} 
+                          <div className="matches-table-hero">
+                            <img
+                              src={getHeroImage(hero.img_name)}
                               alt={hero.name}
-                              style={{ width: '60px', height: '34px', objectFit: 'cover', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}
                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                             />
-                            <span style={{ fontWeight: '500' }}>{hero.name}</span>
+                            <span>{hero.name}</span>
                           </div>
                         );
                       } else if (c.id === 'result') {
                         content = (
-                          <span style={{ color: m.result === 'win' ? 'var(--radiant-green)' : m.result === 'loss' ? 'var(--dire-red)' : 'var(--text-primary)', fontWeight: 'bold' }}>
+                          <span className={m.result === 'win' ? 'matches-result-win' : m.result === 'loss' ? 'matches-result-loss' : ''}>
                             {m.result === 'win' ? 'Win' : m.result === 'loss' ? 'Loss' : 'Unknown'}
                           </span>
                         );
@@ -169,7 +177,7 @@ export default function Matches() {
                       } else if (c.id === 'duration') {
                         content = formatDuration(m.duration);
                       } else if (c.id === 'date') {
-                        content = <span style={{ color: 'var(--text-secondary)' }}>{m.played_at ? new Date(m.played_at).toLocaleDateString() : 'N/A'}</span>;
+                        content = <span style={{ color: 'var(--text-muted)' }}>{m.played_at ? new Date(m.played_at).toLocaleDateString() : 'N/A'}</span>;
                       } else if (c.id === 'party_size') {
                         content = m.party_size || 1;
                       } else if (c.id === 'items') {
@@ -178,9 +186,9 @@ export default function Matches() {
                             {m.items?.map((item: any, i: number) => {
                               const itemName = getItemName(item);
                               return (
-                                <div key={i} style={{ width: '30px', height: '22px', background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-color)' }}>
+                                <div key={i} className="matches-table-item-slot">
                                   {itemName && (
-                                    <img src={getItemImage(itemName.replace('item_', ''))} alt={itemName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                    <img src={getItemImage(itemName.replace('item_', ''))} alt={itemName} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                   )}
                                 </div>
                               );
@@ -189,7 +197,7 @@ export default function Matches() {
                         );
                       }
 
-                      return <td key={c.id} style={{ padding: '1rem' }}>{content}</td>;
+                      return <td key={c.id}>{content}</td>;
                     })}
                   </tr>
                 );

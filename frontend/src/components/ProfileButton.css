@@ -1,0 +1,66 @@
+.profile-button {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0.9rem 0.4rem 0.4rem;
+  background: linear-gradient(180deg, rgba(30, 35, 43, 0.75), rgba(15, 18, 23, 0.75));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 183, 66, 0.18);
+  border-radius: var(--radius-full);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+  color: var(--text-primary);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.profile-button:hover {
+  border-color: rgba(226, 183, 66, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), var(--shadow-gold);
+  transform: translateY(-1px);
+}
+
+.profile-button.active {
+  border-color: var(--accent-gold);
+}
+
+.profile-button-avatar-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.profile-button-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.profile-button-rank {
+  position: absolute;
+  bottom: -4px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
+}
+
+.profile-button-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: flex-end;
+  padding: 1rem 2.5rem 0;
+}

@@ -1,13 +1,18 @@
 
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
+import ProfileButton from './ProfileButton';
 import './Layout.css';
+import './ProfileButton.css';
 
 export default function Layout() {
   return (
     <div className="app-layout">
       <Sidebar />
       <main className="main-content">
+        <div className="app-topbar">
+          <ProfileButton />
+        </div>
         <div className="content-container animate-fade-in">
           <Outlet />
         </div>

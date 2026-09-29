@@ -3,19 +3,67 @@ Player profile and stats endpoints.
 """
 
 import re
+import json
 import logging
 from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlmodel import select
 
 from database import get_session
-from models import Player, UserSettings
+from models import Player, UserSettings, Match
 from services.opendota import get_opendota_client
+from utils.dota_constants import (
+    GAME_MODES, LOBBY_TYPES, POSITIONS,
+    get_hero_name, get_hero_icon_url, get_hero_image_url,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/player", tags=["player"])
+
+
+def _require_player(session: Session) -> Player:
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="No player profile found")
+    return player
+
+
+def _apply_filters(
+    matches: list,
+    exclude_turbo: bool,
+    hero_id: Optional[int],
+    position: Optional[int],
+    game_mode: Optional[int],
+    lobby_type: Optional[int],
+    solo_party: Optional[str],
+) -> list:
+    """Shared filter set for /summary, /trends, /most-played-heroes — the
+    same knobs shown in the Profile page's filter bar. Filtering happens
+    in-memory over the player's already-fetched match list rather than as
+    separate SQL predicates per endpoint, since every one of these
+    endpoints needs the full filtered set anyway (for counts, sums, or
+    windowed slices) and the per-player match count is small enough
+    locally that this is simpler than duplicating query-building four times.
+    """
+    result = matches
+    if exclude_turbo:
+        result = [m for m in result if m.game_mode != 23]
+    if hero_id:
+        result = [m for m in result if m.hero_id == hero_id]
+    if position:
+        result = [m for m in result if m.position == position]
+    if game_mode:
+        result = [m for m in result if m.game_mode == game_mode]
+    if lobby_type is not None:
+        result = [m for m in result if m.lobby_type == lobby_type]
+    if solo_party == "solo":
+        result = [m for m in result if (m.party_size or 1) <= 1]
+    elif solo_party == "party":
+        result = [m for m in result if (m.party_size or 1) > 1]
+    return result
 
 
 def _steam_id_to_account_id(steam_id: str) -> int:
@@ -214,3 +262,262 @@ async def refresh_player_data(session: Session = Depends(get_session)):
         raise HTTPException(status_code=502, detail=str(e))
 
     return {"status": "refreshed", "persona_name": player.persona_name}
+
+
+@router.get("/filter-options")
+async def get_filter_options():
+    """Static option lists for the Profile page's filter bar."""
+    return {
+        "game_modes": [{"id": k, "name": v} for k, v in GAME_MODES.items() if k != 0],
+        "lobby_types": [{"id": k, "name": v} for k, v in LOBBY_TYPES.items()],
+        "positions": [{"id": k, "name": v} for k, v in POSITIONS.items()],
+    }
+
+
+@router.get("/summary")
+async def get_player_summary(
+    exclude_turbo: bool = False,
+    hero_id: Optional[int] = None,
+    position: Optional[int] = None,
+    game_mode: Optional[int] = None,
+    lobby_type: Optional[int] = None,
+    solo_party: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    """Matches played / win rate for the local match history, filtered —
+    powers the "N Matches" / "Win Rate" row on the Profile page. Computed
+    from our own already-synced Match table (not a fresh OpenDota call)
+    since a full backfilled history is already local.
+    """
+    player = _require_player(session)
+    all_matches = session.exec(
+        select(Match).where(Match.player_id == player.id).order_by(Match.match_id.desc())
+    ).all()
+    filtered = _apply_filters(all_matches, exclude_turbo, hero_id, position, game_mode, lobby_type, solo_party)
+
+    total = len(filtered)
+    wins = sum(1 for m in filtered if m.result == "win")
+    losses = sum(1 for m in filtered if m.result == "loss")
+
+    first_match_at = None
+    for m in reversed(filtered):
+        if m.played_at:
+            first_match_at = m.played_at
+            break
+
+    return {
+        "matches": total,
+        "wins": wins,
+        "losses": losses,
+        "winrate": round(wins / total * 100, 2) if total else 0,
+        "first_match_at": first_match_at.isoformat() if first_match_at else None,
+    }
+
+
+@router.get("/trends")
+async def get_player_trends(
+    window: int = Query(25, ge=1, le=500),
+    exclude_turbo: bool = False,
+    hero_id: Optional[int] = None,
+    position: Optional[int] = None,
+    game_mode: Optional[int] = None,
+    lobby_type: Optional[int] = None,
+    solo_party: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    """Powers the Profile page's "Trends" card: a position-breakdown donut
+    plus a recency win-rate comparison, over the most recent `window`
+    (post-filter) matches. `newer_half_winrate` vs `older_half_winrate`
+    is this app's own stand-in for Stratz's "Match Win Rate" +/- delta
+    (their exact rolling-average formula isn't public) — a simple split
+    of the window in half by recency, not a claimed match to their number.
+    """
+    player = _require_player(session)
+    all_matches = session.exec(
+        select(Match).where(Match.player_id == player.id).order_by(Match.match_id.desc())
+    ).all()
+    filtered = _apply_filters(all_matches, exclude_turbo, hero_id, position, game_mode, lobby_type, solo_party)
+    recent = filtered[:window]
+    total = len(recent)
+
+    position_counts: dict = {}
+    for m in recent:
+        if m.position and 1 <= m.position <= 5:
+            position_counts[m.position] = position_counts.get(m.position, 0) + 1
+
+    hero_counts: dict = {}
+    for m in recent:
+        hero_counts[m.hero_id] = hero_counts.get(m.hero_id, 0) + 1
+    top_heroes = sorted(hero_counts.items(), key=lambda x: -x[1])[:14]
+
+    def _winrate(lst) -> Optional[float]:
+        t = len(lst)
+        return round(sum(1 for m in lst if m.result == "win") / t * 100, 1) if t else None
+
+    half = total // 2
+    newer_half = recent[:half]
+    older_half = recent[half:half * 2]
+
+    wins = sum(1 for m in recent if m.result == "win")
+
+    return {
+        "window": window,
+        "total": total,
+        "winrate": round(wins / total * 100, 1) if total else 0,
+        "newer_half_winrate": _winrate(newer_half),
+        "older_half_winrate": _winrate(older_half),
+        "party_pct": round(sum(1 for m in recent if (m.party_size or 1) > 1) / total * 100, 1) if total else 0,
+        "position_breakdown": [
+            {"position": p, "position_name": POSITIONS.get(p), "count": c}
+            for p, c in sorted(position_counts.items())
+        ],
+        "positionless_count": total - sum(position_counts.values()),
+        "strip": [
+            {"match_id": m.match_id, "result": m.result, "hero_id": m.hero_id, "hero_icon": get_hero_icon_url(m.hero_id)}
+            for m in reversed(recent)
+        ],
+        "top_heroes": [
+            {"hero_id": h, "hero_name": get_hero_name(h), "hero_icon": get_hero_icon_url(h), "count": c}
+            for h, c in top_heroes
+        ],
+    }
+
+
+@router.get("/most-played-heroes")
+async def get_most_played_heroes(
+    limit: int = Query(5, ge=1, le=25),
+    exclude_turbo: bool = False,
+    hero_id: Optional[int] = None,
+    position: Optional[int] = None,
+    game_mode: Optional[int] = None,
+    lobby_type: Optional[int] = None,
+    solo_party: Optional[str] = None,
+    session: Session = Depends(get_session),
+):
+    """Most-played heroes ranked by games played (not bare win rate — the
+    same games-weighted philosophy already used by the draft engine's
+    "Your Best" ranking, see backend/services/draft_engine.py), with each
+    hero's most common position and a "these N heroes comprise X% of your
+    picks" share, matching the Profile page's "Most Played Heroes" card.
+    """
+    player = _require_player(session)
+    all_matches = session.exec(
+        select(Match).where(Match.player_id == player.id).order_by(Match.match_id.desc())
+    ).all()
+    filtered = _apply_filters(all_matches, exclude_turbo, hero_id, position, game_mode, lobby_type, solo_party)
+    total = len(filtered)
+
+    by_hero: dict = {}
+    for m in filtered:
+        d = by_hero.setdefault(m.hero_id, {"matches": 0, "wins": 0, "positions": {}})
+        d["matches"] += 1
+        if m.result == "win":
+            d["wins"] += 1
+        if m.position:
+            d["positions"][m.position] = d["positions"].get(m.position, 0) + 1
+
+    rows = []
+    for hid, d in by_hero.items():
+        top_pos = max(d["positions"].items(), key=lambda x: x[1])[0] if d["positions"] else None
+        rows.append({
+            "hero_id": hid,
+            "hero_name": get_hero_name(hid),
+            "hero_icon": get_hero_icon_url(hid),
+            "hero_image": get_hero_image_url(hid),
+            "matches": d["matches"],
+            "wins": d["wins"],
+            "winrate": round(d["wins"] / d["matches"] * 100, 1) if d["matches"] else 0,
+            "position": top_pos,
+            "position_name": POSITIONS.get(top_pos) if top_pos else None,
+        })
+    rows.sort(key=lambda r: r["matches"], reverse=True)
+    top = rows[:limit]
+    pick_share = round(sum(r["matches"] for r in top) / total * 100, 1) if total else 0
+
+    return {"heroes": top, "pick_share_pct": pick_share, "total_matches": total}
+
+
+@router.get("/teammates")
+async def get_teammates(
+    limit: int = Query(6, ge=1, le=25),
+    session: Session = Depends(get_session),
+):
+    """Most-frequent teammates, aggregated from the per-match `all_players`
+    snapshot stored on each locally-synced Match — which is only populated
+    for matches whose full details were fetched (is_parsed / detail-synced
+    ones), not the entire raw match-history backfill, so this is a
+    best-effort view over however many detailed matches exist locally, not
+    a literal "all-time" teammate count. Avatars are fetched live from
+    OpenDota for just the returned rows (not stored), since match player
+    snapshots don't carry avatar URLs.
+    """
+    player = _require_player(session)
+    if not player.account_id:
+        raise HTTPException(status_code=404, detail="No player profile found")
+
+    matches = session.exec(
+        select(Match).where(Match.player_id == player.id, Match.all_players.is_not(None))
+    ).all()
+
+    agg: dict = {}
+    for m in matches:
+        try:
+            players = json.loads(m.all_players)
+        except (json.JSONDecodeError, TypeError):
+            continue
+
+        own = next((p for p in players if p.get("account_id") == player.account_id), None)
+        if not own:
+            continue
+        own_slot = own.get("player_slot")
+        if own_slot is None:
+            continue
+        own_is_radiant = own_slot < 128
+
+        for p in players:
+            acc = p.get("account_id")
+            if not acc or acc == player.account_id:
+                continue
+            slot = p.get("player_slot")
+            if slot is None or (slot < 128) != own_is_radiant:
+                continue  # opponent, not teammate
+
+            d = agg.setdefault(acc, {"matches": 0, "wins": 0, "persona": None})
+            d["matches"] += 1
+            if m.result == "win":
+                d["wins"] += 1
+            name = p.get("persona") or p.get("personaname")
+            if name:
+                d["persona"] = name
+
+    rows = []
+    for acc, d in agg.items():
+        rows.append({
+            "account_id": acc,
+            "persona_name": d["persona"] or f"Player {acc}",
+            "matches": d["matches"],
+            "wins": d["wins"],
+            "winrate": round(d["wins"] / d["matches"] * 100, 1) if d["matches"] else 0,
+            "profile_url": f"https://www.opendota.com/players/{acc}",
+            "avatar_url": None,
+        })
+    rows.sort(key=lambda r: r["matches"], reverse=True)
+    top = rows[:limit]
+
+    if top:
+        settings = session.exec(select(UserSettings)).first()
+        client = get_opendota_client(settings.opendota_api_key if settings else None)
+        for r in top:
+            try:
+                data = await client.get_player(r["account_id"])
+                profile = data.get("profile", {})
+                r["avatar_url"] = profile.get("avatarfull")
+                if profile.get("personaname"):
+                    r["persona_name"] = profile["personaname"]
+            except Exception as e:
+                logger.info(f"Teammate avatar lookup failed for {r['account_id']}: {e}")
+
+    return {
+        "teammates": top,
+        "note": "Based on locally-synced matches with full details, not the entire match history.",
+    }
