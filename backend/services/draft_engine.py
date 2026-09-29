@@ -305,42 +305,22 @@ def calculate_role_based_suggestions(
         meta_for_role = hero_position_meta.get(position, {})
         personal_for_role = personal_position_stats.get(position, {})
 
-        # ── your_best: player's own history at this position ─────────
-        # Real, reported problem with ranking by bare winrate (games only
-        # as a tiebreaker): a hero played 4-5 times at a lucky 75-80% WR
-        # consistently outranked a hero played 18 times at a real,
-        # sustainable winrate — the opposite of "most played heroes +
-        # win rate, a combination of both" that was actually wanted.
-        # Score is now genuinely both: a confidence-weighted winrate
-        # (shrinks toward neutral 50 for a small sample — the same
-        # technique already used for combined's personal_component, so a
-        # lucky 4-game streak can't look as trustworthy as a real 18-game
-        # sample) blended with an explicit volume component that rewards
-        # games played on its own terms, not just as a tiebreaker.
-        your_best = []
-        for hero_id, stats in personal_for_role.items():
-            if hero_id in unavailable or stats["games"] < MIN_PERSONAL_GAMES:
-                continue
-            winrate = stats["wins"] / stats["games"]
-            confidence = min(stats["games"] / 20.0, 1.0)
-            winrate_component = winrate * 100 * confidence + 50 * (1 - confidence)
-            volume_component = min(stats["games"] / YOUR_BEST_VOLUME_CAP_GAMES, 1.0) * 100
-            score = winrate_component * 0.6 + volume_component * 0.4
-            your_best.append({
-                "hero_id": hero_id,
-                "hero_name": get_hero_name(hero_id),
-                "score": round(score, 1),
-                "reason": f"{stats['games']} games, {winrate*100:.0f}% WR",
-            })
-        your_best.sort(key=lambda x: x["score"], reverse=True)
-        your_best = your_best[:top_n]
-
-        # ── meta_best (draft-reactive) + combined ──────────────────────
-        # One pass over every candidate hero computes both lists, since
-        # they share the same matchup/synergy lookups. No fabricated
+        # ── your_best + meta_best (both draft-reactive) + combined ──────
+        # One pass over every candidate hero computes all three lists,
+        # since they share the same matchup/synergy lookups. No fabricated
         # numbers — a signal with no data for a given hero just sits at
         # the neutral midpoint (50) instead of pulling the score either way.
+        #
+        # your_best used to be personal history only, static regardless
+        # of the draft — reported directly as a problem right after
+        # meta_best got the same fix ("it does not change when new heros
+        # are added to the draft"). Its personal component (bare-winrate-
+        # ranked was ALSO already fixed separately, see the note below,
+        # to blend in games-played) now gets folded in with the same
+        # matchup-vs-enemy/synergy-with-allies terms meta_best uses
+        # (personal 0.6 / matchup 0.25 / synergy 0.15).
         candidate_ids = set(meta_for_role.keys()) | set(personal_for_role.keys())
+        your_best = []
         meta_best = []
         combined = []
         for hero_id in candidate_ids:
@@ -351,15 +331,41 @@ def calculate_role_based_suggestions(
             meta_component = meta_score if meta_score is not None else 50.0
 
             personal_stats = personal_for_role.get(hero_id)
-            if personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES:
+            has_personal = personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES
+            if has_personal:
                 personal_winrate = personal_stats["wins"] / personal_stats["games"]
                 confidence = min(personal_stats["games"] / 20.0, 1.0)
-                personal_component = personal_winrate * 100 * confidence + 50 * (1 - confidence)
+                # Confidence-weighted winrate alone — a lucky 4-game
+                # streak shouldn't look as trustworthy as a real 18-game
+                # sample (shrinks toward neutral 50 for a small sample).
+                winrate_component = personal_winrate * 100 * confidence + 50 * (1 - confidence)
+                # your_best specifically also credits games played on
+                # their own terms, not just as a confidence multiplier —
+                # direct request: "most played heros + win rate, a
+                # combination of both" (previously ranked by bare winrate
+                # with games only breaking ties, so a 4-5 game 80% WR
+                # hero consistently outranked an 18-game real sample).
+                volume_component = min(personal_stats["games"] / YOUR_BEST_VOLUME_CAP_GAMES, 1.0) * 100
+                personal_component = winrate_component  # used by combined below
+                your_best_personal_blend = winrate_component * 0.6 + volume_component * 0.4
             else:
                 personal_component = 50.0
+                your_best_personal_blend = None
 
             matchup_component, matchup_reasons, matchup_breakdown = _matchup_score(hero_id, enemy_picks, hero_matchups)
             synergy_component, synergy_reasons, synergy_breakdown = _synergy_score(hero_id, ally_picks, hero_synergy)
+
+            if has_personal:
+                your_best.append({
+                    "hero_id": hero_id,
+                    "hero_name": get_hero_name(hero_id),
+                    "score": round(
+                        your_best_personal_blend * 0.6 + matchup_component * 0.25 + synergy_component * 0.15, 1
+                    ),
+                    "reason": f"{personal_stats['games']} games, {personal_winrate*100:.0f}% WR",
+                    "matchup_breakdown": matchup_breakdown,
+                    "synergy_breakdown": synergy_breakdown,
+                })
 
             combined_score = (
                 meta_component * 0.35 +
@@ -369,8 +375,8 @@ def calculate_role_based_suggestions(
             )
 
             reasons = list(matchup_reasons) + list(synergy_reasons)
-            if personal_stats and personal_stats["games"] >= MIN_PERSONAL_GAMES:
-                reasons.append(f"You: {personal_stats['games']} games, {personal_stats['wins']/personal_stats['games']*100:.0f}% WR")
+            if has_personal:
+                reasons.append(f"You: {personal_stats['games']} games, {personal_winrate*100:.0f}% WR")
             if meta_reason:
                 reasons.append(meta_reason)
 
@@ -407,6 +413,8 @@ def calculate_role_based_suggestions(
                 "synergy_breakdown": synergy_breakdown,
             })
 
+        your_best.sort(key=lambda x: x["score"], reverse=True)
+        your_best = your_best[:top_n]
         meta_best.sort(key=lambda x: x["score"], reverse=True)
         meta_best = meta_best[:top_n]
         combined.sort(key=lambda x: x["score"], reverse=True)
