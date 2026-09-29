@@ -901,6 +901,15 @@ button {
   border: 1px solid var(--border-color);
   flex-shrink: 0;
   min-width: 160px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+.meta-top-hero-card:hover {
+  border-color: rgba(226, 183, 66, 0.4);
+  background: var(--bg-surface-elevated);
+}
+.meta-table-row-clickable {
+  cursor: pointer;
 }
 .meta-top-hero-card img {
   width: 42px;

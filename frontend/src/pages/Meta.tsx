@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 
 interface HeroRow {
@@ -53,6 +54,7 @@ function pct(v: number | null, signed = false): string {
 }
 
 export default function Meta() {
+  const navigate = useNavigate();
   const [position, setPosition] = useState(1);
   const [data, setData] = useState<ProTrackerResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -261,7 +263,7 @@ export default function Meta() {
         <>
           <div className="glass-surface meta-top-heroes">
             {data.top_heroes.map(h => (
-              <div key={h.hero_id} className="meta-top-hero-card">
+              <div key={h.hero_id} className="meta-top-hero-card" onClick={() => navigate(`/meta/hero/${h.hero_id}`)}>
                 <img src={h.hero_icon} alt={h.hero_name} />
                 <div className="meta-top-hero-body">
                   <span className="meta-top-hero-name">{h.hero_name}</span>
@@ -325,7 +327,7 @@ export default function Meta() {
               </thead>
               <tbody>
                 {filteredHeroes.map(h => (
-                  <tr key={h.hero_id}>
+                  <tr key={h.hero_id} className="meta-table-row-clickable" onClick={() => navigate(`/meta/hero/${h.hero_id}`)}>
                     <td className="meta-table-hero">
                       <img src={h.hero_icon} alt={h.hero_name} />
                       <span>{h.hero_name}</span>

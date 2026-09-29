@@ -1,0 +1,259 @@
+.hero-detail-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.hero-detail-back {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.hero-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  flex-wrap: wrap;
+}
+.hero-detail-portrait {
+  width: 72px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+.hero-detail-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-right: auto;
+}
+.hero-detail-title h1 {
+  font-size: 1.3rem;
+}
+.hero-detail-role-tabs {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.hero-role-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+}
+.hero-role-tab:hover {
+  color: var(--text-primary);
+  border-color: rgba(226, 183, 66, 0.3);
+}
+.hero-role-tab.active {
+  background: linear-gradient(180deg, rgba(226, 183, 66, 0.16), rgba(226, 183, 66, 0.04));
+  border-color: var(--accent-gold);
+  color: var(--text-primary);
+}
+.hero-role-tab-badge {
+  position: absolute;
+  top: -0.65rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-gold);
+  background: var(--bg-base);
+  padding: 0 0.4rem;
+  white-space: nowrap;
+}
+.hero-role-tab-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.hero-role-tab-stats {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.hero-detail-loading {
+  padding: 2rem;
+  text-align: center;
+}
+
+.hero-detail-stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+.hero-detail-stat-card {
+  padding: 0.9rem 1.1rem;
+}
+.hero-detail-stat-label {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.3rem;
+}
+.hero-detail-stat-value {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+.hero-detail-stat-value.good { color: var(--radiant-green); }
+.hero-detail-stat-value.bad { color: var(--dire-red); }
+.hero-detail-stat-sub {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin-top: 0.2rem;
+}
+.hero-detail-stat-sub-inline {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 400;
+}
+
+.hero-detail-chart-card {
+  padding: 1rem 1.25rem;
+}
+.hero-detail-chart-card h4 {
+  margin-bottom: 0.75rem;
+  font-size: 0.9rem;
+}
+.hero-chart-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+.hero-chart-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.3rem;
+}
+.hero-chart-range {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  margin-top: 0.2rem;
+}
+
+.hero-detail-build-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+.hero-detail-build-card {
+  padding: 1rem 1.25rem;
+}
+.hero-detail-build-card h4 {
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+.hero-detail-build-meta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+.hero-detail-build-section-label {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0.6rem 0 0.4rem;
+}
+.hero-detail-item-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.hero-detail-item-icon {
+  width: 34px;
+  height: 26px;
+  border-radius: 3px;
+  object-fit: cover;
+  border: 1px solid var(--border-color);
+}
+.hero-detail-core-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+.hero-detail-item-timing {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.hero-detail-ability-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.hero-detail-ability {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hero-detail-ability img {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+.hero-detail-ability-unknown {
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+.hero-detail-ability.is-talent .hero-detail-talent-chip {
+  width: 44px;
+  height: 34px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-gold);
+  background: rgba(226, 183, 66, 0.1);
+  color: var(--accent-gold);
+  font-size: 0.55rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.1rem;
+  line-height: 1.05;
+}
+.hero-detail-ability-order {
+  margin-top: 0.15rem;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+}
+
+.hero-detail-updated {
+  text-align: right;
+  font-size: 0.75rem;
+}
+
+@media (max-width: 900px) {
+  .hero-detail-stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .hero-detail-build-row, .hero-chart-row {
+    grid-template-columns: 1fr;
+  }
+}

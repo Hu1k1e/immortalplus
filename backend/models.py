@@ -320,6 +320,49 @@ class HeroPositionDetail(SQLModel, table=True):
     updated_at: Optional[datetime] = None
 
 
+class HeroOverview(SQLModel, table=True):
+    """
+    Per-hero, per-position "hero page" data behind the Meta table's hero
+    detail view — from Dota2ProTracker's real /hero/{Name} page, confirmed
+    live (2026-09-29) fetched a completely different way than
+    HeroPositionDetail's ill-fated /api/heroes/stats: this page's own
+    /api/hero/{id}/overview and /api/heroes/role-rankings endpoints fire
+    AUTOMATICALLY on a plain page load with `?position=pos+N` in the URL —
+    no tab click required at all — and return small (2-4KB) JSON, unlike
+    the ~4.6MB burst that broke the other endpoint. Fetched on-demand
+    (when a user actually opens a hero's detail page), not proactively
+    for the whole roster, to keep traffic to this site proportional to
+    real usage.
+
+    d2pt_rating here is the internal large-scale number (e.g. 3143), NOT
+    the displayed 0-100 rating — meta_score is that (same distinction as
+    HeroPositionDetail). role_pick_share is what fraction of this hero's
+    total games (across all positions) were played at this one position —
+    "most popular role" is whichever position has the highest share.
+    """
+    __tablename__ = "hero_overview"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    hero_id: int = Field(index=True)
+    position: int = Field(index=True)  # 1-5 (no "All" — the hero page itself has no combined view)
+    matches: int = 0
+    wins: int = 0
+    win_rate: Optional[float] = None       # percentage, e.g. 52.8
+    pick_rate: Optional[float] = None      # percentage, this build's share of this hero/position's games
+    lane_advantage: Optional[float] = None  # fraction, e.g. 0.053 = +5.3%
+    d2pt_rating: Optional[float] = None    # internal large-scale number, NOT displayed
+    meta_score: Optional[float] = None     # real displayed 0-100 rating
+    rating_rank: Optional[int] = None
+    rating_cohort_size: Optional[int] = None
+    role_pick_share: Optional[float] = None  # fraction of this hero's total games played at this position
+    all_role_matches: Optional[int] = None   # this hero's total games across every position
+    starting_items: Optional[str] = None     # JSON array of item_id
+    ability_sequence: Optional[str] = None   # JSON array of ability_id, in pick order
+    core_items: Optional[str] = None         # JSON array of {item_id, avg_minute}
+    weekly_rates: Optional[str] = None       # JSON array of {window_start, matches, wins, win_rate, pick_rate}
+    updated_at: Optional[datetime] = None
+
+
 class ProMeta(SQLModel, table=True):
     __tablename__ = "pro_meta"
 

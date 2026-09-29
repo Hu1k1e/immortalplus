@@ -433,3 +433,104 @@ async def sync_hero_position_detail(session) -> int:
     session.commit()
     logger.info(f"Hero-position detail: synced {len(rows)} rows for position {position} ({_TAB_NAMES[position]})")
     return len(rows)
+
+
+async def fetch_hero_overview(hero_localized_name: str, hero_id: int, position: int) -> Optional[dict]:
+    """
+    One hero/position's real "hero page" overview (win/pick rate history,
+    most-played build, ability order, role popularity) — see
+    HeroOverview's docstring for the full field list.
+
+    Confirmed live (2026-09-29) that dota2protracker.com/hero/{Name} is a
+    completely different, far more reliable request pattern than the one
+    that broke HeroPositionDetail: /api/hero/{id}/overview,
+    /api/heroes/role-rankings, and /api/abilities all fire AUTOMATICALLY
+    on a plain page load with `?position=pos+N` already in the URL — no
+    tab click needed at all — and each returns small (2-4KB) JSON, not
+    the ~4.6MB burst that triggered the other endpoint's bot-mitigation.
+    Same fresh-context-per-call approach as the rest of this file for
+    consistency, even though a shared context has never been proven to
+    be the actual problem here (this endpoint family hasn't shown the
+    same failures) — cheap insurance since this runs on-demand rather
+    than in a tight background loop.
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        logger.error("Dota2ProTracker hero overview fetch failed: playwright not installed")
+        return None
+
+    import asyncio as _asyncio
+    from urllib.parse import quote
+
+    url = f"https://dota2protracker.com/hero/{quote(hero_localized_name)}?position=pos+{position}"
+
+    captured: dict = {}
+
+    async def handle_response(response):
+        try:
+            if f"/api/hero/{hero_id}/overview" in response.url and response.status == 200:
+                captured["overview"] = await response.json()
+            elif "/api/heroes/role-rankings" in response.url and response.status == 200:
+                captured["rankings"] = await response.json()
+            elif f"/api/abilities?hero_id={hero_id}" in response.url and response.status == 200:
+                captured["abilities"] = await response.json()
+        except Exception:
+            pass
+
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            try:
+                context = await browser.new_context(user_agent=_REAL_BROWSER_UA, viewport={"width": 1920, "height": 1080})
+                page = await context.new_page()
+                page.on("response", handle_response)
+                await page.goto(url, wait_until="load", timeout=30000)
+                await _asyncio.sleep(3)  # let the auto-fired requests land
+            finally:
+                await context.close()
+                await browser.close()
+    except Exception as e:
+        logger.error(f"Dota2ProTracker hero overview fetch failed for hero {hero_id} position {position}: {e}")
+        return None
+
+    overview = captured.get("overview")
+    if overview is None:
+        logger.error(f"Dota2ProTracker hero overview fetch failed for hero {hero_id} position {position}: overview response never captured")
+        return None
+
+    build = overview.get("build") or {}
+    selected = (captured.get("rankings") or {}).get("selected") or {}
+    weekly_points = ((overview.get("rates") or {}).get("weekly") or {}).get("points") or []
+
+    # Resolve ability_sequence's raw ability_ids into real name/icon info
+    # via the abilities list also captured above — without this, the
+    # frontend would only have opaque numeric ids to render with.
+    ability_by_id = {a["ability_id"]: a for a in (captured.get("abilities") or [])}
+    ability_sequence = [
+        {
+            "ability_id": aid,
+            "name": ability_by_id.get(aid, {}).get("name"),
+            "display_name": ability_by_id.get(aid, {}).get("displayName"),
+            "is_talent": ability_by_id.get(aid, {}).get("isTalent", False),
+        }
+        for aid in (build.get("ability_sequence") or [])
+    ]
+
+    return {
+        "matches": build.get("matches") or selected.get("matches") or 0,
+        "wins": build.get("wins") or selected.get("wins") or 0,
+        "win_rate": build.get("win_rate"),
+        "pick_rate": build.get("pick_rate"),
+        "lane_advantage": selected.get("lane_advantage"),
+        "d2pt_rating": selected.get("d2pt_rating"),
+        "meta_score": selected.get("meta_score"),
+        "rating_rank": selected.get("rating_rank"),
+        "rating_cohort_size": selected.get("rating_cohort_size"),
+        "role_pick_share": selected.get("role_pick_share"),
+        "all_role_matches": selected.get("all_role_matches"),
+        "starting_items": build.get("starting_items") or [],
+        "ability_sequence": ability_sequence,
+        "core_items": build.get("core_items") or [],
+        "weekly_rates": weekly_points,
+    }

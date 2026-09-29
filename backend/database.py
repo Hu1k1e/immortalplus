@@ -57,14 +57,14 @@ def auto_migrate():
     from models import (
         Player, Match, ParsedReplay, MatchAnalysis,
         ProgressSnapshot, HeroMeta, HeroMatchup,
-        ProMeta, ActionItem, UserSettings
+        ProMeta, ActionItem, UserSettings, HeroOverview
     )
 
     inspector = inspect(engine)
     all_models = [
         Player, Match, ParsedReplay, MatchAnalysis,
         ProgressSnapshot, HeroMeta, HeroMatchup,
-        ProMeta, ActionItem, UserSettings
+        ProMeta, ActionItem, UserSettings, HeroOverview
     ]
 
     with engine.connect() as conn:

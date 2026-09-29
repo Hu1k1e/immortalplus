@@ -11,6 +11,7 @@ import Matches from './pages/Matches';
 import MatchDetail from './pages/MatchDetail';
 import DraftHelper from './pages/DraftHelper';
 import Meta from './pages/Meta';
+import HeroDetail from './pages/HeroDetail';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="matches/:matchId" element={<PageTransition><MatchDetail /></PageTransition>} />
         <Route path="draft" element={<PageTransition><DraftHelper /></PageTransition>} />
         <Route path="meta" element={<PageTransition><Meta /></PageTransition>} />
+        <Route path="meta/hero/:heroId" element={<PageTransition><HeroDetail /></PageTransition>} />
         <Route path="profile" element={<PageTransition><Profile /></PageTransition>} />
         <Route path="settings" element={<PageTransition><Settings /></PageTransition>} />
       </Route>
