@@ -259,9 +259,9 @@ export default function Profile() {
                 </div>
               </div>
               <div>
-                <div className="profile-trend-footer-label">Lane Record</div>
+                <div className="profile-trend-footer-label">Top Position</div>
                 <div className="profile-trend-footer-value profile-trend-footer-value-sm">
-                  {trends?.lane_record ? `${trends.lane_record.safe_wins} - ${trends.lane_record.safe_losses} - ${trends.lane_record.off_wins} - ${trends.lane_record.off_losses}` : '—'}
+                  {trends?.top_positions?.[0] ? `${trends.top_positions[0].position_name} · ${trends.top_positions[0].winrate}%` : '—'}
                 </div>
               </div>
               <div>

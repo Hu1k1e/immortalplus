@@ -6,17 +6,28 @@ interface TrendPoint {
   match_index: number;
   rolling_avg: number;
   value: number;
+  date: string | null;
 }
 
 interface TrendResponse {
   points: TrendPoint[];
 }
 
+/** Short "Sep 20" formatting for axis ticks/tooltips -- falls back to the
+ * raw string for anything that doesn't parse (shouldn't happen, but an
+ * axis tick crashing the whole chart is a worse failure mode). */
+function formatShortDate(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; stroke: string }[]; label?: string | number }) => {
   if (active && payload && payload.length) {
     return (
       <div className="glass-surface" style={{ padding: '0.5rem 1rem', border: '1px solid var(--border-color)', borderRadius: '4px' }}>
-        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Match {label}</p>
+        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>{formatShortDate(label as string)}</p>
         <p style={{ margin: 0, fontWeight: 'bold', color: payload[0].stroke }}>
           {payload[0].name}: {payload[0].value}
         </p>
@@ -35,6 +46,18 @@ const AXIS_LABEL_STYLE = { fill: 'var(--text-muted)', fontSize: 11 };
 // technically ran.
 const LINE_ANIMATION_BEGIN = 300;
 const LINE_ANIMATION_DURATION = 1100;
+// Roughly how many X-axis ticks to show regardless of how many points
+// are in the window -- Recharts' default for a category-type axis (what
+// a string `date` dataKey produces) is to try to render every single
+// tick, which for a 60-point window either overlaps into an unreadable
+// smear or, worse, silently thins itself down to a seemingly arbitrary
+// subset ("2 5 8 12 17 22...") when it *does* auto-skip. An explicit,
+// evenly-spaced `interval` makes the spacing predictable instead.
+const TARGET_TICK_COUNT = 6;
+
+function tickInterval(pointCount: number): number {
+  return Math.max(0, Math.ceil(pointCount / TARGET_TICK_COUNT) - 1);
+}
 
 function xAxisLabel(text: string) {
   return { value: text, position: 'insideBottom' as const, offset: -4, ...AXIS_LABEL_STYLE };
@@ -55,7 +78,11 @@ function makeProgressTrendWidget(stat: string, seriesName: string, color: string
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ bottom: 18, left: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-            <XAxis dataKey="match_index" stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} label={xAxisLabel('Match #')} />
+            <XAxis
+              dataKey="date" stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+              tickLine={false} axisLine={false} label={xAxisLabel('Date')}
+              tickFormatter={formatShortDate} interval={tickInterval(points.length)} minTickGap={24}
+            />
             <YAxis stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} label={yAxisLabel(yLabel ?? seriesName)} />
             <Tooltip content={<CustomTooltip />} />
             <Line
@@ -87,7 +114,11 @@ export const WinRateTrendWidget: ComponentType<{ instanceId: string }> = () => {
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={points} margin={{ bottom: 18, left: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-          <XAxis dataKey="match_index" stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} label={xAxisLabel('Match #')} />
+          <XAxis
+            dataKey="date" stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+            tickLine={false} axisLine={false} label={xAxisLabel('Date')}
+            tickFormatter={formatShortDate} interval={tickInterval(points.length)} minTickGap={24}
+          />
           <YAxis stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} domain={[0, 100]} label={yAxisLabel('Win Rate (%)')} />
           <Tooltip content={<CustomTooltip />} />
           <Line
@@ -118,7 +149,11 @@ function makeSnapshotWidget(dataKey: 'mmr_estimate' | 'improvement_score', serie
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={points} margin={{ bottom: 18, left: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" vertical={false} />
-            <XAxis dataKey="date" stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickLine={false} axisLine={false} label={xAxisLabel('Date')} />
+            <XAxis
+              dataKey="date" stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)', fontSize: 11 }}
+              tickLine={false} axisLine={false} label={xAxisLabel('Date')}
+              tickFormatter={formatShortDate} interval={tickInterval(points.length)} minTickGap={24}
+            />
             <YAxis stroke="var(--text-muted)" tick={{ fill: 'var(--text-muted)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} label={yAxisLabel(seriesName)} />
             <Tooltip content={<CustomTooltip />} />
             <Line

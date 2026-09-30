@@ -406,6 +406,10 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
 }
+.mini-stat-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
 .mini-stat-value {
   font-size: 1.3rem;
   font-weight: 700;

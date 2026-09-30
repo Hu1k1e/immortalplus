@@ -13,6 +13,7 @@ interface ProgressSummary {
   recent_deaths: number;
   deaths_change: number;
   avg_performance_score: number;
+  performance_score_sample_size: number;
   mmr_estimate: number | null;
   active_action_items: unknown[];
 }
@@ -103,13 +104,14 @@ export const DeathsStatWidget: ComponentType<{ instanceId: string }> = () => {
 
 export const PerformanceScoreStatWidget: ComponentType<{ instanceId: string }> = () => {
   const { data, loading } = useProgressSummary();
+  const n = data?.performance_score_sample_size ?? 0;
   return (
     <StatCardShell
       loading={loading}
       icon={<Gauge size={18} className="text-purple" />}
       label="Performance Score"
       value={`${data?.avg_performance_score ?? 0}`}
-      desc="Avg. of last 10 analyzed matches"
+      desc={n ? `Avg. of last ${n} analyzed match${n === 1 ? '' : 'es'}` : 'No analyzed matches yet'}
     />
   );
 };
@@ -164,6 +166,7 @@ export const OverviewPulseWidget: ComponentType<{ instanceId: string }> = () => 
     {
       key: 'performance', tint: 'purple', icon: <Gauge size={16} />, label: 'Performance',
       value: `${data?.avg_performance_score ?? 0}`, trend: null, cls: 'neutral',
+      sub: data?.performance_score_sample_size ? `Avg. last ${data.performance_score_sample_size} game${data.performance_score_sample_size === 1 ? '' : 's'}` : undefined,
     },
   ];
 
@@ -177,6 +180,7 @@ export const OverviewPulseWidget: ComponentType<{ instanceId: string }> = () => 
           </div>
           <div className="overview-pulse-cell-value">{loading ? '—' : c.value}</div>
           {c.trend && <div className={`overview-pulse-cell-trend ${c.cls}`}>{c.trend}</div>}
+          {c.sub && !loading && <div className="overview-pulse-cell-sub">{c.sub}</div>}
         </div>
       ))}
     </div>

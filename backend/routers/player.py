@@ -411,15 +411,25 @@ async def get_player_trends(
         hero_last_match.setdefault(m.hero_id, m.match_id)
     top_heroes = sorted(hero_counts.items(), key=lambda x: -x[1])[:14]
 
-    # "Lane Record" — this app's derived stand-in for Stratz's own
-    # (proprietary, undocumented) stat of the same name: win/loss counts
-    # split by Safe Lane vs Off Lane (lane_role 1 / 3 — the two lanes with
-    # a clear contested "won/lost the lane" framing; Mid and Jungle are
-    # excluded as a different shape of matchup).
-    safe_wins = sum(1 for m in recent if m.lane_role == 1 and m.result == "win")
-    safe_losses = sum(1 for m in recent if m.lane_role == 1 and m.result == "loss")
-    off_wins = sum(1 for m in recent if m.lane_role == 3 and m.result == "win")
-    off_losses = sum(1 for m in recent if m.lane_role == 3 and m.result == "loss")
+    # "Lane Record" (safe/off win-loss split via lane_role 1/3) was this
+    # app's original stand-in for Stratz's own proprietary stat of the
+    # same name, but lane_role is only ever populated for OpenDota-
+    # sourced or locally-parsed matches -- Stratz's own match-list query
+    # (services/stratz.py) never requests a lane_role-equivalent field at
+    # all, so any account on the (default) "Both, prefer Stratz" data
+    # source reads permanently empty here even though Stratz's `position`
+    # field (real 1-5 role, already captured into `position_counts` right
+    # above) is populated for the exact same matches. Replaced with a
+    # "most-played positions" ranking built from that already-correct
+    # data instead of a stat that silently depends on which source synced
+    # each match.
+    top_positions = [
+        {
+            "position": p, "position_name": POSITIONS.get(p), "count": c,
+            "winrate": round(position_wins.get(p, 0) / c * 100, 1) if c else 0,
+        }
+        for p, c in sorted(position_counts.items(), key=lambda x: -x[1])[:2]
+    ]
 
     # lobby_type 7 is Ranked (Valve's real enum — 5 is "Team Match", a
     # legacy custom-lobby type, not actual ranked matchmaking, despite
@@ -446,7 +456,7 @@ async def get_player_trends(
         "older_half_winrate": _winrate(older_half),
         "party_pct": round(sum(1 for m in recent if (m.party_size or 1) > 1) / total * 100, 1) if total else 0,
         "unranked_pct": unranked_pct,
-        "lane_record": {"safe_wins": safe_wins, "safe_losses": safe_losses, "off_wins": off_wins, "off_losses": off_losses},
+        "top_positions": top_positions,
         "position_breakdown": [
             {
                 "position": p, "position_name": POSITIONS.get(p), "count": c,

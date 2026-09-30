@@ -151,8 +151,17 @@ async def get_match_detail(match_id: int, session: Session = Depends(get_session
     player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
     settings = session.exec(select(UserSettings)).first()
 
-    # If we don't have it locally, or it lacks details, fetch from OpenDota
-    if not match or not match.gold_t:
+    # If we don't have it locally, or it lacks details, fetch from OpenDota.
+    # Also re-checks `items` specifically, not just `gold_t` -- a match
+    # discovered via the Steam fast-path or a plain OpenDota/Stratz match-
+    # list sync never carries item slots at all (see _steam_match_to_dict
+    # and _match_row_from_dict's docstrings; items only ever arrive via
+    # this same fetch_match_details enrichment call), so a match that
+    # picked up gold_t from one enrichment pass but somehow not items
+    # (e.g. the underlying source hadn't finished processing the game's
+    # final inventory yet) would otherwise never retry and show stale/
+    # empty item slots forever.
+    if not match or not match.gold_t or not match.items:
         if not match:
             # Create a stub match entry
             if not player:

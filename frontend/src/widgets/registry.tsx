@@ -1,4 +1,4 @@
-import { TrendingUp, Crosshair, Activity, Award, Skull, Gauge, Swords, ListChecks, Zap, TrendingDown, Flame, Landmark, History, Users2, PieChart, BarChart3, IdCard, Flame as HeroFlame, ListTree } from 'lucide-react';
+import { TrendingUp, Crosshair, Activity, Award, Skull, Gauge, Swords, ListChecks, Zap, TrendingDown, Flame, Landmark, History, Users2, PieChart, BarChart3, IdCard, Flame as HeroFlame, ListTree, Map as MapIcon, Shield, Coins } from 'lucide-react';
 import type { WidgetDefinition, WidgetInstance, GridLayoutItem, WidgetSize } from './types';
 import {
   WinRateStatWidget, KdaStatWidget, GpmStatWidget, DeathsStatWidget,
@@ -18,6 +18,7 @@ import {
 import {
   AiInsightsWidget, AiVoiceCoachWidget, AiDrillsWidget, AiMatchPredictionWidget,
 } from './components/CoachWidgets';
+import { LaningWidget, SupportWidget, CarryWidget } from './components/RoleWidgets';
 
 const STAT: WidgetSize = { w: 3, h: 4, minW: 2, minH: 3, maxH: 6 };
 const CHART: WidgetSize = { w: 4, h: 9, minW: 3, minH: 6 };
@@ -52,7 +53,10 @@ export const WIDGET_REGISTRY: WidgetDefinition[] = [
   // ── Matches & columns ────────────────────────────────────────────
   { id: 'list-recent-matches', title: 'Recent Matches', description: 'A scrollable column of your most recent matches with result and KDA. Click the title to open full Match History.', category: 'matches', defaultSize: LIST, icon: History, titleLink: '/matches', singleton: true, Component: RecentMatchesWidget },
   { id: 'list-action-items', title: 'Open Action Items', description: 'Column of open coaching action items -- click to mark complete.', category: 'matches', defaultSize: CHART, icon: ListTree, singleton: true, Component: ActionItemsWidget },
-  { id: 'matches-lane-record', title: 'Lane Record & Queue Mix', description: 'Safe/off lane win-loss record plus party queue and unranked %.', category: 'matches', defaultSize: MINI, icon: Users2, singleton: true, Component: LaneRecordWidget },
+  { id: 'matches-lane-record', title: 'Top Positions & Queue Mix', description: 'Your two most-played positions with win rate, plus party queue and unranked %.', category: 'matches', defaultSize: MINI, icon: Users2, singleton: true, Component: LaneRecordWidget },
+  { id: 'role-laning', title: 'Laning', description: 'CS at 10 minutes, KDA, and win rate over your recent games.', category: 'matches', defaultSize: MINI, icon: MapIcon, singleton: true, Component: LaningWidget },
+  { id: 'role-support', title: 'Support', description: 'Average wards placed and camps stacked per game (needs locally-parsed replays).', category: 'matches', defaultSize: MINI, icon: Shield, singleton: true, Component: SupportWidget },
+  { id: 'role-carry', title: 'Carry', description: 'Average last hits, KDA, and GPM over your recent games.', category: 'matches', defaultSize: MINI, icon: Coins, singleton: true, Component: CarryWidget },
 
   // ── Heroes ───────────────────────────────────────────────────────
   { id: 'list-most-played-heroes', title: 'Most Played Heroes', description: 'Column ranking your most-played heroes by games and win rate.', category: 'heroes', defaultSize: LIST, icon: HeroFlame, singleton: true, Component: MostPlayedHeroesWidget },
@@ -107,6 +111,7 @@ const DEFAULT_DASHBOARD_WIDGET_IDS = [
   'trend-winrate', 'trend-kda', 'trend-gpm',
   'list-recent-matches', 'heroes-trends-ring', 'list-most-played-heroes',
   'matches-lane-record', 'coach-ai-insights', 'coach-ai-drills',
+  'role-laning', 'role-support', 'role-carry',
 ];
 
 export const DEFAULT_DASHBOARD_INSTANCES: WidgetInstance[] = DEFAULT_DASHBOARD_WIDGET_IDS.map((widgetId) => ({

@@ -201,6 +201,7 @@ async def get_progress_summary(session: Session = Depends(get_session)):
         "recent_deaths": round(r_deaths, 1),
         "deaths_change": round(r_deaths - o_deaths, 1),
         "avg_performance_score": round(avg_perf_score, 1),
+        "performance_score_sample_size": len(recent_analyses),
         "mmr_estimate": player.mmr_estimate,
         "rank_tier": player.rank_tier,
         "active_action_items": [
@@ -265,3 +266,100 @@ async def complete_action_item(item_id: int, session: Session = Depends(get_sess
     item.completed_at = datetime.utcnow()
     session.commit()
     return {"status": "completed"}
+
+
+@router.get("/role-breakdown")
+async def get_role_breakdown(window: int = Query(20, ge=1, le=200), session: Session = Depends(get_session)):
+    """
+    Powers the Laning/Support/Carry dashboard widgets. Deliberately reuses
+    fields already stored on `Match` rather than adding new columns:
+    - Laning: `lh_t` (last-hits-per-minute array, already stored for the
+      Farm tab) sampled at minute 10 for an early-lane CS read, plus KDA
+      and win rate over the window.
+    - Support: ward counts derived from `obs_log`/`sen_log`'s array
+      lengths (the same technique services/analysis_engine.py already
+      uses for its own action-item heuristics) and `camps_stacked` read
+      out of the `all_players` blob's own player entry -- both are only
+      ever populated by a *local* replay parse (see replay_compute.py),
+      not a plain OpenDota/Stratz API sync, so `has_data` tells the
+      frontend whether this window actually has any locally-parsed
+      matches to report on versus genuinely being a low/zero support
+      role player.
+    - Carry: total/average last hits, KDA, GPM -- already plain Match
+      columns, no parsing needed.
+    """
+    import json as _json
+
+    player = session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+    if not player:
+        raise HTTPException(status_code=404, detail="No player profile found")
+
+    recent = session.exec(
+        select(Match)
+        .where(Match.player_id == player.id)
+        .order_by(Match.match_id.desc())
+        .limit(window)
+    ).all()
+    total = len(recent)
+
+    def _kda(m: Match) -> float:
+        return ((m.kills or 0) + (m.assists or 0)) / max(m.deaths or 1, 1)
+
+    def _avg(values: list) -> float:
+        return sum(values) / len(values) if values else 0
+
+    # -- Laning --
+    cs_at_10 = []
+    for m in recent:
+        if not m.lh_t:
+            continue
+        try:
+            lh_series = _json.loads(m.lh_t)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(lh_series, list) and len(lh_series) > 10:
+            cs_at_10.append(lh_series[10] or 0)
+    wins = sum(1 for m in recent if m.result == "win")
+
+    laning = {
+        "matches": total,
+        "avg_cs_10min": round(_avg(cs_at_10), 1),
+        "cs_10min_sample_size": len(cs_at_10),
+        "avg_kda": round(_avg([_kda(m) for m in recent]), 2),
+        "winrate": round(wins / total * 100, 1) if total else 0,
+    }
+
+    # -- Support (wards/camps only ever come from a local replay parse) --
+    ward_counts = []
+    camp_counts = []
+    for m in recent:
+        obs = _json.loads(m.obs_log) if m.obs_log else None
+        sen = _json.loads(m.sen_log) if m.sen_log else None
+        if isinstance(obs, list) or isinstance(sen, list):
+            ward_counts.append(len(obs or []) + len(sen or []))
+        if m.all_players:
+            try:
+                players = _json.loads(m.all_players)
+                mine = next((p for p in players if p.get("player_slot") == m.player_slot), None)
+                if mine and mine.get("camps_stacked") is not None:
+                    camp_counts.append(mine["camps_stacked"])
+            except (ValueError, TypeError):
+                pass
+
+    support = {
+        "matches": total,
+        "has_data": bool(ward_counts or camp_counts),
+        "avg_wards_placed": round(_avg(ward_counts), 1) if ward_counts else None,
+        "avg_camps_stacked": round(_avg(camp_counts), 1) if camp_counts else None,
+        "sample_size": max(len(ward_counts), len(camp_counts)),
+    }
+
+    # -- Carry --
+    carry = {
+        "matches": total,
+        "avg_last_hits": round(_avg([m.last_hits or 0 for m in recent]), 1),
+        "avg_kda": round(_avg([_kda(m) for m in recent]), 2),
+        "avg_gpm": round(_avg([m.gpm or 0 for m in recent])),
+    }
+
+    return {"window": window, "laning": laning, "support": support, "carry": carry}

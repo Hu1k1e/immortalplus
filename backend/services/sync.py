@@ -248,6 +248,7 @@ async def sync_new_matches_from_steam(session: Session, player: Player, settings
         return 0
 
     new_count = 0
+    steam_failed_ids: list[int] = []
     for match_id in new_ids:
         if session.exec(select(Match).where(Match.match_id == match_id)).first():
             continue
@@ -255,11 +256,14 @@ async def sync_new_matches_from_steam(session: Session, player: Player, settings
             details = await steam_client.get_match_details(match_id)
         except Exception as e:
             logger.warning(f"Steam fast-path: GetMatchDetails failed for {match_id}: {e}")
+            steam_failed_ids.append(match_id)
             continue
         if not details:
+            steam_failed_ids.append(match_id)
             continue
         player_data = next((p for p in details.get("players", []) if p.get("account_id") == player.account_id), None)
         if not player_data:
+            steam_failed_ids.append(match_id)
             continue
         session.add(_match_row_from_dict(_steam_match_to_dict(details, player_data), player.id))
         new_count += 1
@@ -268,6 +272,29 @@ async def sync_new_matches_from_steam(session: Session, player: Player, settings
         player.last_sync_at = datetime.utcnow()
         session.commit()
         logger.info(f"Steam fast-path: synced {new_count} new match(es) for player {player.account_id}")
+
+    # GetMatchDetails commonly 500s for a match GetMatchHistory just
+    # listed -- Valve's own backend hasn't finished processing that
+    # specific match yet, even though the history entry already exists.
+    # Confirmed live (2026-09-30): the same match_id kept 500ing from
+    # Steam every 90s for ~10 minutes while OpenDota/Stratz already had
+    # it, so falling back to the regular incremental sync (which this
+    # account already has configured) right here — instead of only ever
+    # retrying Steam again next cycle — is what actually gets it in
+    # quickly, fulfilling the "instant sync" promise even when Steam
+    # itself is the slow one. Only fires when there's something Steam
+    # genuinely couldn't resolve, so this stays a no-op extra query on
+    # every cycle where Steam alone was enough.
+    if steam_failed_ids:
+        try:
+            fallback_count = await sync_player_matches(session, player, settings)
+        except Exception as e:
+            logger.warning(f"Steam fast-path: OpenDota/Stratz fallback failed for {steam_failed_ids}: {e}")
+            fallback_count = 0
+        if fallback_count:
+            logger.info(f"Steam fast-path: {fallback_count} match(es) Steam couldn't detail-fetch were picked up via the regular sync fallback instead")
+            new_count += fallback_count
+
     return new_count
 
 

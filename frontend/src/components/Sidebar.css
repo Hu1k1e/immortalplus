@@ -12,23 +12,26 @@
   background: var(--sidebar-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(226, 183, 66, 0.12);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   box-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.45),
+    0 12px 32px rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(255, 255, 255, 0.02) inset,
-    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
 
   transition: width var(--transition-normal), margin var(--transition-normal);
 }
 
+/* A quiet glass-pane sheen -- a soft highlight along the top edge fading
+   down -- instead of the previous gold-to-red gradient border, which
+   read as a distracting colored outline rather than a material. */
 .sidebar::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(180deg, rgba(226, 183, 66, 0.25), rgba(226, 183, 66, 0) 40%, rgba(194, 53, 43, 0.18) 100%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 45%);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -112,13 +115,13 @@
 
 .nav-item:hover {
   color: var(--text-primary);
-  background: linear-gradient(90deg, rgba(226, 183, 66, 0.1), rgba(226, 183, 66, 0.02));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 2%, transparent));
 }
 
 .nav-item.active {
   color: var(--text-primary);
-  background: linear-gradient(90deg, rgba(226, 183, 66, 0.16), rgba(226, 183, 66, 0.03));
-  box-shadow: 0 0 0 1px rgba(226, 183, 66, 0.12) inset;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 3%, transparent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent) inset;
 }
 
 .nav-icon {
@@ -188,7 +191,7 @@
   height: 24px;
   border-radius: 50%;
   background: var(--bg-surface-elevated);
-  border: 1px solid rgba(226, 183, 66, 0.25);
+  border: 1px solid var(--border-highlight);
   color: var(--text-secondary);
   display: flex;
   align-items: center;

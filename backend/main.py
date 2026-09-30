@@ -34,7 +34,6 @@ async def background_sync_loop():
         sync_player_matches, create_progress_snapshot, backfill_progress_snapshots,
         sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
     )
-    from services.protracker import sync_hero_position_meta, prefetch_hero_overviews
 
     # Wait for app to fully start
     await asyncio.sleep(10)
@@ -55,14 +54,6 @@ async def background_sync_loop():
     finally:
         if backfill_session:
             backfill_session.close()
-
-    # protracker_enabled/protracker_interval_minutes have existed as
-    # UserSettings fields since early in this project but were never
-    # actually read anywhere — this is the first real use of them. Runs
-    # on its own longer interval (default 6h) rather than every cycle
-    # like meta/matchups above, since it's a heavier browser-automation
-    # fetch (see services/protracker.py), not a plain API call.
-    last_protracker_sync: datetime | None = None
 
     while True:
         settings = None
@@ -125,63 +116,6 @@ async def background_sync_loop():
                     except Exception as e:
                         logger.error(f"Background sync: hero_synergy failed: {e}", exc_info=True)
 
-                    # Dota2ProTracker/Stratz: real per-position (Carry/
-                    # Mid/Offlane/Soft Support/Hard Support) hero win
-                    # rates — data OpenDota's bulk endpoints don't have
-                    # at all. Configurable independently of the general
-                    # sync_interval_minutes cadence above (defaults to the
-                    # same 30 minutes) since it's a heavier scrape.
-                    interval_minutes = settings.protracker_interval_minutes or 30
-                    due = (
-                        last_protracker_sync is None
-                        or datetime.utcnow() - last_protracker_sync >= timedelta(minutes=interval_minutes)
-                    )
-                    if settings.protracker_enabled and due:
-                        try:
-                            await sync_hero_position_meta(session, settings)
-                        except Exception as e:
-                            logger.error(f"Background sync: hero_position_meta failed: {e}", exc_info=True)
-                        # hero_position_detail (the Meta page's extra
-                        # columns — lane advantage, contest rate,
-                        # Radiant/Dire and pick-phase splits) is NOT
-                        # synced here anymore. Confirmed live (2026-09-29)
-                        # across five different request-pattern fixes
-                        # (shared session, fresh session per position,
-                        # one-position-per-cycle rotation, multiple retry/
-                        # backoff strategies) that it kept failing
-                        # unpredictably regardless — including two fully
-                        # independent fresh-session attempts on the same
-                        # position minutes apart both failing identically,
-                        # which rules out anything about our own request
-                        # logic and points at Cloudflare/bot-mitigation
-                        # having flagged this server's IP from the sheer
-                        # volume of automated requests this debugging
-                        # session generated. Continuing to hit it would
-                        # likely only prolong that. The Meta page now runs
-                        # entirely on hero_position_meta above instead
-                        # (see routers/meta.py) — reliable, never failed
-                        # once. sync_hero_position_detail/
-                        # fetch_hero_position_detail are kept in
-                        # services/protracker.py, unused, in case this is
-                        # ever worth revisiting (e.g. from a different
-                        # egress IP).
-
-                        # Pre-warms HeroDetail's per-position overview
-                        # (win/pick rate, build, ability order) for a
-                        # small batch of the most-overdue real hero/
-                        # position combos, so it's usually already cached
-                        # by the time a user opens that page instead of
-                        # showing "Loading role data... may take a few
-                        # seconds". Paced on this same interval/batch-of-3
-                        # (not every cycle) since each fetch is a full
-                        # headless-browser page load, not a plain API
-                        # call — see prefetch_hero_overviews' docstring.
-                        try:
-                            await prefetch_hero_overviews(session)
-                        except Exception as e:
-                            logger.error(f"Background sync: hero_overview prefetch failed: {e}", exc_info=True)
-                        last_protracker_sync = datetime.utcnow()
-
             session.close()
 
         except Exception as e:
@@ -193,6 +127,77 @@ async def background_sync_loop():
             interval = settings.sync_interval_minutes or 30
         await asyncio.sleep(interval * 60)
 
+
+
+async def protracker_sync_loop():
+    """
+    Dota2ProTracker/Stratz per-position hero data (HeroPositionMeta) and
+    the HeroDetail-page overview prefetch, on their own independent
+    timer keyed off `protracker_interval_minutes`.
+
+    This used to run nested inside `background_sync_loop`, sharing one
+    single-threaded while-loop with hero_meta/hero_matchups/hero_synergy/
+    match-sync/snapshot creation — confirmed live (2026-09-30) that this
+    was the actual cause behind every Draft Helper source showing the
+    same stale "refreshed Xh ago" together despite the (separate!)
+    `sync_interval_minutes` defaulting to 30: both `sync_hero_position_
+    meta` and `prefetch_hero_overviews` launch real headless-browser page
+    loads (see services/protracker.py), and this codebase's own history
+    already documents that site occasionally Cloudflare/bot-mitigation-
+    stalling requests (see HeroPositionDetail's removal, same file) — a
+    slow or hung browser call there blocked *everything else* in that
+    loop from running again until it finally resolved, however long that
+    took, regardless of what `sync_interval_minutes` was actually set to.
+    Splitting this into its own loop (matching steam_match_poll_loop's
+    pattern) means a stall here can only ever delay itself, never
+    hero_meta/matchups/synergy/match-sync, and an explicit `wait_for`
+    timeout below bounds how long "itself" can even be.
+    """
+    from datetime import datetime, timedelta
+    from sqlmodel import select
+    from database import SessionLocal
+    from models import UserSettings
+    from services.protracker import sync_hero_position_meta, prefetch_hero_overviews
+    from services.sync import meta_sync_lock
+
+    # Generous but finite -- a real page load here normally takes single-
+    # digit seconds; this only exists to turn a rare hang into "skip this
+    # cycle and log it" instead of "block this loop indefinitely".
+    _CALL_TIMEOUT_SECONDS = 180
+
+    await asyncio.sleep(30)  # let the app finish starting first
+    logger.info("Protracker sync loop started")
+
+    while True:
+        sleep_minutes = 30
+        try:
+            session = SessionLocal()
+            try:
+                settings = session.exec(select(UserSettings).limit(1)).first()
+                if settings and settings.protracker_enabled:
+                    sleep_minutes = settings.protracker_interval_minutes or 30
+                    async with meta_sync_lock:
+                        try:
+                            await asyncio.wait_for(sync_hero_position_meta(session, settings), timeout=_CALL_TIMEOUT_SECONDS)
+                        except asyncio.TimeoutError:
+                            logger.error(f"Protracker sync: hero_position_meta timed out after {_CALL_TIMEOUT_SECONDS}s")
+                        except Exception as e:
+                            logger.error(f"Protracker sync: hero_position_meta failed: {e}", exc_info=True)
+
+                        try:
+                            await asyncio.wait_for(prefetch_hero_overviews(session), timeout=_CALL_TIMEOUT_SECONDS)
+                        except asyncio.TimeoutError:
+                            logger.error(f"Protracker sync: hero_overview prefetch timed out after {_CALL_TIMEOUT_SECONDS}s")
+                        except Exception as e:
+                            logger.error(f"Protracker sync: hero_overview prefetch failed: {e}", exc_info=True)
+                elif settings:
+                    sleep_minutes = settings.protracker_interval_minutes or 30
+            finally:
+                session.close()
+        except Exception as e:
+            logger.error(f"Protracker sync loop error: {e}", exc_info=True)
+
+        await asyncio.sleep(max(1, sleep_minutes) * 60)
 
 
 async def steam_match_poll_loop():
@@ -358,6 +363,12 @@ async def lifespan(app: FastAPI):
     # steam_match_poll_loop's docstring.
     steam_poll_task = asyncio.create_task(steam_match_poll_loop())
 
+    # Dota2ProTracker per-position hero data + HeroDetail overview
+    # prefetch, on its own timer independent of background_sync_loop —
+    # see protracker_sync_loop's docstring for why this used to cause
+    # every Draft Helper source to go stale together.
+    protracker_task = asyncio.create_task(protracker_sync_loop())
+
     # Start dedicated auto-parse worker (replay downloading + local parsing + OD requests)
     from services.auto_parse import auto_parse_worker
     parse_task = asyncio.create_task(auto_parse_worker())
@@ -369,6 +380,7 @@ async def lifespan(app: FastAPI):
     backfill_task.cancel()
     identity_task.cancel()
     steam_poll_task.cancel()
+    protracker_task.cancel()
     parse_task.cancel()
     logger.info("Immortal+ Backend shutting down")
 

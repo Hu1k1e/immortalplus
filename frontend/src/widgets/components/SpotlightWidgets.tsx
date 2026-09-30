@@ -289,24 +289,31 @@ export const PlayerIdentityWidget: ComponentType<{ instanceId: string }> = () =>
   );
 };
 
-interface LaneRecord { safe_wins: number; safe_losses: number; off_wins: number; off_losses: number; }
-interface PlayerTrends { lane_record: LaneRecord; party_pct: number; unranked_pct: number; winrate: number; total: number; }
+interface TopPosition { position: number; position_name: string | null; count: number; winrate: number; }
+interface PlayerTrends { top_positions: TopPosition[]; party_pct: number; unranked_pct: number; winrate: number; total: number; }
 
+/** "Safe Lane / Off Lane" win-loss was this app's original stat here, but
+ * it depended on lane_role, a field only ever populated for OpenDota-
+ * sourced or locally-parsed matches -- an account on the default "Both,
+ * prefer Stratz" data source (Stratz never returns that field) always
+ * read empty. Replaced with the two most-played positions instead, from
+ * `position` (real 1-5 role), which Stratz does provide. */
 export const LaneRecordWidget: ComponentType<{ instanceId: string }> = () => {
   const { data, loading } = useApiData<PlayerTrends>('/player/trends', { window: 50 });
   if (loading) return <div className="widget-chart-empty animate-pulse">Loading…</div>;
-  if (!data || !data.total) return <div className="widget-chart-empty">No recent matches to compute lane/queue data from.</div>;
-  const lr = data.lane_record;
-  const hasLaneData = lr && (lr.safe_wins + lr.safe_losses + lr.off_wins + lr.off_losses) > 0;
+  if (!data || !data.total) return <div className="widget-chart-empty">No recent matches to compute position/queue data from.</div>;
+  const [first, second] = data.top_positions ?? [];
   return (
     <div className="mini-stat-grid">
       <div className="mini-stat">
-        <div className="mini-stat-label">Safe Lane</div>
-        <div className="mini-stat-value">{hasLaneData ? `${lr.safe_wins}-${lr.safe_losses}` : 'No data'}</div>
+        <div className="mini-stat-label">{first ? first.position_name : 'Top Position'}</div>
+        <div className="mini-stat-value">{first ? `${first.winrate}%` : 'No data'}</div>
+        {first && <div className="mini-stat-sub">{first.count}g</div>}
       </div>
       <div className="mini-stat">
-        <div className="mini-stat-label">Off Lane</div>
-        <div className="mini-stat-value">{hasLaneData ? `${lr.off_wins}-${lr.off_losses}` : 'No data'}</div>
+        <div className="mini-stat-label">{second ? second.position_name : '2nd Position'}</div>
+        <div className="mini-stat-value">{second ? `${second.winrate}%` : 'No data'}</div>
+        {second && <div className="mini-stat-sub">{second.count}g</div>}
       </div>
       <div className="mini-stat">
         <div className="mini-stat-label">Party Queue</div>

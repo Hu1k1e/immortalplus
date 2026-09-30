@@ -103,17 +103,26 @@
 .overview-pulse-cell-trend.negative { color: var(--dire-red); }
 .overview-pulse-cell-trend.neutral { color: var(--text-muted); }
 
+.overview-pulse-cell-sub {
+  position: relative;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
 @container widget (max-width: 260px) {
   .overview-pulse-cell { padding: 0.5rem 0.65rem; gap: 0.1rem; }
   .overview-pulse-cell-header span { display: none; }
   .overview-pulse-cell-value { font-size: 1.1rem; }
   .overview-pulse-cell-trend { display: none; }
+  .overview-pulse-cell-sub { display: none; }
 }
 @container widget (max-height: 150px) {
   .overview-pulse-cell { padding: 0.5rem 0.65rem; gap: 0.1rem; }
   .overview-pulse-cell-header span { display: none; }
   .overview-pulse-cell-value { font-size: 1.1rem; }
   .overview-pulse-cell-trend { display: none; }
+  .overview-pulse-cell-sub { display: none; }
 }
 @container widget (min-width: 420px) and (min-height: 260px) {
   .overview-pulse-cell-value { font-size: 2.4rem; }
