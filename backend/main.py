@@ -32,7 +32,7 @@ async def background_sync_loop():
     from models import Player, UserSettings
     from services.sync import (
         sync_player_matches, create_progress_snapshot, backfill_progress_snapshots,
-        sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
+        auto_analyze_recent_matches, sync_hero_meta, sync_hero_matchups, sync_hero_synergy, meta_sync_lock,
     )
 
     # Wait for app to fully start
@@ -55,6 +55,23 @@ async def background_sync_loop():
         if backfill_session:
             backfill_session.close()
 
+    # One-time larger-batch catch-up for the same reason -- an account
+    # with a real match-history backlog would otherwise take many
+    # `sync_interval_minutes` cycles (each capped at 20, see the loop
+    # below) to build up a meaningful Performance Score sample size.
+    analyze_session = None
+    try:
+        analyze_session = SessionLocal()
+        analyze_player = analyze_session.exec(select(Player).order_by(Player.id.desc()).limit(1)).first()
+        if analyze_player:
+            from services.sync import auto_analyze_recent_matches as _auto_analyze_startup
+            await _auto_analyze_startup(analyze_session, analyze_player, limit=100)
+    except Exception as e:
+        logger.error(f"Startup auto-analyze failed: {e}", exc_info=True)
+    finally:
+        if analyze_session:
+            analyze_session.close()
+
     while True:
         settings = None
         try:
@@ -70,6 +87,16 @@ async def background_sync_loop():
 
                 # Create daily snapshot
                 await create_progress_snapshot(session, player)
+
+                # Deterministic per-match analysis (Performance Score's
+                # sample size) -- cheap heuristic, no external API call,
+                # so safe to just run every cycle. See
+                # auto_analyze_recent_matches' docstring for why this
+                # used to be stuck at "last 1 game" for most accounts.
+                try:
+                    await auto_analyze_recent_matches(session, player)
+                except Exception as e:
+                    logger.error(f"Background sync: auto-analyze failed: {e}", exc_info=True)
 
             # Hero win/pick rates + matchup (counter-pick) data for the
             # Draft Helper — previously meta only synced once per restart

@@ -247,6 +247,10 @@ export const PlayerIdentityWidget: ComponentType<{ instanceId: string }> = () =>
   const { data: trends } = useApiData<{ winrate: number; strip: { match_id: number; result: string; hero_id: number; hero_icon: string }[] }>('/player/trends', { window: 10 });
   const strip = trends?.strip ?? [];
   const wins = strip.filter((s) => s.result === 'win').length;
+  // `strip` is oldest-first (see /player/trends), so the last entry is
+  // the most recent game -- clicking the avatar goes there, same as
+  // clicking any of the strip icons already does for their own match.
+  const lastMatchId = strip.length > 0 ? strip[strip.length - 1].match_id : null;
 
   return (
     <div className="spotlight-card identity-spotlight">
@@ -256,6 +260,8 @@ export const PlayerIdentityWidget: ComponentType<{ instanceId: string }> = () =>
         src={profile?.avatar_url || '/logo.png'}
         alt=""
         onError={(e) => { (e.target as HTMLImageElement).src = '/logo.png'; }}
+        onClick={() => navigate(lastMatchId ? `/matches/${lastMatchId}` : '/profile')}
+        role="button"
       />
       <div className="identity-spotlight-name">{profile ? (profile.persona_name || 'Player') : 'Loading…'}</div>
       {rankLabel && (

@@ -770,6 +770,46 @@ async def analyze_and_store(session: Session, match: Match, player: Player):
     session.commit()
 
 
+async def auto_analyze_recent_matches(session: Session, player: Player, limit: int = 20) -> int:
+    """Background pass over un-analyzed matches, so Performance Score's
+    sample size grows on its own instead of only ever covering matches a
+    user happened to open a detail view for -- `analyze_and_store` was
+    previously only ever called from two on-demand match-detail routes
+    (routers/matches.py), meaning most players only accumulate a
+    MatchAnalysis row for the handful of matches they'd actually clicked
+    into, confirmed live (2026-09-30) as the reason a real account's
+    Performance Score read "avg. of last 1 game". `analyze_match()` is a
+    cheap deterministic heuristic (rank-tier-bracket lookups and simple
+    arithmetic, no LLM/external call), safe to run automatically for
+    every match unlike the browser-automation-based syncs elsewhere in
+    this file. Only considers matches with `gold_t` already set (been
+    through at least one `fetch_match_details` enrichment pass) so the
+    lh_t/obs_log/sen_log-derived sub-scores aren't computed from nothing;
+    `analyze_and_store`'s own `is_analyzed` check keeps this idempotent,
+    so calling it repeatedly on the same backlog just picks up wherever
+    the last cycle's `limit` cutoff left off.
+    """
+    unanalyzed = session.exec(
+        select(Match)
+        .where(Match.player_id == player.id)
+        .where(Match.is_analyzed == False)  # noqa: E712 -- SQLAlchemy needs `== False`, not `is False`
+        .where(Match.gold_t.is_not(None))
+        .order_by(Match.match_id.desc())
+        .limit(limit)
+    ).all()
+
+    count = 0
+    for m in unanalyzed:
+        try:
+            await analyze_and_store(session, m, player)
+            count += 1
+        except Exception as e:
+            logger.warning(f"Auto-analyze failed for match {m.match_id}: {e}")
+    if count:
+        logger.info(f"Auto-analyzed {count} match(es) for player {player.account_id}")
+    return count
+
+
 def _rolling_snapshot_metrics(matches: list[Match]) -> dict:
     """Shared rolling-window aggregation used by both the daily snapshot
     cron and the historical backfill below, so the two can never drift

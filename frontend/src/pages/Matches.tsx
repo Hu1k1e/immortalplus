@@ -4,6 +4,9 @@ import api from '../lib/api';
 import { HEROES } from '../lib/heroes';
 import { getHeroImage, getItemImage } from '../lib/dota';
 import { ITEMS } from '../lib/items';
+import { getCached, setCached } from '../lib/apiCache';
+
+const MATCHES_CACHE_KEY = '/matches';
 
 const AVAILABLE_COLUMNS = [
   { id: 'hero', label: 'Hero' },
@@ -26,14 +29,20 @@ const AVAILABLE_COLUMNS = [
 
 export default function Matches() {
   const navigate = useNavigate();
-  const [matches, setMatches] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedMatches = getCached<{ matches: any[] }>(MATCHES_CACHE_KEY);
+  const [matches, setMatches] = useState<any[]>(cachedMatches?.matches ?? []);
+  const [loading, setLoading] = useState(!cachedMatches);
   const [showColumnsMenu, setShowColumnsMenu] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['hero', 'match_id', 'result', 'kda', 'duration', 'date']));
 
   useEffect(() => {
+    // Shows the cached list instantly (if any) while this still fetches
+    // a fresh one in the background -- see lib/apiCache.ts.
+    const cached = getCached<{ matches: any[] }>(MATCHES_CACHE_KEY);
+    if (cached) { setMatches(cached.matches || []); setLoading(false); }
     api.get('/matches').then((res) => {
       setMatches(res.data.matches || []);
+      setCached(MATCHES_CACHE_KEY, res.data);
       setLoading(false);
     }).catch((err) => {
       console.error(err);
@@ -54,6 +63,7 @@ export default function Matches() {
       await api.post('/matches/sync');
       const res = await api.get('/matches');
       setMatches(res.data.matches || []);
+      setCached(MATCHES_CACHE_KEY, res.data);
     } catch (err) {
       console.error(err);
       alert('Failed to sync matches');

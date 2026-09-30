@@ -320,6 +320,12 @@
   border: 2px solid var(--border-highlight);
   box-shadow: var(--shadow-gold);
   flex-shrink: 0;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast);
+}
+.identity-spotlight-avatar:hover {
+  transform: scale(1.05);
+  border-color: var(--accent);
 }
 
 .identity-spotlight-name {

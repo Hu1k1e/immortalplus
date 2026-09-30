@@ -8,6 +8,7 @@
   position: relative;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   width: 46px;
   height: 26px;
   padding: 0 6px;

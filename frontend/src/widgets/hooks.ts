@@ -1,19 +1,42 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
+import { cacheKey, getCached, setCached } from '../lib/apiCache';
 
-/** Generic "fetch once on mount" hook shared by every data-driven widget. */
+/** Fetches on mount, but stale-while-revalidate: if this exact url+params
+ * was already fetched anywhere else in the app this session, the cached
+ * value is shown *immediately* (loading starts false, no blank/spinner
+ * flash) while a fresh request still goes out in the background and
+ * replaces it once it resolves -- this is what makes switching back to
+ * an already-visited widget/page feel instant instead of re-showing a
+ * loading state every single time, while still keeping the data itself
+ * live (never permanently stale, never a stale click a user has to
+ * force-refresh their way around). See lib/apiCache.ts. */
 export function useApiData<T>(url: string, params?: Record<string, unknown>): { data: T | null; loading: boolean; error: boolean } {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
   const paramsKey = params ? JSON.stringify(params) : '';
+  const key = cacheKey(url, params);
+  const cached = getCached<T>(key);
+  const [data, setData] = useState<T | null>(cached ?? null);
+  const [loading, setLoading] = useState(!cached);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const key = cacheKey(url, params);
+    const cachedNow = getCached<T>(key);
+    if (cachedNow !== undefined) {
+      setData(cachedNow);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(false);
     api.get(url, params ? { params } : undefined)
-      .then((res) => { if (!cancelled) setData(res.data); })
+      .then((res) => {
+        if (!cancelled) {
+          setData(res.data);
+          setCached(key, res.data);
+        }
+      })
       .catch(() => { if (!cancelled) setError(true); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

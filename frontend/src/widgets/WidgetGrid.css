@@ -4,6 +4,21 @@
   gap: 1rem;
 }
 
+/* react-grid-layout's own bundled stylesheet (imported alongside this
+   one) ships `.react-grid-item img { pointer-events: none; }` globally
+   -- meant to stop the browser's native image-drag-ghost from fighting
+   its own drag-and-drop, but it silently disables *every* click on
+   *every* image inside *any* widget, edit mode or not (hero portraits,
+   recent-match icons, the profile avatar, ...), confirmed live
+   (2026-09-30) as the reason clicking the player-identity avatar simply
+   did nothing. Editing already blocks all body interaction at a higher
+   level (`.widget-card.is-editing .widget-card-body`, WidgetCard.css),
+   so restoring this for plain viewing doesn't reopen the "clicked a
+   widget while dragging" bug that guard was added for. */
+.react-grid-item img {
+  pointer-events: auto;
+}
+
 .widget-grid-toolbar {
   display: flex;
   align-items: center;
